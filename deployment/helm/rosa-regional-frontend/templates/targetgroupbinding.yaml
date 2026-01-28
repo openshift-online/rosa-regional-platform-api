@@ -1,0 +1,21 @@
+---
+apiVersion: eks.amazonaws.com/v1
+kind: TargetGroupBinding
+metadata:
+  name: {{ .Values.app.name }}
+  namespace: {{ .Values.namespace }}
+spec:
+  serviceRef:
+    name: {{ .Values.app.name }}
+    port: {{ .Values.service.ports.http }}
+  {{- if .Values.targetGroup.lookup.enabled }}
+  {{- $bootstrapConfig := lookup "v1" "ConfigMap" .Values.targetGroup.lookup.namespace .Values.targetGroup.lookup.configMapName }}
+  {{- if $bootstrapConfig }}
+  targetGroupARN: {{ index $bootstrapConfig.data .Values.targetGroup.lookup.key }}
+  {{- else }}
+  targetGroupARN: ""  # ConfigMap {{ .Values.targetGroup.lookup.configMapName }} not found in {{ .Values.targetGroup.lookup.namespace }} namespace
+  {{- end }}
+  {{- else }}
+  targetGroupARN: {{ .Values.targetGroup.arn }}
+  {{- end }}
+  targetType: {{ .Values.targetGroup.targetType }}

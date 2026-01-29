@@ -43,7 +43,7 @@ run: build
 		--log-level=debug \
 		--log-format=text \
 		--maestro-url=http://localhost:8001 \
-		--dynamodb-endpoint=http://localhost:8002
+		--allowed-accounts=123456789012
 
 # Download dependencies
 deps:

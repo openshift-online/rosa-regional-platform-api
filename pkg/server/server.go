@@ -11,7 +11,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/openshift/rosa-regional-frontend-api/pkg/clients/dynamodb"
 	"github.com/openshift/rosa-regional-frontend-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-frontend-api/pkg/config"
 	apphandlers "github.com/openshift/rosa-regional-frontend-api/pkg/handlers"
@@ -30,14 +29,6 @@ type Server struct {
 
 // New creates a new Server instance
 func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
-	ctx := context.Background()
-
-	// Create DynamoDB client
-	dynamoClient, err := dynamodb.NewClient(ctx, cfg.DynamoDB, logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create DynamoDB client: %w", err)
-	}
-
 	// Create Maestro client
 	maestroClient := maestro.NewClient(cfg.Maestro, logger)
 
@@ -46,16 +37,15 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(maestroClient, logger)
 
 	// Create authorization middleware
-	authMiddleware := middleware.NewAuthorization(dynamoClient, logger)
+	authMiddleware := middleware.NewAuthorization(cfg.AllowedAccounts, logger)
 
 	// Create API router
 	apiRouter := mux.NewRouter()
 	apiRouter.Use(middleware.Identity)
 
-	// Management cluster routes (require privileged access)
+	// Management cluster routes (require allowed account)
 	mgmtRouter := apiRouter.PathPrefix("/api/v0/management_clusters").Subrouter()
-	mgmtRouter.Use(authMiddleware.RequireAccount)
-	mgmtRouter.Use(authMiddleware.RequirePrivileged)
+	mgmtRouter.Use(authMiddleware.RequireAllowedAccount)
 	mgmtRouter.HandleFunc("", mgmtClusterHandler.Create).Methods(http.MethodPost)
 	mgmtRouter.HandleFunc("", mgmtClusterHandler.List).Methods(http.MethodGet)
 	mgmtRouter.HandleFunc("/{id}", mgmtClusterHandler.Get).Methods(http.MethodGet)

@@ -3,10 +3,10 @@ package config
 import "time"
 
 type Config struct {
-	Server   ServerConfig
-	Maestro  MaestroConfig
-	DynamoDB DynamoDBConfig
-	Logging  LoggingConfig
+	Server          ServerConfig
+	Maestro         MaestroConfig
+	Logging         LoggingConfig
+	AllowedAccounts []string
 }
 
 type ServerConfig struct {
@@ -22,12 +22,6 @@ type ServerConfig struct {
 type MaestroConfig struct {
 	BaseURL string
 	Timeout time.Duration
-}
-
-type DynamoDBConfig struct {
-	TableName string
-	Region    string
-	Endpoint  string // Optional, for local development
 }
 
 type LoggingConfig struct {
@@ -49,11 +43,6 @@ func NewConfig() *Config {
 		Maestro: MaestroConfig{
 			BaseURL: "http://maestro:8000",
 			Timeout: 30 * time.Second,
-		},
-		DynamoDB: DynamoDBConfig{
-			TableName: "rosa-customer-accounts",
-			Region:    "us-east-1",
-			Endpoint:  "",
 		},
 		Logging: LoggingConfig{
 			Level:  "info",

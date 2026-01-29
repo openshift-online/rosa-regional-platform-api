@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -16,15 +17,13 @@ import (
 
 var (
 	// Config flags
-	logLevel         string
-	logFormat        string
-	maestroURL       string
-	dynamoDBEndpoint string
-	dynamoDBRegion   string
-	dynamoDBTable    string
-	apiPort          int
-	healthPort       int
-	metricsPort      int
+	logLevel        string
+	logFormat       string
+	maestroURL      string
+	allowedAccounts string
+	apiPort         int
+	healthPort      int
+	metricsPort     int
 )
 
 func main() {
@@ -50,9 +49,7 @@ func init() {
 	serveCmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	serveCmd.Flags().StringVar(&logFormat, "log-format", "json", "Log format (json, text)")
 	serveCmd.Flags().StringVar(&maestroURL, "maestro-url", "http://maestro:8000", "Maestro service base URL")
-	serveCmd.Flags().StringVar(&dynamoDBEndpoint, "dynamodb-endpoint", "", "DynamoDB endpoint (for local development)")
-	serveCmd.Flags().StringVar(&dynamoDBRegion, "dynamodb-region", "us-east-1", "DynamoDB region")
-	serveCmd.Flags().StringVar(&dynamoDBTable, "dynamodb-table", "rosa-customer-accounts", "DynamoDB table name")
+	serveCmd.Flags().StringVar(&allowedAccounts, "allowed-accounts", "", "Comma-separated list of allowed AWS account IDs")
 	serveCmd.Flags().IntVar(&apiPort, "api-port", 8000, "API server port")
 	serveCmd.Flags().IntVar(&healthPort, "health-port", 8080, "Health check server port")
 	serveCmd.Flags().IntVar(&metricsPort, "metrics-port", 9090, "Metrics server port")
@@ -74,9 +71,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	cfg.Logging.Level = logLevel
 	cfg.Logging.Format = logFormat
 	cfg.Maestro.BaseURL = maestroURL
-	cfg.DynamoDB.Endpoint = dynamoDBEndpoint
-	cfg.DynamoDB.Region = dynamoDBRegion
-	cfg.DynamoDB.TableName = dynamoDBTable
+	cfg.AllowedAccounts = parseAllowedAccounts(allowedAccounts)
 	cfg.Server.APIPort = apiPort
 	cfg.Server.HealthPort = healthPort
 	cfg.Server.MetricsPort = metricsPort
@@ -97,8 +92,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		"health_port", cfg.Server.HealthPort,
 		"metrics_port", cfg.Server.MetricsPort,
 		"maestro_url", cfg.Maestro.BaseURL,
-		"dynamodb_region", cfg.DynamoDB.Region,
-		"dynamodb_table", cfg.DynamoDB.TableName,
+		"allowed_accounts_count", len(cfg.AllowedAccounts),
 	)
 
 	if err := srv.Run(ctx); err != nil {
@@ -135,4 +129,18 @@ func createLogger(level, format string) *slog.Logger {
 	}
 
 	return slog.New(handler)
+}
+
+func parseAllowedAccounts(accounts string) []string {
+	if accounts == "" {
+		return nil
+	}
+	var result []string
+	for _, acc := range strings.Split(accounts, ",") {
+		acc = strings.TrimSpace(acc)
+		if acc != "" {
+			result = append(result, acc)
+		}
+	}
+	return result
 }

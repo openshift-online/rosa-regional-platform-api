@@ -7,23 +7,22 @@ spec:
   project: default
   source:
     repoURL: https://github.com/openshift-online/rosa-regional-frontend-api
-    targetRevision: HEAD
+    targetRevision: main
     path: deployment/helm/rosa-regional-frontend
     helm:
       parameters:
-        - name: targetGroup.lookup.namespace
-          value: default
         - name: app.args.maestroUrl
           value: http://maestro-http.maestro:8080
-        - name: app.args.dynamodbRegion
-          value: us-east-2
-        - name: app.args.dynamodbTable
-          value: rosa-customer-accounts
         - name: app.args.logLevel
           value: info
   destination:
     server: https://kubernetes.default.svc
     namespace: rosa-regional-frontend
+  ignoreDifferences:
+    - group: eks.amazonaws.com
+      kind: TargetGroupBinding
+      jsonPointers:
+        - /spec/targetGroupARN
   syncPolicy:
     automated:
       prune: true

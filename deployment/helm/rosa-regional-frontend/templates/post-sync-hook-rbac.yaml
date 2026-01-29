@@ -1,18 +1,17 @@
-# RBAC for PostSync hook that creates TargetGroupBinding from bootstrap-output ConfigMap.
-# ServiceAccount + Role/RoleBinding in rosa-regional-frontend (create/update TGB).
-# Role/RoleBinding in default (get configmap bootstrap-output).
+{{- if .Values.postSyncHook.enabled }}
+# RBAC for PostSync hook that creates TargetGroupBinding from cluster ConfigMap.
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: post-sync-patch-tgb
-  namespace: rosa-regional-frontend
+  namespace: {{ .Values.namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: post-sync-patch-tgb
-  namespace: rosa-regional-frontend
+  namespace: {{ .Values.namespace }}
 rules:
   - apiGroups: ["eks.amazonaws.com"]
     resources: ["targetgroupbindings"]
@@ -22,7 +21,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: post-sync-patch-tgb
-  namespace: rosa-regional-frontend
+  namespace: {{ .Values.namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -30,24 +29,24 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: post-sync-patch-tgb
-    namespace: rosa-regional-frontend
+    namespace: {{ .Values.namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: post-sync-patch-tgb-read-config
-  namespace: default
+  namespace: {{ .Values.postSyncHook.bootstrapConfigMap.namespace }}
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
-    resourceNames: ["bootstrap-output"]
+    resourceNames: [{{ .Values.postSyncHook.bootstrapConfigMap.name | quote }}]
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: post-sync-patch-tgb-read-config
-  namespace: default
+  namespace: {{ .Values.postSyncHook.bootstrapConfigMap.namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -55,4 +54,5 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: post-sync-patch-tgb
-    namespace: rosa-regional-frontend
+    namespace: {{ .Values.namespace }}
+{{- end }}

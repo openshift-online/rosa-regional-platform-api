@@ -8,9 +8,5 @@ spec:
   serviceRef:
     name: {{ .Values.app.name }}
     port: {{ .Values.service.ports.http }}
-  {{- if .Values.targetGroup.lookup.enabled }}
-  targetGroupARN: {{ include "lookupConfigMapValue" (dict "Namespace" .Values.targetGroup.lookup.namespace "Name" .Values.targetGroup.lookup.configMapName "Key" .Values.targetGroup.lookup.key "Scope" .) }}
-  {{- else }}
-  targetGroupARN: {{ .Values.targetGroup.arn }}
-  {{- end }}
+  targetGroupARN: PLACEHOLDER
   targetType: {{ .Values.targetGroup.targetType }}

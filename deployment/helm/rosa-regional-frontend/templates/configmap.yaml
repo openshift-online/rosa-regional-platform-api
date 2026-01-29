@@ -29,7 +29,6 @@ data:
                         - name: backend
                           domains: ["*"]
                           routes:
-                            # Health check endpoints → app's health port ({{ .Values.app.args.healthPort }})
                             - match:
                                 prefix: "/v0/live"
                               route:
@@ -40,19 +39,16 @@ data:
                               route:
                                 cluster: app_health
                                 timeout: 5s
-                            # API routes → app's API port ({{ .Values.app.args.apiPort }})
                             - match:
                                 prefix: "/api/"
                               route:
                                 cluster: app_api
                                 timeout: 30s
-                            # Metrics endpoint → app's metrics port ({{ .Values.app.args.metricsPort }})
                             - match:
                                 prefix: "/metrics"
                               route:
                                 cluster: app_metrics
                                 timeout: 5s
-                            # Default catch-all → API
                             - match:
                                 prefix: "/"
                               route:

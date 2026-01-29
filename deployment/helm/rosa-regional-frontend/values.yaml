@@ -54,7 +54,7 @@ envoy:
 
 # Deployment configuration
 deployment:
-  replicas: 1
+  replicas: 2
 
 # Service configuration
 service:
@@ -65,17 +65,25 @@ service:
     health: 8081
     metrics: 9090
 
-# AWS Target Group Binding configuration
+# Target Group (template + PostSync hook). When lookup.enabled, template uses lookupConfigMapValue (empty offline); PostSync hook creates/updates TGB from cluster ConfigMap.
 targetGroup:
-  # ConfigMap to lookup for the Target Group ARN
   lookup:
     enabled: true
-    namespace: kube-system
+    namespace: default
     configMapName: bootstrap-output
     key: api_target_group_arn
-  # If lookup is disabled, you can manually set the ARN here
   arn: ""
   targetType: ip
+
+# PostSync hook: create TargetGroupBinding from cluster ConfigMap (e.g. bootstrap-output)
+postSyncHook:
+  enabled: true
+  # ConfigMap in the cluster that holds the Target Group ARN (not managed by this chart)
+  bootstrapConfigMap:
+    namespace: kube-system
+    name: bootstrap-output
+    key: api_target_group_arn
+  image: bitnami/kubectl:latest
 
 # Health probe configuration
 probes:

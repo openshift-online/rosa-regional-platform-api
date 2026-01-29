@@ -49,14 +49,15 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-lookupConfigMapValue retrieves a specific key's value from an existing ConfigMap.
-Usage: include "lookupConfigMapValue" (dict "Namespace" "default" "Name" "bootstrap-output" "Key" "api_target_group_arn" "Scope" .)
+lookupConfigMapValue retrieves a key from a ConfigMap. Returns "" when run offline (e.g. helm template) or when ConfigMap is missing.
+Usage: include "lookupConfigMapValue" (dict "Namespace" "kube-system" "Name" "bootstrap-output" "Key" "api_target_group_arn" "Scope" .)
 */}}
 {{- define "lookupConfigMapValue" -}}
 {{- $key := .Key -}}
-{{- with (lookup "v1" "ConfigMap" .Namespace .Name) -}}
-  {{- index .data $key | default "" -}}
+{{- $cm := lookup "v1" "ConfigMap" .Namespace .Name -}}
+{{- if and $cm $cm.data -}}
+{{- index $cm.data $key | default "" -}}
 {{- else -}}
-  {{- fail (printf "ConfigMap %s/%s not found" .Namespace .Name) -}}
+{{- "" -}}
 {{- end -}}
 {{- end -}}

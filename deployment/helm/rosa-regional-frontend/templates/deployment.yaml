@@ -1,20 +1,3 @@
-# =============================================================================
-# Envoy Sidecar Configuration for rosa-regional-frontend
-#
-# This deploys an Envoy proxy as a sidecar to consolidate all traffic through
-# port 8080, routing internally to the app's different ports based on path.
-#
-# Traffic flow:
-#   ALB:8080 → Envoy:8080 → App (8000/8081/9090 based on path)
-#
-# Routes:
-#   /api/*    → 127.0.0.1:8000 (API)
-#   /v0/live  → 127.0.0.1:8081 (Health)
-#   /v0/ready → 127.0.0.1:8081 (Health)
-#   /metrics  → 127.0.0.1:9090 (Metrics)
-#
-# Note: Envoy listens on 8080, app health server uses 8081
-# =============================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,9 +17,6 @@ spec:
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
       containers:
-        # =================================================================
-        # Main application container
-        # =================================================================
         - name: {{ .Values.app.name }}
           image: {{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}
           imagePullPolicy: {{ .Values.app.image.pullPolicy }}
@@ -60,7 +40,6 @@ spec:
             - name: metrics
               containerPort: {{ .Values.app.args.metricsPort }}
               protocol: TCP
-          # Health probes go directly to the app (not through Envoy)
           livenessProbe:
             httpGet:
               path: /v0/live
@@ -84,10 +63,6 @@ spec:
             limits:
               cpu: {{ .Values.app.resources.limits.cpu }}
               memory: {{ .Values.app.resources.limits.memory }}
-
-        # =================================================================
-        # Envoy sidecar - routes all external traffic
-        # =================================================================
         - name: envoy
           image: {{ .Values.envoy.image.repository }}:{{ .Values.envoy.image.tag }}
           ports:
@@ -123,7 +98,6 @@ spec:
             limits:
               cpu: {{ .Values.envoy.resources.limits.cpu }}
               memory: {{ .Values.envoy.resources.limits.memory }}
-
       volumes:
         - name: envoy-config
           configMap:

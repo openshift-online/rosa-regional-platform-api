@@ -1,4 +1,4 @@
-.PHONY: build test lint clean image image-push run generate generate-swagger help
+.PHONY: build test test-coverage test-e2e lint clean image image-push run generate generate-swagger help
 
 BINARY_NAME := rosa-regional-frontend-api
 IMAGE_REPO ?= quay.io/openshift/rosa-regional-frontend-api
@@ -11,8 +11,9 @@ GOARCH ?= amd64
 help:
 	@echo "Available targets:"
 	@echo "  build          - Build the binary"
-	@echo "  test           - Run tests"
-	@echo "  test-coverage  - Run tests with coverage"
+	@echo "  test           - Run unit tests (excludes e2e)"
+	@echo "  test-coverage  - Run unit tests with coverage (excludes e2e)"
+	@echo "  test-e2e       - Run e2e integration/functional tests"
 	@echo "  lint           - Run linter"
 	@echo "  clean          - Clean build artifacts"
 	@echo "  image          - Build Docker image"
@@ -28,14 +29,18 @@ help:
 build:
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o $(BINARY_NAME) ./cmd/$(BINARY_NAME)
 
-# Run tests
+# Run tests (excludes e2e)
 test:
-	go test -v -race ./...
+	go test -v -race $(shell go list ./... | grep -v '/test/e2e')
 
-# Run tests with coverage
+# Run tests with coverage (excludes e2e)
 test-coverage:
-	go test -v -race -coverprofile=coverage.out ./...
+	go test -v -race -coverprofile=coverage.out $(shell go list ./... | grep -v '/test/e2e')
 	go tool cover -html=coverage.out -o coverage.html
+
+# Run e2e tests
+test-e2e:
+	go test -v ./test/e2e
 
 # Run linter
 lint:
@@ -127,8 +132,8 @@ generate-swagger:
 		echo '  </script>'; \
 		echo '</body>'; \
 		echo '</html>'; \
-	) > openapi/swagger-ui.html
-	@echo "Done! Generated openapi/swagger-ui.html"
+	) > docs/index.html
+	@echo "Done! Generated docs/index.html"
 
 # Verify go.mod is tidy
 verify:

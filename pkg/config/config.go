@@ -12,6 +12,8 @@ type Config struct {
 type ServerConfig struct {
 	APIBindAddress     string
 	APIPort            int
+	GRPCBindAddress    string
+	GRPCPort           int
 	HealthBindAddress  string
 	HealthPort         int
 	MetricsBindAddress string
@@ -20,8 +22,9 @@ type ServerConfig struct {
 }
 
 type MaestroConfig struct {
-	BaseURL string
-	Timeout time.Duration
+	BaseURL     string
+	GRPCBaseURL string
+	Timeout     time.Duration
 }
 
 type LoggingConfig struct {
@@ -34,6 +37,8 @@ func NewConfig() *Config {
 		Server: ServerConfig{
 			APIBindAddress:     "0.0.0.0",
 			APIPort:            8000,
+			GRPCBindAddress:    "0.0.0.0",
+			GRPCPort:           8090,
 			HealthBindAddress:  "0.0.0.0",
 			HealthPort:         8080,
 			MetricsBindAddress: "0.0.0.0",
@@ -41,8 +46,9 @@ func NewConfig() *Config {
 			ShutdownTimeout:    30 * time.Second,
 		},
 		Maestro: MaestroConfig{
-			BaseURL: "http://maestro:8000",
-			Timeout: 30 * time.Second,
+			BaseURL:     "http://maestro:8000",
+			GRPCBaseURL: "maestro-grpc.maestro-server:8090",
+			Timeout:     30 * time.Second,
 		},
 		Logging: LoggingConfig{
 			Level:  "info",

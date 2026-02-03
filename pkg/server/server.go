@@ -22,6 +22,7 @@ type Server struct {
 	cfg           *config.Config
 	logger        *slog.Logger
 	apiServer     *http.Server
+	grpcServer    *http.Server
 	healthServer  *http.Server
 	metricsServer *http.Server
 	healthHandler *apphandlers.HealthHandler
@@ -36,6 +37,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	healthHandler := apphandlers.NewHealthHandler()
 	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(maestroClient, logger)
 	resourceBundleHandler := apphandlers.NewResourceBundleHandler(maestroClient, logger)
+	workHandler := apphandlers.NewWorkHandler(maestroClient, logger)
 
 	// Create authorization middleware
 	authMiddleware := middleware.NewAuthorization(cfg.AllowedAccounts, logger)
@@ -55,6 +57,11 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	rbRouter := apiRouter.PathPrefix("/api/v0/resource_bundles").Subrouter()
 	rbRouter.Use(authMiddleware.RequireAllowedAccount)
 	rbRouter.HandleFunc("", resourceBundleHandler.List).Methods(http.MethodGet)
+
+	// Work routes (require allowed account)
+	workRouter := apiRouter.PathPrefix("/api/v0/work").Subrouter()
+	workRouter.Use(authMiddleware.RequireAllowedAccount)
+	workRouter.HandleFunc("", workHandler.Create).Methods(http.MethodPost)
 
 	// Health routes on API server (no auth required)
 	apiRouter.HandleFunc("/api/v0/live", healthHandler.Liveness).Methods(http.MethodGet)

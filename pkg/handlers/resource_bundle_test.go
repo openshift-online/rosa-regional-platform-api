@@ -13,6 +13,7 @@ import (
 
 	"github.com/openshift/rosa-regional-frontend-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-frontend-api/pkg/middleware"
+	workv1 "open-cluster-management.io/api/work/v1"
 )
 
 // mockMaestroClient is a mock implementation of the Maestro client
@@ -37,6 +38,10 @@ func (m *mockMaestroClient) ListConsumers(ctx context.Context, page, size int) (
 }
 
 func (m *mockMaestroClient) GetConsumer(ctx context.Context, id string) (*maestro.Consumer, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockMaestroClient) CreateManifestWork(ctx context.Context, clusterName string, manifestWork *workv1.ManifestWork) (*workv1.ManifestWork, error) {
 	return nil, errors.New("not implemented")
 }
 

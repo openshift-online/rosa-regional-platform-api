@@ -9,9 +9,15 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 
+	"github.com/openshift-online/maestro/pkg/api/openapi"
+	"github.com/openshift-online/maestro/pkg/client/cloudevents/grpcsource"
 	"github.com/openshift/rosa-regional-frontend-api/pkg/config"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	workv1 "open-cluster-management.io/api/work/v1"
+	grpcoptions "open-cluster-management.io/sdk-go/pkg/cloudevents/generic/options/grpc"
 )
 
 const (
@@ -21,21 +27,94 @@ const (
 	// /api/maestro/v1/resource-bundles
 )
 
+// loggerAdapter adapts slog.Logger to OCM SDK logging.Logger interface
+type loggerAdapter struct {
+	logger *slog.Logger
+}
+
+func (l *loggerAdapter) DebugEnabled() bool {
+	return true
+}
+
+func (l *loggerAdapter) InfoEnabled() bool {
+	return true
+}
+
+func (l *loggerAdapter) WarnEnabled() bool {
+	return true
+}
+
+func (l *loggerAdapter) ErrorEnabled() bool {
+	return true
+}
+
+func (l *loggerAdapter) Debug(ctx context.Context, format string, args ...interface{}) {
+	l.logger.DebugContext(ctx, fmt.Sprintf(format, args...))
+}
+
+func (l *loggerAdapter) Info(ctx context.Context, format string, args ...interface{}) {
+	l.logger.InfoContext(ctx, fmt.Sprintf(format, args...))
+}
+
+func (l *loggerAdapter) Warn(ctx context.Context, format string, args ...interface{}) {
+	l.logger.WarnContext(ctx, fmt.Sprintf(format, args...))
+}
+
+func (l *loggerAdapter) Error(ctx context.Context, format string, args ...interface{}) {
+	l.logger.ErrorContext(ctx, fmt.Sprintf(format, args...))
+}
+
+func (l *loggerAdapter) Fatal(ctx context.Context, format string, args ...interface{}) {
+	l.logger.ErrorContext(ctx, fmt.Sprintf(format, args...))
+	os.Exit(1)
+}
+
 // Client provides access to the Maestro API
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
-	logger     *slog.Logger
+	baseURL       string
+	grpcBaseURL   string
+	httpClient    *http.Client
+	logger        *slog.Logger
+	grpcOpts      *grpcoptions.GRPCOptions
+	sourceID      string
+	openapiClient *openapi.APIClient
 }
 
 // NewClient creates a new Maestro client
 func NewClient(cfg config.MaestroConfig, logger *slog.Logger) *Client {
+	// Create OpenAPI client configuration
+	openapiCfg := openapi.NewConfiguration()
+	// Parse the base URL to extract host and scheme
+	parsedURL, err := url.Parse(cfg.BaseURL)
+	if err == nil {
+		openapiCfg.Host = parsedURL.Host
+		openapiCfg.Scheme = parsedURL.Scheme
+	}
+	openapiClient := openapi.NewAPIClient(openapiCfg)
+
+	// Setup gRPC options
+	grpcOpts := grpcoptions.NewGRPCOptions()
+
+	// Parse the gRPC URL to extract just the host:port (without scheme)
+	grpcURL := cfg.GRPCBaseURL
+	if parsedGRPC, err := url.Parse(cfg.GRPCBaseURL); err == nil && parsedGRPC.Host != "" {
+		grpcURL = parsedGRPC.Host
+	}
+
+	grpcOpts.Dialer = &grpcoptions.GRPCDialer{
+		URL: grpcURL,
+	}
+
 	return &Client{
-		baseURL: cfg.BaseURL,
+		baseURL:     cfg.BaseURL,
+		grpcBaseURL: cfg.GRPCBaseURL,
 		httpClient: &http.Client{
 			Timeout: cfg.Timeout,
 		},
-		logger: logger,
+		logger:        logger,
+		grpcOpts:      grpcOpts,
+		sourceID:      "rosa-regional-frontend-api", // Default source ID
+		openapiClient: openapiClient,
 	}
 }
 
@@ -236,4 +315,34 @@ func (c *Client) ListResourceBundles(ctx context.Context, page, size int, search
 	c.logger.Debug("resource bundles listed", "total", list.Total)
 
 	return &list, nil
+}
+
+// CreateManifestWork creates a ManifestWork resource in Maestro via gRPC
+func (c *Client) CreateManifestWork(ctx context.Context, clusterName string, manifestWork *workv1.ManifestWork) (*workv1.ManifestWork, error) {
+	c.logger.Debug("creating manifestwork via gRPC", "cluster", clusterName, "work_name", manifestWork.Name)
+
+	// Wrap the logger to match OCM SDK interface
+	adaptedLogger := &loggerAdapter{logger: c.logger}
+
+	// Create the gRPC work client
+	workClient, err := grpcsource.NewMaestroGRPCSourceWorkClient(
+		ctx,
+		adaptedLogger,
+		c.openapiClient,
+		c.grpcOpts,
+		c.sourceID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gRPC work client: %w", err)
+	}
+
+	// Create the ManifestWork using the standard client interface
+	result, err := workClient.ManifestWorks(clusterName).Create(ctx, manifestWork, metav1.CreateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create manifestwork: %w", err)
+	}
+
+	c.logger.Debug("manifestwork created", "cluster", clusterName, "work_name", result.Name, "uid", result.UID)
+
+	return result, nil
 }

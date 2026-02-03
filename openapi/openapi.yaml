@@ -209,6 +209,59 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /work:
+    post:
+      summary: Create manifestwork for a cluster
+      description: |
+        Creates manifestwork against a target consumer identified by cluster_id.
+        This endpoint will create the necessary work manifest for the specified cluster.
+      operationId: createWork
+      tags:
+        - Work
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkRequest'
+      responses:
+        '201':
+          description: Manifestwork created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Work'
+        '400':
+          description: Bad request - invalid cluster_id or payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - user lacks required permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Cluster not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /live:
     get:
       summary: Liveness probe
@@ -418,6 +471,57 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ResourceBundle'
+
+    WorkRequest:
+      type: object
+      description: Request body for creating manifestwork
+      required:
+        - cluster_id
+        - data
+      properties:
+        cluster_id:
+          type: string
+          description: Unique identifier of the target cluster/consumer
+        data:
+          type: object
+          description: |
+            Payload data to be passed to Maestro gRPC for creating the manifestwork.
+            This should contain the ManifestWork specification including manifests.
+          additionalProperties: true
+
+    Work:
+      type: object
+      description: A manifestwork resource created for a cluster
+      required:
+        - id
+        - kind
+        - href
+        - cluster_id
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the manifestwork
+        kind:
+          type: string
+          description: Resource kind
+          example: ManifestWork
+        href:
+          type: string
+          description: API href reference
+        cluster_id:
+          type: string
+          description: Cluster ID this work is associated with
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+        status:
+          type: object
+          description: Status of the manifestwork
 
     Error:
       type: object

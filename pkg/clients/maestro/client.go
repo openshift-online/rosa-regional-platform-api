@@ -17,6 +17,7 @@ import (
 	"github.com/openshift/rosa-regional-frontend-api/pkg/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	workv1 "open-cluster-management.io/api/work/v1"
+	workv1client "open-cluster-management.io/api/client/work/clientset/versioned/typed/work/v1"
 	grpcoptions "open-cluster-management.io/sdk-go/pkg/cloudevents/generic/options/grpc"
 )
 
@@ -78,6 +79,7 @@ type Client struct {
 	grpcOpts      *grpcoptions.GRPCOptions
 	sourceID      string
 	openapiClient *openapi.APIClient
+	workClient    workv1client.WorkV1Interface
 }
 
 // NewClient creates a new Maestro client
@@ -105,9 +107,27 @@ func NewClient(cfg config.MaestroConfig, logger *slog.Logger) *Client {
 		URL: grpcURL,
 	}
 
+	// Create the gRPC work client once during initialization
+	// Wrap the logger to match OCM SDK interface
+	adaptedLogger := &loggerAdapter{logger: logger}
+
+	// Initialize the gRPC work client with background context
+	workClient, err := grpcsource.NewMaestroGRPCSourceWorkClient(
+		context.Background(),
+		adaptedLogger,
+		openapiClient,
+		grpcOpts,
+		"rosa-regional-frontend-api", // Source ID
+	)
+	if err != nil {
+		// Log the error but don't fail - the client can still be used for non-gRPC operations
+		logger.Error("failed to create gRPC work client during initialization", "error", err)
+		// workClient will be nil, and CreateManifestWork will handle this gracefully
+	}
+
 	return &Client{
-		baseURL:     cfg.BaseURL,
-		grpcBaseURL: cfg.GRPCBaseURL,
+		baseURL:       cfg.BaseURL,
+		grpcBaseURL:   cfg.GRPCBaseURL,
 		httpClient: &http.Client{
 			Timeout: cfg.Timeout,
 		},
@@ -115,6 +135,7 @@ func NewClient(cfg config.MaestroConfig, logger *slog.Logger) *Client {
 		grpcOpts:      grpcOpts,
 		sourceID:      "rosa-regional-frontend-api", // Default source ID
 		openapiClient: openapiClient,
+		workClient:    workClient,
 	}
 }
 
@@ -321,23 +342,13 @@ func (c *Client) ListResourceBundles(ctx context.Context, page, size int, search
 func (c *Client) CreateManifestWork(ctx context.Context, clusterName string, manifestWork *workv1.ManifestWork) (*workv1.ManifestWork, error) {
 	c.logger.Debug("creating manifestwork via gRPC", "cluster", clusterName, "work_name", manifestWork.Name)
 
-	// Wrap the logger to match OCM SDK interface
-	adaptedLogger := &loggerAdapter{logger: c.logger}
-
-	// Create the gRPC work client
-	workClient, err := grpcsource.NewMaestroGRPCSourceWorkClient(
-		ctx,
-		adaptedLogger,
-		c.openapiClient,
-		c.grpcOpts,
-		c.sourceID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gRPC work client: %w", err)
+	// Check if workClient was initialized successfully
+	if c.workClient == nil {
+		return nil, fmt.Errorf("gRPC work client not initialized")
 	}
 
-	// Create the ManifestWork using the standard client interface
-	result, err := workClient.ManifestWorks(clusterName).Create(ctx, manifestWork, metav1.CreateOptions{})
+	// Create the ManifestWork using the reusable client interface
+	result, err := c.workClient.ManifestWorks(clusterName).Create(ctx, manifestWork, metav1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create manifestwork: %w", err)
 	}

@@ -4,8 +4,6 @@ go 1.25.4
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.7
-	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.71.5
-	github.com/aws/aws-sdk-go-v2/service/ssm v1.67.8
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.6
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1

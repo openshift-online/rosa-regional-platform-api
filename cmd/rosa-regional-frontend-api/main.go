@@ -20,6 +20,7 @@ var (
 	logLevel        string
 	logFormat       string
 	maestroURL      string
+	maestroGRPCURL  string
 	allowedAccounts string
 	apiPort         int
 	healthPort      int
@@ -50,6 +51,7 @@ func init() {
 	serveCmd.Flags().StringVar(&logFormat, "log-format", "json", "Log format (json, text)")
 	serveCmd.Flags().StringVar(&maestroURL, "maestro-url", "http://maestro:8000", "Maestro service base URL")
 	serveCmd.Flags().StringVar(&allowedAccounts, "allowed-accounts", "", "Comma-separated list of allowed AWS account IDs")
+	serveCmd.Flags().StringVar(&maestroGRPCURL, "maestro-grpc-url", "maestro-grpc.maestro-server:8090", "Maestro gRPC service base URL")
 	serveCmd.Flags().IntVar(&apiPort, "api-port", 8000, "API server port")
 	serveCmd.Flags().IntVar(&healthPort, "health-port", 8080, "Health check server port")
 	serveCmd.Flags().IntVar(&metricsPort, "metrics-port", 9090, "Metrics server port")
@@ -71,6 +73,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	cfg.Logging.Level = logLevel
 	cfg.Logging.Format = logFormat
 	cfg.Maestro.BaseURL = maestroURL
+	cfg.Maestro.GRPCBaseURL = maestroGRPCURL
 	cfg.AllowedAccounts = parseAllowedAccounts(allowedAccounts)
 	cfg.Server.APIPort = apiPort
 	cfg.Server.HealthPort = healthPort
@@ -92,6 +95,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		"health_port", cfg.Server.HealthPort,
 		"metrics_port", cfg.Server.MetricsPort,
 		"maestro_url", cfg.Maestro.BaseURL,
+		"maestro_grpc_url", cfg.Maestro.GRPCBaseURL,
 		"allowed_accounts_count", len(cfg.AllowedAccounts),
 	)
 

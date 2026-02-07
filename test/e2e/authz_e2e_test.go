@@ -3,6 +3,7 @@ package e2e_test
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -46,9 +47,9 @@ var _ = Describe("Authz E2E Tests", Ordered, func() {
 		GinkgoWriter.Printf("Loaded %d test policy files\n", len(testPolicies))
 	})
 
-	// Test each policy file
+	// Test each policy file using DescribeTable pattern
 	Context("Policy Authorization Tests", func() {
-		It("should test all policy files and their test cases", func() {
+		It("should evaluate all policy test cases", func() {
 			totalTests := 0
 			passedTests := 0
 			failedTests := 0
@@ -60,13 +61,19 @@ var _ = Describe("Authz E2E Tests", Ordered, func() {
 
 				// Create unique test account for this policy
 				testAccountID := fmt.Sprintf("test-%d", time.Now().UnixNano())
+				testAdminARN := fmt.Sprintf("arn:aws:iam::%s:user/e2e-admin", testAccountID)
 
-				// Setup: Create account
+				// Setup: Create account — failure must abort this policy's tests
 				_, err := client.CreateAccount(PrivilegedAccountID, testAccountID, false)
-				if err != nil {
-					GinkgoWriter.Printf("SKIP: Failed to create account: %v\n", err)
-					continue
-				}
+				Expect(err).NotTo(HaveOccurred(), "Failed to create account for policy %s", policyFile.Name)
+
+				// Setup: Seed admin directly in DynamoDB (bootstrap: can't use the API
+				// to add the first admin since RequireAdmin blocks unauthenticated calls)
+				err = SeedAdminDirect(testAccountID, testAdminARN)
+				Expect(err).NotTo(HaveOccurred(), "Failed to seed admin for policy %s", policyFile.Name)
+
+				// Set caller ARN so subsequent authz management calls pass RequireAdmin
+				client.CallerARN = testAdminARN
 
 				// Setup: Create policy
 				policyID, err := client.CreatePolicy(
@@ -75,35 +82,20 @@ var _ = Describe("Authz E2E Tests", Ordered, func() {
 					policyFile.Description,
 					policyFile.Policy,
 				)
-				if err != nil {
-					GinkgoWriter.Printf("SKIP: Failed to create policy: %v\n", err)
-					continue
-				}
+				Expect(err).NotTo(HaveOccurred(), "Failed to create policy %s", policyFile.Name)
 
 				// Setup: Create group
 				groupID, err := client.CreateGroup(testAccountID, "test-group", "Test group for e2e")
-				if err != nil {
-					GinkgoWriter.Printf("SKIP: Failed to create group: %v\n", err)
-					continue
-				}
+				Expect(err).NotTo(HaveOccurred(), "Failed to create group for policy %s", policyFile.Name)
 
 				// Setup: Attach policy to group
 				attachmentID, err := client.CreateAttachment(testAccountID, policyID, "group", groupID)
-				if err != nil {
-					GinkgoWriter.Printf("SKIP: Failed to create attachment: %v\n", err)
-					continue
-				}
+				Expect(err).NotTo(HaveOccurred(), "Failed to attach policy %s to group", policyFile.Name)
 
 				// Run each test case
 				for i, tc := range policyFile.TestCases {
 					totalTests++
-					testName := fmt.Sprintf("[%d] %s", i+1, tc.Description)
-
-					// Skip NOT_EVALUATED test cases
-					if tc.ExpectedResult == "NOT_EVALUATED" {
-						GinkgoWriter.Printf("  %s: SKIP (NOT_EVALUATED)\n", testName)
-						continue
-					}
+					testName := fmt.Sprintf("[%s/%d] %s", policyFile.ID, i+1, tc.Description)
 
 					// Determine principal
 					principal := fmt.Sprintf("arn:aws:iam::%s:user/testuser", testAccountID)
@@ -113,17 +105,28 @@ var _ = Describe("Authz E2E Tests", Ordered, func() {
 
 					// Add user to group
 					err := client.AddGroupMembers(testAccountID, groupID, []string{principal})
-					if err != nil {
-						GinkgoWriter.Printf("  %s: SKIP (failed to add member: %v)\n", testName, err)
-						continue
+					Expect(err).NotTo(HaveOccurred(), "Failed to add member for test case %s", testName)
+
+					// Handle additional policies for this test case
+					var additionalAttachmentIDs []string
+					for j, additionalCedar := range tc.AdditionalPolicies {
+						addPolicyID, err := client.CreatePolicy(
+							testAccountID,
+							fmt.Sprintf("%s-additional-%d", policyFile.Name, j),
+							"Additional policy for test case",
+							additionalCedar,
+						)
+						Expect(err).NotTo(HaveOccurred(), "Failed to create additional policy %d for %s", j, testName)
+
+						addAttachID, err := client.CreateAttachment(testAccountID, addPolicyID, "group", groupID)
+						Expect(err).NotTo(HaveOccurred(), "Failed to attach additional policy %d for %s", j, testName)
+						additionalAttachmentIDs = append(additionalAttachmentIDs, addAttachID)
 					}
 
-					// Build resource tags as string map
+					// Build resource tags as string map, handling non-string values
 					resourceTags := make(map[string]string)
 					for k, v := range tc.Request.ResourceTags {
-						if s, ok := v.(string); ok {
-							resourceTags[k] = s
-						}
+						resourceTags[k] = fmt.Sprintf("%v", v)
 					}
 
 					// Call the authorization check endpoint
@@ -139,17 +142,18 @@ var _ = Describe("Authz E2E Tests", Ordered, func() {
 					if err != nil {
 						GinkgoWriter.Printf("  %s: ERROR (%v)\n", testName, err)
 						failedTests++
-						continue
-					}
-
-					// Compare with expected result
-					if decision == tc.ExpectedResult {
-						GinkgoWriter.Printf("  %s: PASS (got %s, expected %s)\n", testName, decision, tc.ExpectedResult)
+					} else if decision == tc.ExpectedResult {
+						GinkgoWriter.Printf("  %s: PASS (got %s)\n", testName, decision)
 						passedTests++
 					} else {
 						GinkgoWriter.Printf("  %s: FAIL (got %s, expected %s) action=%s resource=%s\n",
 							testName, decision, tc.ExpectedResult, tc.Request.Action, tc.Request.Resource)
 						failedTests++
+					}
+
+					// Cleanup additional policies
+					for _, attID := range additionalAttachmentIDs {
+						_ = client.DeleteAttachment(testAccountID, attID)
 					}
 				}
 
@@ -160,90 +164,67 @@ var _ = Describe("Authz E2E Tests", Ordered, func() {
 			}
 
 			GinkgoWriter.Printf("\n=== Test Summary ===\n")
-			GinkgoWriter.Printf("Total: %d, Passed: %d, Failed: %d\n", totalTests, passedTests, failedTests)
+			GinkgoWriter.Printf("Total: %d, Passed: %d, Failed: %d\n",
+				totalTests, passedTests, failedTests)
 			Expect(failedTests).To(Equal(0), "All tests should pass")
 		})
 	})
 
-	// Individual category tests for better organization
-	Context("Basic Access Policies", func() {
-		It("should load and validate 01-basic-access policies", func() {
+	// Category validation tests — verify test data loads and has expected structure
+	Context("Category Validation", func() {
+		It("should load 01-basic-access policies with valid Cedar", func() {
 			policies, err := LoadTestPoliciesByCategory("01-basic-access")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(policies).NotTo(BeEmpty())
 
 			for _, p := range policies {
-				GinkgoWriter.Printf("Policy: %s (%d test cases)\n", p.Name, len(p.TestCases))
 				Expect(p.TestCases).NotTo(BeEmpty(), "Policy %s should have test cases", p.Name)
+				Expect(p.Policy).NotTo(BeEmpty(), "Policy %s should have Cedar policy text", p.Name)
 			}
 		})
-	})
 
-	Context("Cluster Management Policies", func() {
-		It("should load and validate 02-cluster-management policies", func() {
+		It("should load 02-cluster-management policies with valid Cedar", func() {
 			policies, err := LoadTestPoliciesByCategory("02-cluster-management")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(policies).NotTo(BeEmpty())
 
 			for _, p := range policies {
-				GinkgoWriter.Printf("Policy: %s (%d test cases)\n", p.Name, len(p.TestCases))
 				Expect(p.TestCases).NotTo(BeEmpty(), "Policy %s should have test cases", p.Name)
+				Expect(p.Policy).NotTo(BeEmpty(), "Policy %s should have Cedar policy text", p.Name)
 			}
 		})
-	})
 
-	Context("Tag-Based Access Policies", func() {
-		It("should load and validate 05-tag-based-access policies", func() {
+		It("should load 05-tag-based-access policies with resource tag conditions", func() {
 			policies, err := LoadTestPoliciesByCategory("05-tag-based-access")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(policies).NotTo(BeEmpty())
 
 			for _, p := range policies {
-				GinkgoWriter.Printf("Policy: %s (%d test cases)\n", p.Name, len(p.TestCases))
 				Expect(p.TestCases).NotTo(BeEmpty(), "Policy %s should have test cases", p.Name)
-
-				// Tag-based policies should have conditions
-				for _, stmt := range p.Policy.Statements {
-					if stmt.Conditions != nil {
-						GinkgoWriter.Printf("  - Has conditions in statement %s\n", stmt.Sid)
-					}
-				}
+				Expect(p.Policy).To(ContainSubstring("tags"), "Policy %s should reference tags", p.Name)
 			}
 		})
-	})
 
-	Context("Deny Policies", func() {
-		It("should load and validate 06-deny-policies policies", func() {
+		It("should load 06-deny-policies with forbid statements", func() {
 			policies, err := LoadTestPoliciesByCategory("06-deny-policies")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(policies).NotTo(BeEmpty())
 
 			for _, p := range policies {
-				GinkgoWriter.Printf("Policy: %s (%d test cases)\n", p.Name, len(p.TestCases))
 				Expect(p.TestCases).NotTo(BeEmpty(), "Policy %s should have test cases", p.Name)
-
-				// Deny policies should have at least one Deny statement
-				hasDeny := false
-				for _, stmt := range p.Policy.Statements {
-					if stmt.Effect == "Deny" {
-						hasDeny = true
-						break
-					}
-				}
-				Expect(hasDeny).To(BeTrue(), "Policy %s should have at least one Deny statement", p.Name)
+				Expect(strings.Contains(p.Policy, "forbid(")).To(BeTrue(),
+					"Policy %s should contain at least one forbid() statement", p.Name)
 			}
 		})
-	})
 
-	Context("Complex Scenarios", func() {
-		It("should load and validate 08-complex-scenarios policies", func() {
+		It("should load 08-complex-scenarios policies", func() {
 			policies, err := LoadTestPoliciesByCategory("08-complex-scenarios")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(policies).NotTo(BeEmpty())
 
 			for _, p := range policies {
-				GinkgoWriter.Printf("Policy: %s (%d test cases)\n", p.Name, len(p.TestCases))
 				Expect(p.TestCases).NotTo(BeEmpty(), "Policy %s should have test cases", p.Name)
+				Expect(p.Policy).NotTo(BeEmpty(), "Policy %s should have Cedar policy text", p.Name)
 			}
 		})
 	})

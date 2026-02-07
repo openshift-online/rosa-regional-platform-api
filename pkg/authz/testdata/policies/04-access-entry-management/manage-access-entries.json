@@ -2,54 +2,20 @@
   "id": "access-entry-001",
   "name": "Manage access entries for a cluster",
   "description": "Policy that grants the ability to create, delete, and manage ROSA access entries which control who can access the Kubernetes API.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "AllowAccessEntryManagement",
-        "effect": "Allow",
-        "actions": [
-          "rosa:CreateAccessEntry",
-          "rosa:DeleteAccessEntry",
-          "rosa:DescribeAccessEntry",
-          "rosa:ListAccessEntries",
-          "rosa:UpdateAccessEntry"
-        ],
-        "resources": [
-          "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
-          "arn:aws:rosa:us-west-2:111122223333:access-entry/my-cluster/*"
-        ]
-      },
-      {
-        "sid": "AllowAccessPolicyManagement",
-        "effect": "Allow",
-        "actions": [
-          "rosa:AssociateAccessPolicy",
-          "rosa:DisassociateAccessPolicy",
-          "rosa:ListAssociatedAccessPolicies",
-          "rosa:ListAccessPolicies"
-        ],
-        "resources": [
-          "arn:aws:rosa:us-west-2:111122223333:access-entry/my-cluster/*",
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "manage-access-entries.cedar",
   "testCases": [
     {
       "description": "User can create access entry",
       "request": {
-        "action": "rosa:CreateAccessEntry",
+        "action": "CreateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster"
       },
       "expectedResult": "ALLOW"
     },
     {
-      "description": "User can associate access policy",
+      "description": "User can update access entry",
       "request": {
-        "action": "rosa:AssociateAccessPolicy",
+        "action": "UpdateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:access-entry/my-cluster/role/admin-entry"
       },
       "expectedResult": "ALLOW"
@@ -57,7 +23,7 @@
     {
       "description": "User can list access policies (global)",
       "request": {
-        "action": "rosa:ListAccessPolicies",
+        "action": "ListAccessPolicies",
         "resource": "*"
       },
       "expectedResult": "ALLOW"
@@ -65,11 +31,11 @@
     {
       "description": "User cannot manage access entries for different cluster",
       "request": {
-        "action": "rosa:CreateAccessEntry",
+        "action": "CreateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/other-cluster"
       },
       "expectedResult": "DENY"
     }
   ],
-  "notes": "Access entries control who can access the Kubernetes API. ListAccessPolicies requires wildcard resource."
+  "notes": "Access entries control who can access the Kubernetes API. ListAccessPolicies requires wildcard resource. AssociateAccessPolicy and DisassociateAccessPolicy from V0 are mapped to UpdateAccessEntry in Cedar."
 }

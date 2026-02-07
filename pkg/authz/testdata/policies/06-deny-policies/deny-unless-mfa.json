@@ -2,62 +2,46 @@
   "id": "deny-004",
   "name": "Deny destructive actions without MFA",
   "description": "Policy that denies destructive ROSA operations unless the user has authenticated with MFA.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "DenyDestructiveWithoutMFA",
-        "effect": "Deny",
-        "conditions": {
-          "BoolIfExists": {
-            "aws:MultiFactorAuthPresent": "false"
-          }
-        },
-        "actions": [
-          "rosa:DeleteCluster",
-          "rosa:DeleteNodePool",
-          "rosa:DeleteAccessEntry"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "deny-unless-mfa.cedar",
   "testCases": [
     {
       "description": "Cannot delete cluster without MFA",
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "aws:MultiFactorAuthPresent": "false"
+          "mfaPresent": "false"
         }
       },
       "expectedResult": "DENY"
     },
     {
       "description": "Can delete cluster with MFA",
+      "additionalPolicies": [
+        "permit(\n  ?principal,\n  action,\n  resource\n);"
+      ],
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "aws:MultiFactorAuthPresent": "true"
+          "mfaPresent": "true"
         }
       },
-      "expectedResult": "NOT_EVALUATED"
+      "expectedResult": "ALLOW"
     },
     {
       "description": "Can describe cluster without MFA (non-destructive)",
+      "additionalPolicies": [
+        "permit(\n  ?principal,\n  action,\n  resource\n);"
+      ],
       "request": {
-        "action": "rosa:DescribeCluster",
+        "action": "DescribeCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "aws:MultiFactorAuthPresent": "false"
+          "mfaPresent": "false"
         }
       },
-      "expectedResult": "NOT_EVALUATED"
+      "expectedResult": "ALLOW"
     }
   ],
   "notes": "Adds an extra layer of security for destructive operations. Users must re-authenticate with MFA to perform deletions."

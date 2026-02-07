@@ -2,122 +2,12 @@
   "id": "complex-001",
   "name": "Developer role with production guardrails",
   "description": "Complex policy combining allow and deny statements to give developers broad access while protecting production resources.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "AllowReadAllClusters",
-        "effect": "Allow",
-        "actions": [
-          "rosa:DescribeCluster",
-          "rosa:DescribeNodePool",
-          "rosa:DescribeAccessEntry",
-          "rosa:ListClusters",
-          "rosa:ListNodePools",
-          "rosa:ListAccessEntries",
-          "rosa:ListTagsForResource"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowFullAccessToDevClusters",
-        "effect": "Allow",
-        "conditions": {
-          "StringEquals": {
-            "rosa:ResourceTag/Environment": [
-              "development",
-              "staging"
-            ]
-          }
-        },
-        "actions": [
-          "rosa:*"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowCreateDevClusters",
-        "effect": "Allow",
-        "conditions": {
-          "StringEquals": {
-            "rosa:RequestTag/Owner": "${aws:username}"
-          }
-        },
-        "actions": [
-          "rosa:CreateCluster"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "DenyProductionModifications",
-        "effect": "Deny",
-        "conditions": {
-          "StringEquals": {
-            "rosa:ResourceTag/Environment": "production"
-          }
-        },
-        "actions": [
-          "rosa:DeleteCluster",
-          "rosa:DeleteNodePool",
-          "rosa:UpdateClusterConfig",
-          "rosa:UpdateClusterVersion",
-          "rosa:UpdateNodePoolConfig",
-          "rosa:UpdateNodePoolVersion",
-          "rosa:CreateAccessEntry",
-          "rosa:DeleteAccessEntry"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "DenyTagTampering",
-        "effect": "Deny",
-        "conditions": {
-          "ForAnyValue:StringEquals": {
-            "rosa:TagKeys": [
-              "Environment",
-              "Owner"
-            ]
-          }
-        },
-        "actions": [
-          "rosa:TagResource",
-          "rosa:UntagResource"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "DenyClusterAdminAccessEntry",
-        "effect": "Deny",
-        "conditions": {
-          "ArnLike": {
-            "rosa:policyArn": "arn:aws:rosa::aws:cluster-access-policy/ROSAClusterAdminPolicy"
-          }
-        },
-        "actions": [
-          "rosa:AssociateAccessPolicy"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "developer-with-guardrails.cedar",
   "testCases": [
     {
       "description": "Developer can describe any cluster including production",
       "request": {
-        "action": "rosa:DescribeCluster",
+        "action": "DescribeCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster",
         "resourceTags": {
           "Environment": "production"
@@ -128,7 +18,7 @@
     {
       "description": "Developer can delete dev cluster",
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/dev-cluster",
         "resourceTags": {
           "Environment": "development"
@@ -139,7 +29,7 @@
     {
       "description": "Developer cannot delete production cluster",
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster",
         "resourceTags": {
           "Environment": "production"
@@ -153,11 +43,14 @@
         "username": "alice"
       },
       "request": {
-        "action": "rosa:CreateCluster",
+        "action": "CreateCluster",
         "resource": "*",
         "context": {
-          "rosa:RequestTag/Environment": "development",
-          "rosa:RequestTag/Owner": "alice"
+          "requestTags": {
+            "Environment": "development",
+            "Owner": "alice"
+          },
+          "username": "alice"
         }
       },
       "expectedResult": "ALLOW"
@@ -168,11 +61,14 @@
         "username": "alice"
       },
       "request": {
-        "action": "rosa:CreateCluster",
+        "action": "CreateCluster",
         "resource": "*",
         "context": {
-          "rosa:RequestTag/Environment": "production",
-          "rosa:RequestTag/Owner": "alice"
+          "requestTags": {
+            "Environment": "production",
+            "Owner": "alice"
+          },
+          "username": "alice"
         }
       },
       "expectedResult": "DENY"
@@ -180,10 +76,10 @@
     {
       "description": "Developer cannot change Environment tag",
       "request": {
-        "action": "rosa:TagResource",
+        "action": "TagResource",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/dev-cluster",
         "context": {
-          "rosa:TagKeys": [
+          "tagKeys": [
             "Environment"
           ]
         }
@@ -193,10 +89,10 @@
     {
       "description": "Developer cannot grant cluster admin access",
       "request": {
-        "action": "rosa:AssociateAccessPolicy",
+        "action": "UpdateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:access-entry/dev-cluster/role/dev",
         "context": {
-          "rosa:policyArn": "arn:aws:rosa::aws:cluster-access-policy/ROSAClusterAdminPolicy"
+          "policyArn": "arn:aws:rosa::aws:cluster-access-policy/ROSAClusterAdminPolicy"
         }
       },
       "expectedResult": "DENY"

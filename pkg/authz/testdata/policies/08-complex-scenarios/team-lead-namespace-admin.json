@@ -2,115 +2,7 @@
   "id": "complex-002",
   "name": "Team lead with namespace-level admin delegation",
   "description": "Policy that allows team leads to manage access entries for their team's namespace, but not cluster-wide access or admin policies.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "AllowReadOperations",
-        "effect": "Allow",
-        "actions": [
-          "rosa:DescribeCluster",
-          "rosa:DescribeAccessEntry",
-          "rosa:ListClusters",
-          "rosa:ListAccessEntries",
-          "rosa:ListAccessPolicies",
-          "rosa:ListAssociatedAccessPolicies"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowManageTeamAccessEntries",
-        "effect": "Allow",
-        "conditions": {
-          "StringEquals": {
-            "rosa:ResourceTag/Team": "${aws:PrincipalTag/Team}"
-          }
-        },
-        "actions": [
-          "rosa:CreateAccessEntry",
-          "rosa:DeleteAccessEntry",
-          "rosa:UpdateAccessEntry"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowAssociateNamespaceScopedPolicies",
-        "effect": "Allow",
-        "conditions": {
-          "StringEquals": {
-            "rosa:accessScope": "namespace"
-          },
-          "ForAllValues:StringLike": {
-            "rosa:namespaces": [
-              "team-${aws:PrincipalTag/Team}",
-              "team-${aws:PrincipalTag/Team}-*"
-            ]
-          }
-        },
-        "actions": [
-          "rosa:AssociateAccessPolicy",
-          "rosa:DisassociateAccessPolicy"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "DenyClusterScopedPolicies",
-        "effect": "Deny",
-        "conditions": {
-          "StringEquals": {
-            "rosa:accessScope": "cluster"
-          }
-        },
-        "actions": [
-          "rosa:AssociateAccessPolicy"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "DenyAdminPolicies",
-        "effect": "Deny",
-        "conditions": {
-          "ArnLike": {
-            "rosa:policyArn": [
-              "arn:aws:rosa::aws:cluster-access-policy/ROSAClusterAdminPolicy",
-              "arn:aws:rosa::aws:cluster-access-policy/ROSAAdminPolicy"
-            ]
-          }
-        },
-        "actions": [
-          "rosa:AssociateAccessPolicy"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "DenyModifyOtherTeamEntries",
-        "effect": "Deny",
-        "conditions": {
-          "StringNotEquals": {
-            "rosa:ResourceTag/Team": "${aws:PrincipalTag/Team}"
-          }
-        },
-        "actions": [
-          "rosa:DeleteAccessEntry",
-          "rosa:UpdateAccessEntry"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "team-lead-namespace-admin.cedar",
   "testCases": [
     {
       "description": "Team alpha lead can create access entry for their team",
@@ -120,10 +12,15 @@
         }
       },
       "request": {
-        "action": "rosa:CreateAccessEntry",
+        "action": "CreateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/shared-cluster",
         "resourceTags": {
           "Team": "alpha"
+        },
+        "context": {
+          "principalTags": {
+            "Team": "alpha"
+          }
         }
       },
       "expectedResult": "ALLOW"
@@ -136,14 +33,23 @@
         }
       },
       "request": {
-        "action": "rosa:AssociateAccessPolicy",
+        "action": "UpdateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:access-entry/shared-cluster/role/alpha-dev",
         "context": {
-          "rosa:accessScope": "namespace",
-          "rosa:namespaces": [
+          "accessScope": "namespace",
+          "namespaces": [
             "team-alpha"
           ],
-          "rosa:policyArn": "arn:aws:rosa::aws:cluster-access-policy/ROSAViewPolicy"
+          "allowedNamespaces": [
+            "team-alpha"
+          ],
+          "policyArn": "arn:aws:rosa::aws:cluster-access-policy/ROSAViewPolicy",
+          "principalTags": {
+            "Team": "alpha"
+          }
+        },
+        "resourceTags": {
+          "Team": "alpha"
         }
       },
       "expectedResult": "ALLOW"
@@ -156,14 +62,23 @@
         }
       },
       "request": {
-        "action": "rosa:AssociateAccessPolicy",
+        "action": "UpdateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:access-entry/shared-cluster/role/alpha-dev",
         "context": {
-          "rosa:accessScope": "namespace",
-          "rosa:namespaces": [
+          "accessScope": "namespace",
+          "namespaces": [
             "team-beta"
           ],
-          "rosa:policyArn": "arn:aws:rosa::aws:cluster-access-policy/ROSAViewPolicy"
+          "allowedNamespaces": [
+            "team-alpha"
+          ],
+          "policyArn": "arn:aws:rosa::aws:cluster-access-policy/ROSAViewPolicy",
+          "principalTags": {
+            "Team": "alpha"
+          }
+        },
+        "resourceTags": {
+          "Team": "alpha"
         }
       },
       "expectedResult": "DENY"
@@ -176,11 +91,20 @@
         }
       },
       "request": {
-        "action": "rosa:AssociateAccessPolicy",
+        "action": "UpdateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:access-entry/shared-cluster/role/alpha-dev",
         "context": {
-          "rosa:accessScope": "cluster",
-          "rosa:policyArn": "arn:aws:rosa::aws:cluster-access-policy/ROSAViewPolicy"
+          "accessScope": "cluster",
+          "allowedNamespaces": [
+            "team-alpha"
+          ],
+          "policyArn": "arn:aws:rosa::aws:cluster-access-policy/ROSAViewPolicy",
+          "principalTags": {
+            "Team": "alpha"
+          }
+        },
+        "resourceTags": {
+          "Team": "alpha"
         }
       },
       "expectedResult": "DENY"
@@ -193,14 +117,23 @@
         }
       },
       "request": {
-        "action": "rosa:AssociateAccessPolicy",
+        "action": "UpdateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:access-entry/shared-cluster/role/alpha-dev",
         "context": {
-          "rosa:accessScope": "namespace",
-          "rosa:namespaces": [
+          "accessScope": "namespace",
+          "namespaces": [
             "team-alpha"
           ],
-          "rosa:policyArn": "arn:aws:rosa::aws:cluster-access-policy/ROSAAdminPolicy"
+          "allowedNamespaces": [
+            "team-alpha"
+          ],
+          "policyArn": "arn:aws:rosa::aws:cluster-access-policy/ROSAAdminPolicy",
+          "principalTags": {
+            "Team": "alpha"
+          }
+        },
+        "resourceTags": {
+          "Team": "alpha"
         }
       },
       "expectedResult": "DENY"
@@ -213,10 +146,15 @@
         }
       },
       "request": {
-        "action": "rosa:DeleteAccessEntry",
+        "action": "DeleteAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:access-entry/shared-cluster/role/beta-dev",
         "resourceTags": {
           "Team": "beta"
+        },
+        "context": {
+          "principalTags": {
+            "Team": "alpha"
+          }
         }
       },
       "expectedResult": "DENY"

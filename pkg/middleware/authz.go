@@ -14,17 +14,22 @@ import (
 
 // Authz provides Cedar/AVP-based authorization middleware
 type Authz struct {
-	authorizer authz.Authorizer
+	authorizer authz.Checker
 	logger     *slog.Logger
 	enabled    bool
+	region     string
 }
 
 // NewAuthz creates a new Authz middleware
-func NewAuthz(authorizer authz.Authorizer, enabled bool, logger *slog.Logger) *Authz {
+func NewAuthz(authorizer authz.Checker, enabled bool, region string, logger *slog.Logger) *Authz {
+	if region == "" {
+		region = "us-east-1"
+	}
 	return &Authz{
 		authorizer: authorizer,
 		logger:     logger,
 		enabled:    enabled,
+		region:     region,
 	}
 }
 
@@ -177,26 +182,24 @@ func (a *Authz) deriveResource(r *http.Request) string {
 		// Build ARN based on resource type
 		path := r.URL.Path
 		if strings.Contains(path, "/nodepools/") {
-			return buildARN(accountID, "nodepool", id)
+			return a.buildARN(accountID, "nodepool", id)
 		}
 		if strings.Contains(path, "/access_entries/") {
-			return buildARN(accountID, "accessentry", id)
+			return a.buildARN(accountID, "accessentry", id)
 		}
 		if strings.Contains(path, "/clusters/") || strings.Contains(path, "/clusters") {
-			return buildARN(accountID, "cluster", id)
+			return a.buildARN(accountID, "cluster", id)
 		}
-		return buildARN(accountID, "resource", id)
+		return a.buildARN(accountID, "resource", id)
 	}
 
 	// No specific resource - use wildcard
 	return "*"
 }
 
-// buildARN creates a ROSA ARN
-func buildARN(accountID, resourceType, resourceID string) string {
-	// Format: arn:aws:rosa:{region}:{accountId}:{resourceType}/{resourceId}
-	// Using us-east-1 as default region (should be derived from request context in production)
-	return "arn:aws:rosa:us-east-1:" + accountID + ":" + resourceType + "/" + resourceID
+// buildARN creates a ROSA ARN using the configured region
+func (a *Authz) buildARN(accountID, resourceType, resourceID string) string {
+	return "arn:aws:rosa:" + a.region + ":" + accountID + ":" + resourceType + "/" + resourceID
 }
 
 // WithResourceContext is a helper to add resource context to the authorization request

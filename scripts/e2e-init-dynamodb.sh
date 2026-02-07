@@ -10,10 +10,6 @@ REGION="${AWS_REGION:-us-east-1}"
 export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-dummy}"
 export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-dummy}"
 
-# Bypass proxy for localhost
-export no_proxy="${no_proxy},localhost,127.0.0.1"
-export NO_PROXY="${NO_PROXY},localhost,127.0.0.1"
-
 export AWS_PAGER=""
 
 echo "Initializing DynamoDB tables at $ENDPOINT..."
@@ -86,44 +82,6 @@ create_table "rosa-authz-group-members" \
             "KeySchema": [
                 {"AttributeName": "accountId#memberArn", "KeyType": "HASH"},
                 {"AttributeName": "groupId", "KeyType": "RANGE"}
-            ],
-            "Projection": {"ProjectionType": "ALL"}
-        }]'
-
-# 5. Policies table (PK: accountId, SK: policyId)
-create_table "rosa-authz-policies" \
-    --attribute-definitions \
-        AttributeName=accountId,AttributeType=S \
-        AttributeName=policyId,AttributeType=S \
-    --key-schema \
-        AttributeName=accountId,KeyType=HASH \
-        AttributeName=policyId,KeyType=RANGE
-
-# 6. Attachments table (PK: accountId, SK: attachmentId, GSIs: target-index, policy-index)
-create_table "rosa-authz-attachments" \
-    --attribute-definitions \
-        AttributeName=accountId,AttributeType=S \
-        AttributeName=attachmentId,AttributeType=S \
-        'AttributeName=accountId#targetType#targetId,AttributeType=S' \
-        AttributeName=policyId,AttributeType=S \
-        'AttributeName=accountId#policyId,AttributeType=S' \
-    --key-schema \
-        AttributeName=accountId,KeyType=HASH \
-        AttributeName=attachmentId,KeyType=RANGE \
-    --global-secondary-indexes \
-        '[{
-            "IndexName": "target-index",
-            "KeySchema": [
-                {"AttributeName": "accountId#targetType#targetId", "KeyType": "HASH"},
-                {"AttributeName": "policyId", "KeyType": "RANGE"}
-            ],
-            "Projection": {"ProjectionType": "ALL"}
-        },
-        {
-            "IndexName": "policy-index",
-            "KeySchema": [
-                {"AttributeName": "accountId#policyId", "KeyType": "HASH"},
-                {"AttributeName": "attachmentId", "KeyType": "RANGE"}
             ],
             "Projection": {"ProjectionType": "ALL"}
         }]'

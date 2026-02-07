@@ -94,26 +94,11 @@ e2e-init-db:
 	./scripts/e2e-init-dynamodb.sh
 
 # Run authz E2E tests (starts infrastructure, runs tests, keeps infra running)
-test-e2e-authz:
-	@echo "Starting E2E infrastructure..."
-	@$(MAKE) e2e-authz-infra-up
-	@echo "Starting service..."
-	@DYNAMODB_ENDPOINT=http://localhost:8180 \
-		CEDAR_AGENT_ENDPOINT=http://localhost:8181 \
-		AUTHZ_ENABLED=true \
-		go run ./cmd/rosa-regional-frontend-api serve \
-			--log-level=debug \
-			--log-format=text > ./rosa-regional-frontend-api.log 2>&1 & \
-		sleep 3; \
-		echo "Running authz E2E tests..."; \
-		E2E_BASE_URL=http://localhost:8000 ginkgo -v --focus="Authz" ./test/e2e; \
-		TEST_EXIT=$$?; \
-		pkill -f "rosa-regional-frontend-api serve" 2>/dev/null || true; \
-		exit $$TEST_EXIT
+test-e2e-authz: e2e-authz-infra-up
+	@./scripts/run-e2e-authz.sh
 
 # Run authz E2E tests with cleanup (stops infrastructure after tests)
-test-e2e-authz-clean: test-e2e-authz
-	@$(MAKE) e2e-authz-infra-down
+test-e2e-authz-clean: test-e2e-authz e2e-authz-infra-down
 
 # Format code
 fmt:

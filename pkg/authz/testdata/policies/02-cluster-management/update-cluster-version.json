@@ -2,26 +2,12 @@
   "id": "cluster-003",
   "name": "Update cluster OpenShift version",
   "description": "Policy that grants a user the ability to update the OpenShift version of a specific ROSA cluster.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "effect": "Allow",
-        "actions": [
-          "rosa:UpdateClusterVersion"
-        ],
-        "resources": [
-          "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster"
-        ]
-      }
-    ]
-  },
+  "policyFile": "update-cluster-version.cedar",
   "testCases": [
     {
       "description": "User can update version of specified cluster",
       "request": {
-        "action": "rosa:UpdateClusterVersion",
+        "action": "UpdateClusterVersion",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster"
       },
       "expectedResult": "ALLOW"
@@ -29,7 +15,7 @@
     {
       "description": "User cannot update version of different cluster",
       "request": {
-        "action": "rosa:UpdateClusterVersion",
+        "action": "UpdateClusterVersion",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/other-cluster"
       },
       "expectedResult": "DENY"
@@ -37,7 +23,7 @@
     {
       "description": "User cannot update cluster config",
       "request": {
-        "action": "rosa:UpdateClusterConfig",
+        "action": "UpdateClusterConfig",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster"
       },
       "expectedResult": "DENY"

@@ -2,35 +2,15 @@
   "id": "cluster-004",
   "name": "Create cluster without automatic admin permissions",
   "description": "Policy that grants the ability to create clusters with bootstrapClusterCreatorAdminPermissions set to false, removing automatic admin access for the creator.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "AllowCreateClusterWithoutAdmin",
-        "effect": "Allow",
-        "conditions": {
-          "Bool": {
-            "rosa:bootstrapClusterCreatorAdminPermissions": "false"
-          }
-        },
-        "actions": [
-          "rosa:CreateCluster"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "create-cluster-without-admin.cedar",
   "testCases": [
     {
       "description": "User can create cluster when bootstrapClusterCreatorAdminPermissions is false",
       "request": {
-        "action": "rosa:CreateCluster",
+        "action": "CreateCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/new-cluster",
         "context": {
-          "rosa:bootstrapClusterCreatorAdminPermissions": "false"
+          "bootstrapClusterCreatorAdminPermissions": "false"
         }
       },
       "expectedResult": "ALLOW"
@@ -38,10 +18,10 @@
     {
       "description": "User cannot create cluster when bootstrapClusterCreatorAdminPermissions is true",
       "request": {
-        "action": "rosa:CreateCluster",
+        "action": "CreateCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/new-cluster",
         "context": {
-          "rosa:bootstrapClusterCreatorAdminPermissions": "true"
+          "bootstrapClusterCreatorAdminPermissions": "true"
         }
       },
       "expectedResult": "DENY"
@@ -49,7 +29,7 @@
     {
       "description": "User cannot create cluster when bootstrapClusterCreatorAdminPermissions is not specified",
       "request": {
-        "action": "rosa:CreateCluster",
+        "action": "CreateCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/new-cluster",
         "context": {}
       },

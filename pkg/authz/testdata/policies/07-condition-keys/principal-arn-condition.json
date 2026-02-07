@@ -2,56 +2,15 @@
   "id": "condition-002",
   "name": "Restrict access entry principal ARNs",
   "description": "Policy that restricts which IAM principals can have access entries created for them. Only allows principals from specific roles.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "AllowAccessEntryForSpecificRoles",
-        "effect": "Allow",
-        "conditions": {
-          "ArnLike": {
-            "rosa:principalArn": [
-              "arn:aws:iam::111122223333:role/developers-*",
-              "arn:aws:iam::111122223333:role/operators-*"
-            ]
-          }
-        },
-        "actions": [
-          "rosa:CreateAccessEntry"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "DenyAccessEntryForAdminRoles",
-        "effect": "Deny",
-        "conditions": {
-          "ArnLike": {
-            "rosa:principalArn": [
-              "arn:aws:iam::111122223333:role/admin*",
-              "arn:aws:iam::111122223333:role/Administrator*"
-            ]
-          }
-        },
-        "actions": [
-          "rosa:CreateAccessEntry"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "principal-arn-condition.cedar",
   "testCases": [
     {
       "description": "Can create access entry for developers role",
       "request": {
-        "action": "rosa:CreateAccessEntry",
+        "action": "CreateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "rosa:principalArn": "arn:aws:iam::111122223333:role/developers-team-a"
+          "principalArn": "arn:aws:iam::111122223333:role/developers-team-a"
         }
       },
       "expectedResult": "ALLOW"
@@ -59,10 +18,10 @@
     {
       "description": "Can create access entry for operators role",
       "request": {
-        "action": "rosa:CreateAccessEntry",
+        "action": "CreateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "rosa:principalArn": "arn:aws:iam::111122223333:role/operators-oncall"
+          "principalArn": "arn:aws:iam::111122223333:role/operators-oncall"
         }
       },
       "expectedResult": "ALLOW"
@@ -70,10 +29,10 @@
     {
       "description": "Cannot create access entry for admin role",
       "request": {
-        "action": "rosa:CreateAccessEntry",
+        "action": "CreateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "rosa:principalArn": "arn:aws:iam::111122223333:role/admin-breakglass"
+          "principalArn": "arn:aws:iam::111122223333:role/admin-breakglass"
         }
       },
       "expectedResult": "DENY"
@@ -81,14 +40,14 @@
     {
       "description": "Cannot create access entry for arbitrary role",
       "request": {
-        "action": "rosa:CreateAccessEntry",
+        "action": "CreateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "rosa:principalArn": "arn:aws:iam::111122223333:role/some-other-role"
+          "principalArn": "arn:aws:iam::111122223333:role/some-other-role"
         }
       },
       "expectedResult": "DENY"
     }
   ],
-  "notes": "Controls which IAM roles can be granted cluster access. Prevents unauthorized role mappings."
+  "notes": "Controls which IAM roles can be granted cluster access. Prevents unauthorized role mappings. V0 ArnLike conditions are mapped to Cedar like operator with * wildcards."
 }

@@ -88,10 +88,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		cfg.Authz.CedarAgentEndpoint = endpoint
 		logger.Info("using cedar-agent for local AVP", "endpoint", endpoint)
 	}
-	if path := os.Getenv("PRIVILEGED_ACCOUNTS_FILE"); path != "" {
-		cfg.Authz.PrivilegedAccountsFile = path
-		logger.Info("using custom privileged accounts file", "path", path)
-	}
 	if os.Getenv("AUTHZ_DISABLED") == "true" {
 		cfg.Authz.Enabled = false
 		logger.Info("authz disabled via environment variable")

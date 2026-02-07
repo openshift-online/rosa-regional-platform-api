@@ -13,12 +13,12 @@ import (
 
 // AccountsHandler handles account management endpoints
 type AccountsHandler struct {
-	authorizer authz.Authorizer
+	authorizer authz.Service
 	logger     *slog.Logger
 }
 
 // NewAccountsHandler creates a new AccountsHandler
-func NewAccountsHandler(authorizer authz.Authorizer, logger *slog.Logger) *AccountsHandler {
+func NewAccountsHandler(authorizer authz.Service, logger *slog.Logger) *AccountsHandler {
 	return &AccountsHandler{
 		authorizer: authorizer,
 		logger:     logger,

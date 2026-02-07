@@ -8,31 +8,31 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/openshift/rosa-regional-frontend-api/pkg/authz"
-	"github.com/openshift/rosa-regional-frontend-api/pkg/authz/policy"
-	"github.com/openshift/rosa-regional-frontend-api/pkg/authz/store"
 	"github.com/openshift/rosa-regional-frontend-api/pkg/middleware"
 )
 
 // AuthzHandler handles authorization management endpoints
 type AuthzHandler struct {
-	authorizer authz.Authorizer
-	logger     *slog.Logger
+	checker authz.Checker
+	service authz.Service
+	logger  *slog.Logger
 }
 
 // NewAuthzHandler creates a new AuthzHandler
-func NewAuthzHandler(authorizer authz.Authorizer, logger *slog.Logger) *AuthzHandler {
+func NewAuthzHandler(checker authz.Checker, service authz.Service, logger *slog.Logger) *AuthzHandler {
 	return &AuthzHandler{
-		authorizer: authorizer,
-		logger:     logger,
+		checker: checker,
+		service: service,
+		logger:  logger,
 	}
 }
 
 // Policy request/response types
 
 type CreatePolicyRequest struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Policy      policy.V0Policy `json:"policy"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Policy      string `json:"policy"` // Native Cedar policy text
 }
 
 type PolicyResponse struct {
@@ -149,7 +149,12 @@ func (h *AuthzHandler) CreatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := h.authorizer.CreatePolicy(ctx, accountID, req.Name, req.Description, &req.Policy)
+	if req.Policy == "" {
+		h.writeError(w, http.StatusBadRequest, "missing-policy", "policy (Cedar text) is required")
+		return
+	}
+
+	p, err := h.service.CreatePolicy(ctx, accountID, req.Name, req.Description, req.Policy)
 	if err != nil {
 		h.logger.Error("failed to create policy", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusBadRequest, "invalid-policy", err.Error())
@@ -171,7 +176,7 @@ func (h *AuthzHandler) ListPolicies(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
 
-	policies, err := h.authorizer.ListPolicies(ctx, accountID)
+	policies, err := h.service.ListPolicies(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to list policies", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to list policies")
@@ -203,7 +208,7 @@ func (h *AuthzHandler) GetPolicy(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	policyID := vars["id"]
 
-	p, err := h.authorizer.GetPolicy(ctx, accountID, policyID)
+	p, err := h.service.GetPolicy(ctx, accountID, policyID)
 	if err != nil {
 		h.logger.Error("failed to get policy", "error", err, "account_id", accountID, "policy_id", policyID)
 		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to get policy")
@@ -237,7 +242,7 @@ func (h *AuthzHandler) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := h.authorizer.UpdatePolicy(ctx, accountID, policyID, req.Name, req.Description, &req.Policy)
+	p, err := h.service.UpdatePolicy(ctx, accountID, policyID, req.Name, req.Description, req.Policy)
 	if err != nil {
 		h.logger.Error("failed to update policy", "error", err, "account_id", accountID, "policy_id", policyID)
 		h.writeError(w, http.StatusBadRequest, "invalid-policy", err.Error())
@@ -260,7 +265,7 @@ func (h *AuthzHandler) DeletePolicy(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	policyID := vars["id"]
 
-	err := h.authorizer.DeletePolicy(ctx, accountID, policyID)
+	err := h.service.DeletePolicy(ctx, accountID, policyID)
 	if err != nil {
 		h.logger.Error("failed to delete policy", "error", err, "account_id", accountID, "policy_id", policyID)
 		if err.Error() == "cannot delete policy with existing attachments" {
@@ -291,7 +296,7 @@ func (h *AuthzHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	g, err := h.authorizer.CreateGroup(ctx, accountID, req.Name, req.Description)
+	g, err := h.service.CreateGroup(ctx, accountID, req.Name, req.Description)
 	if err != nil {
 		h.logger.Error("failed to create group", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to create group")
@@ -313,7 +318,7 @@ func (h *AuthzHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
 
-	groups, err := h.authorizer.ListGroups(ctx, accountID)
+	groups, err := h.service.ListGroups(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to list groups", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to list groups")
@@ -345,7 +350,7 @@ func (h *AuthzHandler) GetGroup(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	groupID := vars["id"]
 
-	g, err := h.authorizer.GetGroup(ctx, accountID, groupID)
+	g, err := h.service.GetGroup(ctx, accountID, groupID)
 	if err != nil {
 		h.logger.Error("failed to get group", "error", err, "account_id", accountID, "group_id", groupID)
 		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to get group")
@@ -373,7 +378,7 @@ func (h *AuthzHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	groupID := vars["id"]
 
-	err := h.authorizer.DeleteGroup(ctx, accountID, groupID)
+	err := h.service.DeleteGroup(ctx, accountID, groupID)
 	if err != nil {
 		h.logger.Error("failed to delete group", "error", err, "account_id", accountID, "group_id", groupID)
 		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to delete group")
@@ -397,7 +402,7 @@ func (h *AuthzHandler) UpdateGroupMembers(w http.ResponseWriter, r *http.Request
 
 	// Add members
 	for _, memberARN := range req.Add {
-		if err := h.authorizer.AddGroupMember(ctx, accountID, groupID, memberARN); err != nil {
+		if err := h.service.AddGroupMember(ctx, accountID, groupID, memberARN); err != nil {
 			h.logger.Error("failed to add group member", "error", err, "account_id", accountID, "group_id", groupID, "member", memberARN)
 			h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to add group member")
 			return
@@ -406,7 +411,7 @@ func (h *AuthzHandler) UpdateGroupMembers(w http.ResponseWriter, r *http.Request
 
 	// Remove members
 	for _, memberARN := range req.Remove {
-		if err := h.authorizer.RemoveGroupMember(ctx, accountID, groupID, memberARN); err != nil {
+		if err := h.service.RemoveGroupMember(ctx, accountID, groupID, memberARN); err != nil {
 			h.logger.Error("failed to remove group member", "error", err, "account_id", accountID, "group_id", groupID, "member", memberARN)
 			h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to remove group member")
 			return
@@ -414,7 +419,7 @@ func (h *AuthzHandler) UpdateGroupMembers(w http.ResponseWriter, r *http.Request
 	}
 
 	// Return updated member list
-	members, err := h.authorizer.ListGroupMembers(ctx, accountID, groupID)
+	members, err := h.service.ListGroupMembers(ctx, accountID, groupID)
 	if err != nil {
 		h.logger.Error("failed to list group members", "error", err, "account_id", accountID, "group_id", groupID)
 		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to list group members")
@@ -435,7 +440,7 @@ func (h *AuthzHandler) ListGroupMembers(w http.ResponseWriter, r *http.Request) 
 	vars := mux.Vars(r)
 	groupID := vars["id"]
 
-	members, err := h.authorizer.ListGroupMembers(ctx, accountID, groupID)
+	members, err := h.service.ListGroupMembers(ctx, accountID, groupID)
 	if err != nil {
 		h.logger.Error("failed to list group members", "error", err, "account_id", accountID, "group_id", groupID)
 		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to list group members")
@@ -472,7 +477,7 @@ func (h *AuthzHandler) CreateAttachment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	a, err := h.authorizer.AttachPolicy(ctx, accountID, req.PolicyID, store.TargetType(req.TargetType), req.TargetID)
+	a, err := h.service.AttachPolicy(ctx, accountID, req.PolicyID, authz.TargetType(req.TargetType), req.TargetID)
 	if err != nil {
 		h.logger.Error("failed to attach policy", "error", err, "account_id", accountID, "policy_id", req.PolicyID)
 		h.writeError(w, http.StatusBadRequest, "attachment-failed", err.Error())
@@ -496,13 +501,13 @@ func (h *AuthzHandler) ListAttachments(w http.ResponseWriter, r *http.Request) {
 	accountID := middleware.GetAccountID(ctx)
 
 	// Parse filter parameters
-	filter := store.AttachmentFilter{
+	filter := authz.AttachmentFilter{
 		PolicyID:   r.URL.Query().Get("policyId"),
-		TargetType: store.TargetType(r.URL.Query().Get("targetType")),
+		TargetType: authz.TargetType(r.URL.Query().Get("targetType")),
 		TargetID:   r.URL.Query().Get("targetId"),
 	}
 
-	attachments, err := h.authorizer.ListAttachments(ctx, accountID, filter)
+	attachments, err := h.service.ListAttachments(ctx, accountID, filter)
 	if err != nil {
 		h.logger.Error("failed to list attachments", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to list attachments")
@@ -535,7 +540,7 @@ func (h *AuthzHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request) 
 	vars := mux.Vars(r)
 	attachmentID := vars["id"]
 
-	err := h.authorizer.DetachPolicy(ctx, accountID, attachmentID)
+	err := h.service.DetachPolicy(ctx, accountID, attachmentID)
 	if err != nil {
 		h.logger.Error("failed to detach policy", "error", err, "account_id", accountID, "attachment_id", attachmentID)
 		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to detach policy")
@@ -563,7 +568,7 @@ func (h *AuthzHandler) AddAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.authorizer.AddAdmin(ctx, accountID, req.PrincipalARN, callerARN)
+	err := h.service.AddAdmin(ctx, accountID, req.PrincipalARN, callerARN)
 	if err != nil {
 		h.logger.Error("failed to add admin", "error", err, "account_id", accountID, "principal_arn", req.PrincipalARN)
 		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to add admin")
@@ -572,7 +577,7 @@ func (h *AuthzHandler) AddAdmin(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"kind":         "Admin",
 		"principalArn": req.PrincipalARN,
 	})
@@ -582,7 +587,7 @@ func (h *AuthzHandler) ListAdmins(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
 
-	admins, err := h.authorizer.ListAdmins(ctx, accountID)
+	admins, err := h.service.ListAdmins(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to list admins", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to list admins")
@@ -604,7 +609,7 @@ func (h *AuthzHandler) RemoveAdmin(w http.ResponseWriter, r *http.Request) {
 	// The ARN is URL-encoded in the path
 	principalARN := vars["arn"]
 
-	err := h.authorizer.RemoveAdmin(ctx, accountID, principalARN)
+	err := h.service.RemoveAdmin(ctx, accountID, principalARN)
 	if err != nil {
 		h.logger.Error("failed to remove admin", "error", err, "account_id", accountID, "principal_arn", principalARN)
 		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to remove admin")
@@ -615,7 +620,6 @@ func (h *AuthzHandler) RemoveAdmin(w http.ResponseWriter, r *http.Request) {
 }
 
 // CheckAuthorization evaluates an authorization request and returns the decision.
-// This endpoint is useful for testing policies without actually performing an action.
 func (h *AuthzHandler) CheckAuthorization(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
@@ -652,7 +656,7 @@ func (h *AuthzHandler) CheckAuthorization(w http.ResponseWriter, r *http.Request
 	}
 
 	// Check authorization
-	allowed, err := h.authorizer.Authorize(ctx, authzReq)
+	allowed, err := h.checker.Authorize(ctx, authzReq)
 	if err != nil {
 		h.logger.Error("authorization check failed", "error", err, "account_id", accountID, "principal", req.Principal, "action", req.Action)
 		h.writeError(w, http.StatusInternalServerError, "authorization-error", err.Error())
@@ -675,7 +679,7 @@ func (h *AuthzHandler) writeError(w http.ResponseWriter, status int, code, reaso
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"kind":   "Error",
 		"code":   code,
 		"reason": reason,

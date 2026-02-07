@@ -28,4 +28,10 @@ type AVPClient interface {
 	UpdatePolicy(ctx context.Context, params *verifiedpermissions.UpdatePolicyInput, optFns ...func(*verifiedpermissions.Options)) (*verifiedpermissions.UpdatePolicyOutput, error)
 	IsAuthorized(ctx context.Context, params *verifiedpermissions.IsAuthorizedInput, optFns ...func(*verifiedpermissions.Options)) (*verifiedpermissions.IsAuthorizedOutput, error)
 	PutSchema(ctx context.Context, params *verifiedpermissions.PutSchemaInput, optFns ...func(*verifiedpermissions.Options)) (*verifiedpermissions.PutSchemaOutput, error)
+	CreatePolicyTemplate(ctx context.Context, params *verifiedpermissions.CreatePolicyTemplateInput, optFns ...func(*verifiedpermissions.Options)) (*verifiedpermissions.CreatePolicyTemplateOutput, error)
+	DeletePolicyTemplate(ctx context.Context, params *verifiedpermissions.DeletePolicyTemplateInput, optFns ...func(*verifiedpermissions.Options)) (*verifiedpermissions.DeletePolicyTemplateOutput, error)
+	GetPolicyTemplate(ctx context.Context, params *verifiedpermissions.GetPolicyTemplateInput, optFns ...func(*verifiedpermissions.Options)) (*verifiedpermissions.GetPolicyTemplateOutput, error)
+	UpdatePolicyTemplate(ctx context.Context, params *verifiedpermissions.UpdatePolicyTemplateInput, optFns ...func(*verifiedpermissions.Options)) (*verifiedpermissions.UpdatePolicyTemplateOutput, error)
+	ListPolicyTemplates(ctx context.Context, params *verifiedpermissions.ListPolicyTemplatesInput, optFns ...func(*verifiedpermissions.Options)) (*verifiedpermissions.ListPolicyTemplatesOutput, error)
+	ListPolicies(ctx context.Context, params *verifiedpermissions.ListPoliciesInput, optFns ...func(*verifiedpermissions.Options)) (*verifiedpermissions.ListPoliciesOutput, error)
 }

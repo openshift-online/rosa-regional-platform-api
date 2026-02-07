@@ -2,68 +2,7 @@
   "id": "abac-001",
   "name": "Manage only clusters with matching owner tag",
   "description": "Policy that allows users to manage only clusters they created (tagged with their username as owner). Classic ABAC pattern.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "AllowCreateWithOwnerTag",
-        "effect": "Allow",
-        "conditions": {
-          "StringEquals": {
-            "rosa:RequestTag/Owner": "${aws:username}"
-          },
-          "ForAllValues:StringEquals": {
-            "rosa:TagKeys": [
-              "Owner",
-              "Environment",
-              "Project"
-            ]
-          }
-        },
-        "actions": [
-          "rosa:CreateCluster"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowManageOwnClusters",
-        "effect": "Allow",
-        "conditions": {
-          "StringEquals": {
-            "rosa:ResourceTag/Owner": "${aws:username}"
-          }
-        },
-        "actions": [
-          "rosa:DeleteCluster",
-          "rosa:UpdateClusterConfig",
-          "rosa:UpdateClusterVersion",
-          "rosa:DescribeCluster",
-          "rosa:CreateNodePool",
-          "rosa:DeleteNodePool",
-          "rosa:UpdateNodePoolConfig"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowListAndDescribeAll",
-        "effect": "Allow",
-        "actions": [
-          "rosa:ListClusters",
-          "rosa:ListNodePools",
-          "rosa:DescribeNodePool",
-          "rosa:ListTagsForResource"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "manage-own-tagged-clusters.cedar",
   "testCases": [
     {
       "description": "User alice can create cluster with her owner tag",
@@ -71,11 +10,14 @@
         "username": "alice"
       },
       "request": {
-        "action": "rosa:CreateCluster",
+        "action": "CreateCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/alice-cluster",
         "context": {
-          "rosa:RequestTag/Owner": "alice",
-          "rosa:TagKeys": [
+          "username": "alice",
+          "requestTags": {
+            "Owner": "alice"
+          },
+          "tagKeys": [
             "Owner",
             "Environment"
           ]
@@ -89,11 +31,14 @@
         "username": "alice"
       },
       "request": {
-        "action": "rosa:CreateCluster",
+        "action": "CreateCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/fake-cluster",
         "context": {
-          "rosa:RequestTag/Owner": "bob",
-          "rosa:TagKeys": [
+          "username": "alice",
+          "requestTags": {
+            "Owner": "bob"
+          },
+          "tagKeys": [
             "Owner"
           ]
         }
@@ -106,10 +51,13 @@
         "username": "alice"
       },
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/alice-cluster",
         "resourceTags": {
           "Owner": "alice"
+        },
+        "context": {
+          "username": "alice"
         }
       },
       "expectedResult": "ALLOW"
@@ -120,10 +68,13 @@
         "username": "alice"
       },
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/bob-cluster",
         "resourceTags": {
           "Owner": "bob"
+        },
+        "context": {
+          "username": "alice"
         }
       },
       "expectedResult": "DENY"
@@ -134,7 +85,7 @@
         "username": "alice"
       },
       "request": {
-        "action": "rosa:ListClusters",
+        "action": "ListClusters",
         "resource": "*"
       },
       "expectedResult": "ALLOW"

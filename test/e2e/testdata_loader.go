@@ -2,6 +2,7 @@ package e2e_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,40 +13,25 @@ type PolicyTestFile struct {
 	ID          string     `json:"id"`
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
-	Source      string     `json:"source,omitempty"`
-	Policy      V0Policy   `json:"policy"`
+	Policy      string     `json:"policy,omitempty"`
+	PolicyFile  string     `json:"policyFile,omitempty"`
 	TestCases   []TestCase `json:"testCases"`
 	Notes       string     `json:"notes,omitempty"`
 }
 
-// V0Policy represents the server's v0 policy format
-type V0Policy struct {
-	Version    string      `json:"version"`
-	Statements []Statement `json:"statements"`
-}
-
-// Statement represents a single policy statement
-type Statement struct {
-	Sid        string                 `json:"sid,omitempty"`
-	Effect     string                 `json:"effect"`
-	Actions    []string               `json:"actions"`
-	Resources  []string               `json:"resources"`
-	Conditions map[string]interface{} `json:"conditions,omitempty"`
-}
-
 // TestCase represents a single authorization test case
 type TestCase struct {
-	Description      string                 `json:"description"`
-	Principal        *TestPrincipal         `json:"principal,omitempty"`
-	Request          TestRequest            `json:"request"`
-	ExpectedResult   string                 `json:"expectedResult"` // "ALLOW", "DENY", "NOT_EVALUATED"
-	PolicyEvaluation map[string]interface{} `json:"policyEvaluation,omitempty"`
-	AdditionalPolicies []V0Policy           `json:"additionalPolicies,omitempty"`
+	Description        string         `json:"description"`
+	Principal          *TestPrincipal `json:"principal,omitempty"`
+	Request            TestRequest    `json:"request"`
+	ExpectedResult     string         `json:"expectedResult"` // "ALLOW", "DENY", "NOT_EVALUATED"
+	AdditionalPolicies []string       `json:"additionalPolicies,omitempty"`
 }
 
 // TestPrincipal represents the principal for a test case
 type TestPrincipal struct {
-	Username string `json:"username,omitempty"`
+	Username string            `json:"username,omitempty"`
+	Tags     map[string]string `json:"tags,omitempty"`
 }
 
 // TestRequest represents the authorization request for a test case
@@ -89,6 +75,10 @@ func LoadAllTestPolicies() ([]PolicyTestFile, error) {
 			return err
 		}
 
+		if err := policy.loadPolicyFile(filepath.Dir(path)); err != nil {
+			return err
+		}
+
 		// Add relative path for debugging
 		relPath, _ := filepath.Rel(baseDir, path)
 		if policy.Name == "" {
@@ -100,6 +90,19 @@ func LoadAllTestPolicies() ([]PolicyTestFile, error) {
 	})
 
 	return policies, err
+}
+
+// loadPolicyFile reads the Cedar policy from the companion .cedar file if policyFile is set.
+func (p *PolicyTestFile) loadPolicyFile(dir string) error {
+	if p.PolicyFile == "" || p.Policy != "" {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(dir, p.PolicyFile))
+	if err != nil {
+		return fmt.Errorf("failed to read policy file %s: %w", p.PolicyFile, err)
+	}
+	p.Policy = string(data)
+	return nil
 }
 
 // LoadTestPoliciesByCategory loads test policies from a specific category
@@ -127,26 +130,12 @@ func LoadTestPoliciesByCategory(category string) ([]PolicyTestFile, error) {
 			return nil, err
 		}
 
+		if err := policy.loadPolicyFile(baseDir); err != nil {
+			return nil, err
+		}
+
 		policies = append(policies, policy)
 	}
 
 	return policies, nil
-}
-
-// GetActions extracts all actions from a policy
-func (p *V0Policy) GetActions() []string {
-	var actions []string
-	for _, stmt := range p.Statements {
-		actions = append(actions, stmt.Actions...)
-	}
-	return actions
-}
-
-// GetResources extracts all resources from a policy
-func (p *V0Policy) GetResources() []string {
-	var resources []string
-	for _, stmt := range p.Statements {
-		resources = append(resources, stmt.Resources...)
-	}
-	return resources
 }

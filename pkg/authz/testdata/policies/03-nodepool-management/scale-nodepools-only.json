@@ -2,40 +2,12 @@
   "id": "nodepool-002",
   "name": "Scale node pools only (no create/delete)",
   "description": "Policy that grants the ability to scale node pools (update config) but not create or delete them. Useful for operators who need to adjust capacity.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "AllowDescribeOperations",
-        "effect": "Allow",
-        "actions": [
-          "rosa:DescribeCluster",
-          "rosa:DescribeNodePool",
-          "rosa:ListClusters",
-          "rosa:ListNodePools"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowScaleOperations",
-        "effect": "Allow",
-        "actions": [
-          "rosa:UpdateNodePoolConfig"
-        ],
-        "resources": [
-          "arn:aws:rosa:*:111122223333:nodepool/*/*/*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "scale-nodepools-only.cedar",
   "testCases": [
     {
       "description": "User can update node pool config (scaling)",
       "request": {
-        "action": "rosa:UpdateNodePoolConfig",
+        "action": "UpdateNodePool",
         "resource": "arn:aws:rosa:us-west-2:111122223333:nodepool/cluster1/workers/abc123"
       },
       "expectedResult": "ALLOW"
@@ -43,7 +15,7 @@
     {
       "description": "User can describe node pools",
       "request": {
-        "action": "rosa:DescribeNodePool",
+        "action": "DescribeNodePool",
         "resource": "arn:aws:rosa:us-west-2:111122223333:nodepool/cluster1/workers/abc123"
       },
       "expectedResult": "ALLOW"
@@ -51,7 +23,7 @@
     {
       "description": "User cannot create new node pools",
       "request": {
-        "action": "rosa:CreateNodePool",
+        "action": "CreateNodePool",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/cluster1"
       },
       "expectedResult": "DENY"
@@ -59,19 +31,19 @@
     {
       "description": "User cannot delete node pools",
       "request": {
-        "action": "rosa:DeleteNodePool",
+        "action": "DeleteNodePool",
         "resource": "arn:aws:rosa:us-west-2:111122223333:nodepool/cluster1/workers/abc123"
       },
       "expectedResult": "DENY"
     },
     {
-      "description": "User cannot update node pool version",
+      "description": "User cannot delete the cluster",
       "request": {
-        "action": "rosa:UpdateNodePoolVersion",
-        "resource": "arn:aws:rosa:us-west-2:111122223333:nodepool/cluster1/workers/abc123"
+        "action": "DeleteCluster",
+        "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/cluster1"
       },
       "expectedResult": "DENY"
     }
   ],
-  "notes": "UpdateNodePoolConfig allows changing min/max/desired capacity and labels. UpdateNodePoolVersion is a separate action for OpenShift version updates."
+  "notes": "UpdateNodePool covers both config changes (scaling, labels) and version updates. The V0 actions UpdateNodePoolConfig and UpdateNodePoolVersion are both mapped to the single Cedar action UpdateNodePool. The last test case was changed from 'cannot update version' (which would now be ALLOW since UpdateNodePool is permitted) to 'cannot delete cluster' to test a genuinely denied action."
 }

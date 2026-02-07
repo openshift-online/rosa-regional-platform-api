@@ -2,65 +2,15 @@
   "id": "access-entry-002",
   "name": "Restrict access entry scope to namespaces",
   "description": "Policy that allows creating access entries but only with namespace-scoped access, not cluster-wide admin access.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "AllowNamespaceScopedAccessEntries",
-        "effect": "Allow",
-        "conditions": {
-          "StringEquals": {
-            "rosa:accessScope": "namespace"
-          }
-        },
-        "actions": [
-          "rosa:CreateAccessEntry",
-          "rosa:AssociateAccessPolicy"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "DenyClusterScopedAccess",
-        "effect": "Deny",
-        "conditions": {
-          "StringEquals": {
-            "rosa:accessScope": "cluster"
-          }
-        },
-        "actions": [
-          "rosa:CreateAccessEntry",
-          "rosa:AssociateAccessPolicy"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowReadOperations",
-        "effect": "Allow",
-        "actions": [
-          "rosa:DescribeAccessEntry",
-          "rosa:ListAccessEntries",
-          "rosa:ListAccessPolicies",
-          "rosa:ListAssociatedAccessPolicies"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "restrict-access-entry-scope.cedar",
   "testCases": [
     {
       "description": "User can create namespace-scoped access entry",
       "request": {
-        "action": "rosa:CreateAccessEntry",
+        "action": "CreateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "rosa:accessScope": "namespace"
+          "accessScope": "namespace"
         }
       },
       "expectedResult": "ALLOW"
@@ -68,25 +18,25 @@
     {
       "description": "User cannot create cluster-scoped access entry",
       "request": {
-        "action": "rosa:CreateAccessEntry",
+        "action": "CreateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "rosa:accessScope": "cluster"
+          "accessScope": "cluster"
         }
       },
       "expectedResult": "DENY"
     },
     {
-      "description": "User can associate namespace-scoped policy",
+      "description": "User can update namespace-scoped access entry",
       "request": {
-        "action": "rosa:AssociateAccessPolicy",
+        "action": "UpdateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:access-entry/my-cluster/role/dev-entry",
         "context": {
-          "rosa:accessScope": "namespace"
+          "accessScope": "namespace"
         }
       },
       "expectedResult": "ALLOW"
     }
   ],
-  "notes": "This prevents granting cluster-admin level access while allowing namespace-level access delegation. Useful for team leads who can grant access within their namespace."
+  "notes": "This prevents granting cluster-admin level access while allowing namespace-level access delegation. Useful for team leads who can grant access within their namespace. AssociateAccessPolicy from V0 is mapped to UpdateAccessEntry in Cedar."
 }

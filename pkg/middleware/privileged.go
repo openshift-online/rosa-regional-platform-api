@@ -14,12 +14,12 @@ const ContextKeyPrivileged contextKey = "privileged"
 
 // Privileged provides middleware for checking privileged account status
 type Privileged struct {
-	authorizer authz.Authorizer
+	authorizer authz.Checker
 	logger     *slog.Logger
 }
 
 // NewPrivileged creates a new Privileged middleware
-func NewPrivileged(authorizer authz.Authorizer, logger *slog.Logger) *Privileged {
+func NewPrivileged(authorizer authz.Checker, logger *slog.Logger) *Privileged {
 	return &Privileged{
 		authorizer: authorizer,
 		logger:     logger,

@@ -10,12 +10,12 @@ import (
 
 // AccountCheck provides middleware for checking account provisioning status
 type AccountCheck struct {
-	authorizer authz.Authorizer
+	authorizer authz.Checker
 	logger     *slog.Logger
 }
 
 // NewAccountCheck creates a new AccountCheck middleware
-func NewAccountCheck(authorizer authz.Authorizer, logger *slog.Logger) *AccountCheck {
+func NewAccountCheck(authorizer authz.Checker, logger *slog.Logger) *AccountCheck {
 	return &AccountCheck{
 		authorizer: authorizer,
 		logger:     logger,

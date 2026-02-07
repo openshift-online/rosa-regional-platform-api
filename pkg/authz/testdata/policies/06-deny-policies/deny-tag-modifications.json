@@ -2,55 +2,15 @@
   "id": "deny-003",
   "name": "Deny modifications to protected tags",
   "description": "Policy that denies adding, changing, or removing specific protected tags (like Environment or Owner). Prevents circumventing tag-based access controls.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "DenyModifyProtectedTags",
-        "effect": "Deny",
-        "conditions": {
-          "ForAnyValue:StringEquals": {
-            "rosa:TagKeys": [
-              "Environment",
-              "Owner",
-              "CostCenter"
-            ]
-          }
-        },
-        "actions": [
-          "rosa:TagResource",
-          "rosa:UntagResource"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "DenyCreateWithWrongTags",
-        "effect": "Deny",
-        "conditions": {
-          "Null": {
-            "rosa:RequestTag/Environment": "true"
-          }
-        },
-        "actions": [
-          "rosa:CreateCluster"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "deny-tag-modifications.cedar",
   "testCases": [
     {
       "description": "Cannot remove Environment tag",
       "request": {
-        "action": "rosa:UntagResource",
+        "action": "UntagResource",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "rosa:TagKeys": [
+          "tagKeys": [
             "Environment"
           ]
         }
@@ -60,10 +20,10 @@
     {
       "description": "Cannot change Owner tag",
       "request": {
-        "action": "rosa:TagResource",
+        "action": "TagResource",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "rosa:TagKeys": [
+          "tagKeys": [
             "Owner"
           ]
         }
@@ -72,26 +32,30 @@
     },
     {
       "description": "Can add non-protected tags",
+      "additionalPolicies": [
+        "permit(\n  ?principal,\n  action,\n  resource\n);"
+      ],
       "request": {
-        "action": "rosa:TagResource",
+        "action": "TagResource",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "rosa:TagKeys": [
+          "tagKeys": [
             "Description",
             "Team"
           ]
         }
       },
-      "expectedResult": "NOT_EVALUATED"
+      "expectedResult": "ALLOW"
     },
     {
       "description": "Cannot create cluster without Environment tag",
       "request": {
-        "action": "rosa:CreateCluster",
+        "action": "CreateCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/new-cluster",
         "context": {
-          "rosa:RequestTag/Environment": null,
-          "rosa:RequestTag/Name": "my-cluster"
+          "requestTags": {
+            "Name": "my-cluster"
+          }
         }
       },
       "expectedResult": "DENY"

@@ -2,43 +2,7 @@
   "id": "abac-003",
   "name": "Team-based cluster access using principal tags",
   "description": "Policy that allows access to clusters based on matching team tags between the principal and the resource.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "AllowTeamMembersToManageTheirClusters",
-        "effect": "Allow",
-        "conditions": {
-          "StringEquals": {
-            "rosa:ResourceTag/Team": "${aws:PrincipalTag/Team}"
-          }
-        },
-        "actions": [
-          "rosa:DescribeCluster",
-          "rosa:UpdateClusterConfig",
-          "rosa:CreateNodePool",
-          "rosa:DeleteNodePool",
-          "rosa:UpdateNodePoolConfig"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowListOperations",
-        "effect": "Allow",
-        "actions": [
-          "rosa:ListClusters",
-          "rosa:ListNodePools",
-          "rosa:ListTagsForResource"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "team-based-access.cedar",
   "testCases": [
     {
       "description": "Platform team member can update platform team cluster",
@@ -48,10 +12,15 @@
         }
       },
       "request": {
-        "action": "rosa:UpdateClusterConfig",
+        "action": "UpdateClusterConfig",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/platform-services",
         "resourceTags": {
           "Team": "platform"
+        },
+        "context": {
+          "principalTags": {
+            "Team": "platform"
+          }
         }
       },
       "expectedResult": "ALLOW"
@@ -64,10 +33,15 @@
         }
       },
       "request": {
-        "action": "rosa:UpdateClusterConfig",
+        "action": "UpdateClusterConfig",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/app-services",
         "resourceTags": {
           "Team": "applications"
+        },
+        "context": {
+          "principalTags": {
+            "Team": "platform"
+          }
         }
       },
       "expectedResult": "DENY"
@@ -80,10 +54,15 @@
         }
       },
       "request": {
-        "action": "rosa:CreateNodePool",
+        "action": "CreateNodePool",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/app-services",
         "resourceTags": {
           "Team": "applications"
+        },
+        "context": {
+          "principalTags": {
+            "Team": "applications"
+          }
         }
       },
       "expectedResult": "ALLOW"
@@ -96,7 +75,7 @@
         }
       },
       "request": {
-        "action": "rosa:ListClusters",
+        "action": "ListClusters",
         "resource": "*"
       },
       "expectedResult": "ALLOW"

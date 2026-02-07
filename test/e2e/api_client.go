@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
 	"time"
 )
 
@@ -13,6 +15,7 @@ import (
 type APIClient struct {
 	baseURL    string
 	httpClient *http.Client
+	CallerARN  string
 }
 
 // APIResponse wraps an HTTP response with convenience methods
@@ -49,6 +52,9 @@ func (c *APIClient) Do(method, path string, body interface{}, accountID string) 
 	req.Header.Set("Content-Type", "application/json")
 	if accountID != "" {
 		req.Header.Set("X-Amz-Account-Id", accountID)
+	}
+	if c.CallerARN != "" {
+		req.Header.Set("X-Amz-Caller-Arn", c.CallerARN)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -155,7 +161,7 @@ func (c *APIClient) CreateAdmin(accountID, principalArn string) error {
 }
 
 // CreatePolicy creates a policy and returns its ID
-func (c *APIClient) CreatePolicy(accountID, name, description string, policy V0Policy) (string, error) {
+func (c *APIClient) CreatePolicy(accountID, name, description string, policy string) (string, error) {
 	body := map[string]interface{}{
 		"name":        name,
 		"description": description,
@@ -331,6 +337,45 @@ type CheckAuthorizationRequest struct {
 	Resource     string            `json:"resource"`
 	Context      map[string]any    `json:"context,omitempty"`
 	ResourceTags map[string]string `json:"resourceTags,omitempty"`
+}
+
+// SeedAdminDirect inserts an admin record directly into DynamoDB Local,
+// bypassing the API. This is needed to bootstrap the first admin for an
+// account since the admin API itself requires admin privileges.
+func SeedAdminDirect(accountID, principalArn string) error {
+	endpoint := os.Getenv("DYNAMODB_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "http://localhost:8180"
+	}
+	region := os.Getenv("AWS_REGION")
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	item := fmt.Sprintf(`{
+		"accountId": {"S": "%s"},
+		"principalArn": {"S": "%s"},
+		"createdAt": {"S": "%s"},
+		"createdBy": {"S": "e2e-test-seed"}
+	}`, accountID, principalArn, time.Now().UTC().Format(time.RFC3339))
+
+	cmd := exec.Command("aws", "dynamodb", "put-item",
+		"--endpoint-url", endpoint,
+		"--region", region,
+		"--table-name", "rosa-authz-admins",
+		"--item", item,
+	)
+	cmd.Env = append(os.Environ(),
+		"AWS_ACCESS_KEY_ID=dummy",
+		"AWS_SECRET_ACCESS_KEY=dummy",
+		"AWS_PAGER=",
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to seed admin in DynamoDB: %w, output: %s", err, string(output))
+	}
+	return nil
 }
 
 // CheckAuthorization checks if a principal is authorized to perform an action on a resource

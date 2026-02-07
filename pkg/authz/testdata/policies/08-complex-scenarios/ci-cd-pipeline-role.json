@@ -2,100 +2,12 @@
   "id": "complex-004",
   "name": "CI/CD pipeline role for ROSA deployments",
   "description": "Policy for a CI/CD pipeline role that can deploy to ROSA clusters, manage node pools, but cannot create/delete clusters or modify access controls.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "AllowClusterDiscovery",
-        "effect": "Allow",
-        "actions": [
-          "rosa:DescribeCluster",
-          "rosa:ListClusters"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowNodePoolManagement",
-        "effect": "Allow",
-        "actions": [
-          "rosa:DescribeNodePool",
-          "rosa:ListNodePools",
-          "rosa:UpdateNodePoolVersion",
-          "rosa:UpdateNodePoolConfig"
-        ],
-        "resources": [
-          "arn:aws:rosa:*:111122223333:cluster/*",
-          "arn:aws:rosa:*:111122223333:nodepool/*/*/*"
-        ]
-      },
-      {
-        "sid": "AllowVersionUpdates",
-        "effect": "Allow",
-        "actions": [
-          "rosa:UpdateClusterVersion",
-          "rosa:DescribeUpdate",
-          "rosa:ListUpdates"
-        ],
-        "resources": [
-          "arn:aws:rosa:*:111122223333:cluster/*"
-        ]
-      },
-      {
-        "sid": "DenyClusterLifecycle",
-        "effect": "Deny",
-        "actions": [
-          "rosa:CreateCluster",
-          "rosa:DeleteCluster"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "DenyAccessManagement",
-        "effect": "Deny",
-        "actions": [
-          "rosa:CreateAccessEntry",
-          "rosa:DeleteAccessEntry",
-          "rosa:UpdateAccessEntry",
-          "rosa:AssociateAccessPolicy",
-          "rosa:DisassociateAccessPolicy"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "DenyNodePoolCreationDeletion",
-        "effect": "Deny",
-        "actions": [
-          "rosa:CreateNodePool",
-          "rosa:DeleteNodePool"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowTagReading",
-        "effect": "Allow",
-        "actions": [
-          "rosa:ListTagsForResource"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "ci-cd-pipeline-role.cedar",
   "testCases": [
     {
       "description": "Pipeline can describe clusters for deployment",
       "request": {
-        "action": "rosa:DescribeCluster",
+        "action": "DescribeCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster"
       },
       "expectedResult": "ALLOW"
@@ -103,7 +15,7 @@
     {
       "description": "Pipeline can update cluster version",
       "request": {
-        "action": "rosa:UpdateClusterVersion",
+        "action": "UpdateClusterVersion",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster"
       },
       "expectedResult": "ALLOW"
@@ -111,7 +23,7 @@
     {
       "description": "Pipeline can update node pool config",
       "request": {
-        "action": "rosa:UpdateNodePoolConfig",
+        "action": "UpdateNodePool",
         "resource": "arn:aws:rosa:us-west-2:111122223333:nodepool/prod-cluster/workers/abc123"
       },
       "expectedResult": "ALLOW"
@@ -119,7 +31,7 @@
     {
       "description": "Pipeline cannot create new clusters",
       "request": {
-        "action": "rosa:CreateCluster",
+        "action": "CreateCluster",
         "resource": "*"
       },
       "expectedResult": "DENY"
@@ -127,7 +39,7 @@
     {
       "description": "Pipeline cannot delete clusters",
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster"
       },
       "expectedResult": "DENY"
@@ -135,7 +47,7 @@
     {
       "description": "Pipeline cannot create access entries",
       "request": {
-        "action": "rosa:CreateAccessEntry",
+        "action": "CreateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster"
       },
       "expectedResult": "DENY"
@@ -143,7 +55,7 @@
     {
       "description": "Pipeline cannot create node pools",
       "request": {
-        "action": "rosa:CreateNodePool",
+        "action": "CreateNodePool",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster"
       },
       "expectedResult": "DENY"

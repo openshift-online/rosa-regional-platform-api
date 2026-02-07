@@ -2,36 +2,12 @@
   "id": "basic-004",
   "name": "Read-only access to all ROSA resources",
   "description": "Policy that grants a user read-only access to all ROSA resources including clusters, node pools, and access entries.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "effect": "Allow",
-        "actions": [
-          "rosa:DescribeCluster",
-          "rosa:DescribeNodePool",
-          "rosa:DescribeUpdate",
-          "rosa:DescribeAccessEntry",
-          "rosa:ListClusters",
-          "rosa:ListNodePools",
-          "rosa:ListUpdates",
-          "rosa:ListAccessEntries",
-          "rosa:ListAccessPolicies",
-          "rosa:ListAssociatedAccessPolicies",
-          "rosa:ListTagsForResource"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "read-only-all-resources.cedar",
   "testCases": [
     {
       "description": "User can describe any cluster",
       "request": {
-        "action": "rosa:DescribeCluster",
+        "action": "DescribeCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster"
       },
       "expectedResult": "ALLOW"
@@ -39,7 +15,7 @@
     {
       "description": "User can list node pools",
       "request": {
-        "action": "rosa:ListNodePools",
+        "action": "ListNodePools",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster"
       },
       "expectedResult": "ALLOW"
@@ -47,7 +23,7 @@
     {
       "description": "User cannot create clusters",
       "request": {
-        "action": "rosa:CreateCluster",
+        "action": "CreateCluster",
         "resource": "*"
       },
       "expectedResult": "DENY"
@@ -55,7 +31,7 @@
     {
       "description": "User cannot update cluster config",
       "request": {
-        "action": "rosa:UpdateClusterConfig",
+        "action": "UpdateClusterConfig",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster"
       },
       "expectedResult": "DENY"
@@ -63,7 +39,7 @@
     {
       "description": "User cannot tag resources",
       "request": {
-        "action": "rosa:TagResource",
+        "action": "TagResource",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster"
       },
       "expectedResult": "DENY"

@@ -2,27 +2,12 @@
   "id": "deny-001",
   "name": "Deny cluster deletion",
   "description": "Policy that explicitly denies the ability to delete any ROSA cluster. Often used as an additional guardrail attached to all users.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "DenyDeleteCluster",
-        "effect": "Deny",
-        "actions": [
-          "rosa:DeleteCluster"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "deny-cluster-deletion.cedar",
   "testCases": [
     {
       "description": "User cannot delete any cluster",
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/any-cluster"
       },
       "expectedResult": "DENY"
@@ -30,30 +15,24 @@
     {
       "description": "Even with admin policy, deletion is denied",
       "additionalPolicies": [
-        {
-          "version": "v0",
-          "statements": [
-            {
-              "effect": "Allow",
-              "Action": "rosa:*",
-              "Resource": "*"
-            }
-          ]
-        }
+        "permit(\n  ?principal,\n  action,\n  resource\n);"
       ],
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster"
       },
       "expectedResult": "DENY"
     },
     {
       "description": "Other operations are not affected",
+      "additionalPolicies": [
+        "permit(\n  ?principal,\n  action,\n  resource\n);"
+      ],
       "request": {
-        "action": "rosa:DescribeCluster",
+        "action": "DescribeCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/any-cluster"
       },
-      "expectedResult": "NOT_EVALUATED"
+      "expectedResult": "ALLOW"
     }
   ],
   "notes": "Explicit deny always wins over allow. This is typically combined with other allow policies to prevent accidental deletions."

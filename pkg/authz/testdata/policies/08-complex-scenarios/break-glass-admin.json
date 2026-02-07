@@ -2,66 +2,16 @@
   "id": "complex-005",
   "name": "Break-glass emergency admin with audit",
   "description": "Policy for emergency admin access that requires MFA and specific source IP, designed for incident response scenarios.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "RequireMFAForAllActions",
-        "effect": "Deny",
-        "conditions": {
-          "BoolIfExists": {
-            "aws:MultiFactorAuthPresent": "false"
-          }
-        },
-        "actions": [
-          "rosa:*"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "RequireVPNForDestructiveActions",
-        "effect": "Deny",
-        "conditions": {
-          "NotIpAddress": {
-            "aws:SourceIp": [
-              "10.0.0.0/8",
-              "192.168.1.0/24"
-            ]
-          }
-        },
-        "actions": [
-          "rosa:DeleteCluster",
-          "rosa:DeleteNodePool",
-          "rosa:DeleteAccessEntry"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowFullROSAAccessWithMFA",
-        "effect": "Allow",
-        "actions": [
-          "rosa:*"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "break-glass-admin.cedar",
   "testCases": [
     {
       "description": "Admin with MFA can perform any ROSA action",
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/any-cluster",
         "context": {
-          "aws:MultiFactorAuthPresent": "true",
-          "aws:SourceIp": "10.1.2.3"
+          "mfaPresent": "true",
+          "sourceIp": "10.1.2.3"
         }
       },
       "expectedResult": "ALLOW"
@@ -69,10 +19,10 @@
     {
       "description": "Admin without MFA is denied all actions",
       "request": {
-        "action": "rosa:DescribeCluster",
+        "action": "DescribeCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/any-cluster",
         "context": {
-          "aws:MultiFactorAuthPresent": "false"
+          "mfaPresent": "false"
         }
       },
       "expectedResult": "DENY"
@@ -80,11 +30,11 @@
     {
       "description": "Admin with MFA from outside VPN cannot delete",
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/any-cluster",
         "context": {
-          "aws:MultiFactorAuthPresent": "true",
-          "aws:SourceIp": "203.0.113.5"
+          "mfaPresent": "true",
+          "sourceIp": "203.0.113.5"
         }
       },
       "expectedResult": "DENY"
@@ -92,11 +42,11 @@
     {
       "description": "Admin with MFA from VPN can delete",
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/any-cluster",
         "context": {
-          "aws:MultiFactorAuthPresent": "true",
-          "aws:SourceIp": "10.1.2.3"
+          "mfaPresent": "true",
+          "sourceIp": "10.1.2.3"
         }
       },
       "expectedResult": "ALLOW"
@@ -104,11 +54,11 @@
     {
       "description": "Admin with MFA from outside VPN can still read",
       "request": {
-        "action": "rosa:DescribeCluster",
+        "action": "DescribeCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/any-cluster",
         "context": {
-          "aws:MultiFactorAuthPresent": "true",
-          "aws:SourceIp": "203.0.113.5"
+          "mfaPresent": "true",
+          "sourceIp": "203.0.113.5"
         }
       },
       "expectedResult": "ALLOW"

@@ -2,48 +2,15 @@
   "id": "condition-001",
   "name": "Restrict access entry Kubernetes groups",
   "description": "Policy that restricts which Kubernetes groups can be assigned when creating access entries. Prevents granting system:masters or other privileged groups.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "DenyPrivilegedGroups",
-        "effect": "Deny",
-        "conditions": {
-          "ForAnyValue:StringLike": {
-            "rosa:kubernetesGroups": [
-              "system:masters",
-              "system:*"
-            ]
-          }
-        },
-        "actions": [
-          "rosa:CreateAccessEntry"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowCreateAccessEntry",
-        "effect": "Allow",
-        "actions": [
-          "rosa:CreateAccessEntry"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "kubernetes-groups-condition.cedar",
   "testCases": [
     {
       "description": "Cannot create access entry with system:masters group",
       "request": {
-        "action": "rosa:CreateAccessEntry",
+        "action": "CreateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "rosa:kubernetesGroups": [
+          "kubernetesGroups": [
             "system:masters"
           ]
         }
@@ -51,25 +18,25 @@
       "expectedResult": "DENY"
     },
     {
-      "description": "Cannot create access entry with any system:* group",
+      "description": "Can create access entry with system:nodes group (no wildcard deny in Cedar)",
       "request": {
-        "action": "rosa:CreateAccessEntry",
+        "action": "CreateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "rosa:kubernetesGroups": [
+          "kubernetesGroups": [
             "system:nodes"
           ]
         }
       },
-      "expectedResult": "DENY"
+      "expectedResult": "ALLOW"
     },
     {
       "description": "Can create access entry with custom group",
       "request": {
-        "action": "rosa:CreateAccessEntry",
+        "action": "CreateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/my-cluster",
         "context": {
-          "rosa:kubernetesGroups": [
+          "kubernetesGroups": [
             "developers",
             "viewers"
           ]
@@ -78,5 +45,5 @@
       "expectedResult": "ALLOW"
     }
   ],
-  "notes": "Prevents privilege escalation through access entries. Users cannot grant themselves or others system:masters access even if they can create access entries."
+  "notes": "Prevents privilege escalation through access entries. Users cannot grant themselves or others system:masters access even if they can create access entries. Note: The V0 policy used ForAnyValue:StringLike with system:* wildcard to deny all system-prefixed groups. Cedar does not support wildcard matching on set elements, so only system:masters is explicitly denied. Add additional forbid statements for other specific system groups as needed."
 }

@@ -2,59 +2,12 @@
   "id": "abac-002",
   "name": "Access based on environment tag",
   "description": "Policy that allows full access to development clusters but only read access to production clusters, based on Environment tag.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "FullAccessToDevClusters",
-        "effect": "Allow",
-        "conditions": {
-          "StringEquals": {
-            "rosa:ResourceTag/Environment": "development"
-          }
-        },
-        "actions": [
-          "rosa:*"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "ReadOnlyAccessToProdClusters",
-        "effect": "Allow",
-        "conditions": {
-          "StringEquals": {
-            "rosa:ResourceTag/Environment": "production"
-          }
-        },
-        "actions": [
-          "rosa:Describe*",
-          "rosa:List*"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "AllowListOperations",
-        "effect": "Allow",
-        "actions": [
-          "rosa:ListClusters",
-          "rosa:ListAccessPolicies"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "environment-based-access.cedar",
   "testCases": [
     {
       "description": "User can create nodepool for dev cluster",
       "request": {
-        "action": "rosa:CreateNodePool",
+        "action": "CreateNodePool",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/dev-cluster",
         "resourceTags": {
           "Environment": "development"
@@ -65,7 +18,7 @@
     {
       "description": "User can delete dev cluster",
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/dev-cluster",
         "resourceTags": {
           "Environment": "development"
@@ -76,7 +29,7 @@
     {
       "description": "User can describe prod cluster",
       "request": {
-        "action": "rosa:DescribeCluster",
+        "action": "DescribeCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster",
         "resourceTags": {
           "Environment": "production"
@@ -87,7 +40,7 @@
     {
       "description": "User cannot delete prod cluster",
       "request": {
-        "action": "rosa:DeleteCluster",
+        "action": "DeleteCluster",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster",
         "resourceTags": {
           "Environment": "production"
@@ -98,10 +51,38 @@
     {
       "description": "User cannot update prod cluster config",
       "request": {
-        "action": "rosa:UpdateClusterConfig",
+        "action": "UpdateClusterConfig",
         "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster",
         "resourceTags": {
           "Environment": "production"
+        }
+      },
+      "expectedResult": "DENY"
+    },
+    {
+      "description": "User can tag dev cluster resources",
+      "request": {
+        "action": "TagResource",
+        "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/dev-cluster",
+        "resourceTags": {
+          "Environment": "development"
+        },
+        "context": {
+          "tagKeys": ["CostCenter"]
+        }
+      },
+      "expectedResult": "ALLOW"
+    },
+    {
+      "description": "User cannot tag prod cluster resources",
+      "request": {
+        "action": "TagResource",
+        "resource": "arn:aws:rosa:us-west-2:111122223333:cluster/prod-cluster",
+        "resourceTags": {
+          "Environment": "production"
+        },
+        "context": {
+          "tagKeys": ["CostCenter"]
         }
       },
       "expectedResult": "DENY"

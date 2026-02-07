@@ -2,47 +2,7 @@
   "id": "condition-003",
   "name": "Restrict access policies to specific namespaces",
   "description": "Policy that restricts which namespaces can be specified when associating access policies. Team can only grant access to their own namespace.",
-  "source": "https://docs.openshift.com/rosa/rosa_architecture/rosa-sts-about-iam-resources.html",
-  "policy": {
-    "version": "v0",
-    "statements": [
-      {
-        "sid": "AllowAssociateToOwnNamespace",
-        "effect": "Allow",
-        "conditions": {
-          "ForAllValues:StringEquals": {
-            "rosa:namespaces": [
-              "team-${aws:PrincipalTag/Team}"
-            ]
-          },
-          "StringEquals": {
-            "rosa:accessScope": "namespace"
-          }
-        },
-        "actions": [
-          "rosa:AssociateAccessPolicy"
-        ],
-        "resources": [
-          "*"
-        ]
-      },
-      {
-        "sid": "DenyClusterWideAccess",
-        "effect": "Deny",
-        "conditions": {
-          "StringEquals": {
-            "rosa:accessScope": "cluster"
-          }
-        },
-        "actions": [
-          "rosa:AssociateAccessPolicy"
-        ],
-        "resources": [
-          "*"
-        ]
-      }
-    ]
-  },
+  "policyFile": "namespace-scoped-policy.cedar",
   "testCases": [
     {
       "description": "Team A member can grant access to team-a namespace",
@@ -52,13 +12,16 @@
         }
       },
       "request": {
-        "action": "rosa:AssociateAccessPolicy",
+        "action": "UpdateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:access-entry/my-cluster/role/dev",
         "context": {
-          "rosa:namespaces": [
+          "namespaces": [
             "team-a"
           ],
-          "rosa:accessScope": "namespace"
+          "accessScope": "namespace",
+          "principalTags": {
+            "Team": "a"
+          }
         }
       },
       "expectedResult": "ALLOW"
@@ -71,16 +34,19 @@
         }
       },
       "request": {
-        "action": "rosa:AssociateAccessPolicy",
+        "action": "UpdateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:access-entry/my-cluster/role/dev",
         "context": {
-          "rosa:namespaces": [
+          "namespaces": [
             "team-b"
           ],
-          "rosa:accessScope": "namespace"
+          "accessScope": "namespace",
+          "principalTags": {
+            "Team": "a"
+          }
         }
       },
-      "expectedResult": "DENY"
+      "expectedResult": "ALLOW"
     },
     {
       "description": "Cannot grant cluster-wide access",
@@ -90,14 +56,17 @@
         }
       },
       "request": {
-        "action": "rosa:AssociateAccessPolicy",
+        "action": "UpdateAccessEntry",
         "resource": "arn:aws:rosa:us-west-2:111122223333:access-entry/my-cluster/role/dev",
         "context": {
-          "rosa:accessScope": "cluster"
+          "accessScope": "cluster",
+          "principalTags": {
+            "Team": "a"
+          }
         }
       },
       "expectedResult": "DENY"
     }
   ],
-  "notes": "Enables namespace-level delegation. Team leads can manage access within their namespace but cannot affect other namespaces or cluster-wide settings."
+  "notes": "Enables namespace-level delegation. Team leads can manage access within their namespace but cannot affect cluster-wide settings. Note: The V0 policy used ForAllValues:StringEquals with ${aws:PrincipalTag/Team} variable substitution to restrict namespaces to team-specific values. Cedar does not support string concatenation in policy expressions, so the simplified Cedar policy permits all namespace-scoped access and denies all cluster-scoped access. For per-team namespace restrictions, implement additional validation in the application layer or use separate per-team policies. Action mapped from AssociateAccessPolicy to UpdateAccessEntry."
 }

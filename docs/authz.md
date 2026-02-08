@@ -39,6 +39,8 @@ flowchart TD
     style M fill:#8b1a1a,color:#fff
 ```
 
+Note: full access for SRE is just a temporary state to allow them to manage accounts and policies while the service is in early development. The long-term plan is to migrate SRE access to Cedar policies as well, and remove the privileged bypass.
+
 ## Architecture
 
 There are three levels of access:

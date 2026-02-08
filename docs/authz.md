@@ -10,6 +10,35 @@ The authorization service provides fine-grained access control for ROSA operatio
 - **Cedar** as the policy language (policies are written directly in Cedar)
 - **DynamoDB** for storing accounts, admins, and groups
 
+The authorization flow is as follows:
+
+```mermaid
+flowchart TD
+    A[Incoming API Request] --> B[Extract Identity<br/><i>Account ID & Caller ARN from headers</i>]
+
+    B --> C{Is this a<br/>privileged account?}
+    C -->|Yes| D[✅ ALLOW<br/><i>This is an SRE.<br/>Full access, bypass all checks.</i>]
+
+    C -->|No| E{Is the account<br/>provisioned?}
+    E -->|No| F[❌ DENY<br/><i>403 — Account not provisioned</i>]
+
+    E -->|Yes| G{Is the caller<br/>an admin of the account?}
+    G -->|Yes| H[✅ ALLOW<br/><i>Full access within their account.<br/>They can manage admins and policies.</i>]
+
+    G -->|No| I[Look up user's<br/>group memberships]
+    I --> J[Evaluate Cedar policies<br/>via Amazon Verified Permissions]
+
+    J --> K{Policy<br/>decision?}
+    K -->|Allow| L[✅ ALLOW]
+    K -->|Deny| M[❌ DENY<br/><i>403 — Not authorized</i>]
+
+    style D fill:#2d6a2d,color:#fff
+    style H fill:#2d6a2d,color:#fff
+    style L fill:#2d6a2d,color:#fff
+    style F fill:#8b1a1a,color:#fff
+    style M fill:#8b1a1a,color:#fff
+```
+
 ## Architecture
 
 There are three levels of access:

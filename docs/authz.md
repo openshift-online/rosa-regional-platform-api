@@ -106,13 +106,15 @@ Policy templates and attachments live entirely in AVP — they are never stored 
 | GET    | `/api/v0/authz/admins`       | List admins  |
 | DELETE | `/api/v0/authz/admins/{arn}` | Remove admin |
 
+> **Note:** There are currently no guards preventing an admin from removing themselves or removing the last admin for an account. If the last admin is removed, the account will have no administrative access and a privileged account will be needed to re-add an admin.
+
 ### Authorization Check
 
 | Method | Path                  | Description                                                        |
 | ------ | --------------------- | ------------------------------------------------------------------ |
 | POST   | `/api/v0/authz/check` | Test whether a principal is authorized for a given action/resource |
 
-> **Note:** All `/api/v0/authz/*` management routes (policies, groups, attachments, admins, check) are gated by the `RequireAdmin` middleware. Only account-level admins and privileged accounts can access them.
+> **Note:** All `/api/v0/authz/*` management routes (policies, groups, attachments, admins) are gated by the `RequireAdmin` middleware. Only account-level admins and privileged accounts can access them. The `/api/v0/authz/check` endpoint requires only a provisioned account.
 
 ### Cluster and NodePool Management (All Users)
 

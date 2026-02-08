@@ -97,6 +97,12 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		accountsRouter.HandleFunc("/{id}", accountsHandler.Get).Methods(http.MethodGet)
 		accountsRouter.HandleFunc("/{id}", accountsHandler.Delete).Methods(http.MethodDelete)
 
+		// Authorization check route (requires provisioned account, open to all users)
+		checkRouter := apiRouter.PathPrefix("/api/v0/authz/check").Subrouter()
+		checkRouter.Use(privilegedMiddleware.CheckPrivileged)
+		checkRouter.Use(accountCheckMiddleware.RequireProvisioned)
+		checkRouter.HandleFunc("", authzHandler.CheckAuthorization).Methods(http.MethodPost)
+
 		// Authorization management routes (require provisioned account + admin)
 		authzRouter := apiRouter.PathPrefix("/api/v0/authz").Subrouter()
 		authzRouter.Use(privilegedMiddleware.CheckPrivileged)
@@ -127,9 +133,6 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		authzRouter.HandleFunc("/admins", authzHandler.AddAdmin).Methods(http.MethodPost)
 		authzRouter.HandleFunc("/admins", authzHandler.ListAdmins).Methods(http.MethodGet)
 		authzRouter.HandleFunc("/admins/{arn:.*}", authzHandler.RemoveAdmin).Methods(http.MethodDelete)
-
-		// Authorization check route (for testing policies)
-		authzRouter.HandleFunc("/check", authzHandler.CheckAuthorization).Methods(http.MethodPost)
 
 		logger.Info("Cedar/AVP authorization enabled")
 	}

@@ -1,4 +1,4 @@
-# ROSA Regional Frontend API
+# ROSA Regional Platform API
 
 Stateless gateway API for ROSA HCP regional cluster management.
 
@@ -8,9 +8,9 @@ Stateless gateway API for ROSA HCP regional cluster management.
 flowchart LR
     CLI["AWS CLI"] --> APIGW["API Gateway"]
     APIGW --> ALB["Internal ALB"]
-    ALB --> FrontendAPI
+    ALB --> PlatformAPI
 
-    subgraph FrontendAPI["Frontend API"]
+    subgraph PlatformAPI["Platform API"]
         AuthMW["Auth Middleware"] --> Handler["Handlers"]
         Handler -->|privileged only| MgmtCluster["management_cluster"]
         Handler --> HCP["HCP Managament (TBD)"]

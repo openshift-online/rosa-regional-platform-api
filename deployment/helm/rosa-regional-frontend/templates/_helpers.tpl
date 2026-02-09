@@ -1,14 +1,14 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "rosa-regional-frontend.name" -}}
+{{- define "rosa-regional-platform.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Create a default fully qualified app name.
 */}}
-{{- define "rosa-regional-frontend.fullname" -}}
+{{- define "rosa-regional-platform.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -24,16 +24,16 @@ Create a default fully qualified app name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "rosa-regional-frontend.chart" -}}
+{{- define "rosa-regional-platform.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "rosa-regional-frontend.labels" -}}
-helm.sh/chart: {{ include "rosa-regional-frontend.chart" . }}
-{{ include "rosa-regional-frontend.selectorLabels" . }}
+{{- define "rosa-regional-platform.labels" -}}
+helm.sh/chart: {{ include "rosa-regional-platform.chart" . }}
+{{ include "rosa-regional-platform.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -43,8 +43,8 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "rosa-regional-frontend.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "rosa-regional-frontend.name" . }}
+{{- define "rosa-regional-platform.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "rosa-regional-platform.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 

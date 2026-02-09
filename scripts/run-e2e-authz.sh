@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BINARY="./rosa-regional-frontend-api"
+BINARY="./rosa-regional-platform-api"
 PIDFILE="$(mktemp)"
-LOGFILE="./rosa-regional-frontend-api.log"
+LOGFILE="./rosa-regional-platform-api.log"
 BASE_URL="http://localhost:8000"
 READY_URL="${BASE_URL}/api/v0/ready"
 MAX_WAIT=30
@@ -19,7 +19,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "Building service..."
-go build -o "$BINARY" ./cmd/rosa-regional-frontend-api
+go build -o "$BINARY" ./cmd/rosa-regional-platform-api
 
 echo "Starting service..."
 DYNAMODB_ENDPOINT=http://localhost:8180 \

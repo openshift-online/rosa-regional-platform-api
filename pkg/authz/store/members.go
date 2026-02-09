@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
-	"github.com/openshift/rosa-regional-frontend-api/pkg/authz/client"
+	"github.com/openshift/rosa-regional-platform-api/pkg/authz/client"
 )
 
 // GroupMember represents a group membership
@@ -75,7 +75,7 @@ func (s *MemberStore) Remove(ctx context.Context, accountID, groupID, memberARN 
 	_, err := s.dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(s.tableName),
 		Key: map[string]types.AttributeValue{
-			"accountId":        &types.AttributeValueMemberS{Value: accountID},
+			"accountId":         &types.AttributeValueMemberS{Value: accountID},
 			"groupId#memberArn": &types.AttributeValueMemberS{Value: fmt.Sprintf("%s#%s", groupID, memberARN)},
 		},
 	})
@@ -151,7 +151,7 @@ func (s *MemberStore) IsMember(ctx context.Context, accountID, groupID, memberAR
 	result, err := s.dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(s.tableName),
 		Key: map[string]types.AttributeValue{
-			"accountId":        &types.AttributeValueMemberS{Value: accountID},
+			"accountId":         &types.AttributeValueMemberS{Value: accountID},
 			"groupId#memberArn": &types.AttributeValueMemberS{Value: fmt.Sprintf("%s#%s", groupID, memberARN)},
 		},
 		ProjectionExpression: aws.String("accountId"),

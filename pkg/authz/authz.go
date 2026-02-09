@@ -12,10 +12,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/verifiedpermissions"
 	avptypes "github.com/aws/aws-sdk-go-v2/service/verifiedpermissions/types"
 
-	"github.com/openshift/rosa-regional-frontend-api/pkg/authz/client"
-	"github.com/openshift/rosa-regional-frontend-api/pkg/authz/privileged"
-	"github.com/openshift/rosa-regional-frontend-api/pkg/authz/schema"
-	"github.com/openshift/rosa-regional-frontend-api/pkg/authz/store"
+	"github.com/openshift/rosa-regional-platform-api/pkg/authz/client"
+	"github.com/openshift/rosa-regional-platform-api/pkg/authz/privileged"
+	"github.com/openshift/rosa-regional-platform-api/pkg/authz/schema"
+	"github.com/openshift/rosa-regional-platform-api/pkg/authz/store"
 )
 
 // AuthzRequest represents an authorization request

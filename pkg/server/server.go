@@ -11,10 +11,10 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/openshift/rosa-regional-frontend-api/pkg/config"
 	"github.com/openshift/rosa-regional-platform-api/pkg/authz"
 	"github.com/openshift/rosa-regional-platform-api/pkg/authz/client"
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
+	"github.com/openshift/rosa-regional-platform-api/pkg/config"
 	apphandlers "github.com/openshift/rosa-regional-platform-api/pkg/handlers"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
 )

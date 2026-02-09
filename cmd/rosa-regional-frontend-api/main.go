@@ -79,6 +79,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 	cfg.Server.HealthPort = healthPort
 	cfg.Server.MetricsPort = metricsPort
 
+	// Authz config from environment variables (for local development)
+	if endpoint := os.Getenv("DYNAMODB_ENDPOINT"); endpoint != "" {
+		cfg.Authz.DynamoDBEndpoint = endpoint
+		logger.Info("using custom DynamoDB endpoint", "endpoint", endpoint)
+	}
+	if endpoint := os.Getenv("CEDAR_AGENT_ENDPOINT"); endpoint != "" {
+		cfg.Authz.CedarAgentEndpoint = endpoint
+		logger.Info("using cedar-agent for local AVP", "endpoint", endpoint)
+	}
+	if os.Getenv("AUTHZ_DISABLED") == "true" {
+		cfg.Authz.Enabled = false
+		logger.Info("authz disabled via environment variable")
+	}
+
 	// Create server
 	srv, err := server.New(cfg, logger)
 	if err != nil {

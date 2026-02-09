@@ -11,6 +11,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/openshift/rosa-regional-frontend-api/pkg/authz"
+	"github.com/openshift/rosa-regional-frontend-api/pkg/authz/client"
 	"github.com/openshift/rosa-regional-frontend-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-frontend-api/pkg/config"
 	apphandlers "github.com/openshift/rosa-regional-frontend-api/pkg/handlers"
@@ -30,6 +32,8 @@ type Server struct {
 
 // New creates a new Server instance
 func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
+	ctx := context.Background()
+
 	// Create Maestro client
 	maestroClient := maestro.NewClient(cfg.Maestro, logger)
 
@@ -39,28 +43,130 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	resourceBundleHandler := apphandlers.NewResourceBundleHandler(maestroClient, logger)
 	workHandler := apphandlers.NewWorkHandler(maestroClient, logger)
 
-	// Create authorization middleware
+	// Create legacy authorization middleware (for non-authz routes)
 	authMiddleware := middleware.NewAuthorization(cfg.AllowedAccounts, logger)
 
 	// Create API router
 	apiRouter := mux.NewRouter()
 	apiRouter.Use(middleware.Identity)
 
+	// Initialize authz components if enabled
+	var privilegedMiddleware *middleware.Privileged
+	var accountCheckMiddleware *middleware.AccountCheck
+	var authzMiddleware *middleware.Authz
+
+	if cfg.Authz != nil && cfg.Authz.Enabled {
+		// Create DynamoDB client
+		dynamoClient, err := client.NewDynamoDBClient(ctx, cfg.Authz.AWSRegion, cfg.Authz.DynamoDBEndpoint)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create DynamoDB client: %w", err)
+		}
+
+		// Create AVP client (or mock for local testing)
+		var avpClient client.AVPClient
+		if cfg.Authz.CedarAgentEndpoint != "" {
+			// Use mock AVP client with cedar-agent for local testing
+			avpClient = client.NewMockAVPClient(cfg.Authz.CedarAgentEndpoint, logger)
+			logger.Info("using MockAVPClient with cedar-agent", "endpoint", cfg.Authz.CedarAgentEndpoint)
+		} else {
+			avpClient, err = client.NewAVPClient(ctx, cfg.Authz.AWSRegion)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create AVP client: %w", err)
+			}
+		}
+
+		// Create authorizer (implements both Checker and Service)
+		authorizer := authz.New(cfg.Authz, dynamoClient, avpClient, logger)
+
+		// Create authz middleware
+		privilegedMiddleware = middleware.NewPrivileged(authorizer, logger)
+		accountCheckMiddleware = middleware.NewAccountCheck(authorizer, logger)
+		adminCheckMiddleware := middleware.NewAdminCheck(authorizer, logger)
+		authzMiddleware = middleware.NewAuthz(authorizer, cfg.Authz.Enabled, cfg.Authz.AWSRegion, logger)
+
+		// Create authz handlers
+		accountsHandler := apphandlers.NewAccountsHandler(authorizer, logger)
+		authzHandler := apphandlers.NewAuthzHandler(authorizer, authorizer, logger)
+
+		// Account management routes (privileged only)
+		accountsRouter := apiRouter.PathPrefix("/api/v0/accounts").Subrouter()
+		accountsRouter.Use(privilegedMiddleware.CheckPrivileged)
+		accountsRouter.Use(privilegedMiddleware.RequirePrivileged)
+		accountsRouter.HandleFunc("", accountsHandler.Create).Methods(http.MethodPost)
+		accountsRouter.HandleFunc("", accountsHandler.List).Methods(http.MethodGet)
+		accountsRouter.HandleFunc("/{id}", accountsHandler.Get).Methods(http.MethodGet)
+		accountsRouter.HandleFunc("/{id}", accountsHandler.Delete).Methods(http.MethodDelete)
+
+		// Authorization check route (requires provisioned account, open to all users)
+		checkRouter := apiRouter.PathPrefix("/api/v0/authz/check").Subrouter()
+		checkRouter.Use(privilegedMiddleware.CheckPrivileged)
+		checkRouter.Use(accountCheckMiddleware.RequireProvisioned)
+		checkRouter.HandleFunc("", authzHandler.CheckAuthorization).Methods(http.MethodPost)
+
+		// Authorization management routes (require provisioned account + admin)
+		authzRouter := apiRouter.PathPrefix("/api/v0/authz").Subrouter()
+		authzRouter.Use(privilegedMiddleware.CheckPrivileged)
+		authzRouter.Use(accountCheckMiddleware.RequireProvisioned)
+		authzRouter.Use(adminCheckMiddleware.RequireAdmin)
+
+		// Policy routes
+		authzRouter.HandleFunc("/policies", authzHandler.CreatePolicy).Methods(http.MethodPost)
+		authzRouter.HandleFunc("/policies", authzHandler.ListPolicies).Methods(http.MethodGet)
+		authzRouter.HandleFunc("/policies/{id}", authzHandler.GetPolicy).Methods(http.MethodGet)
+		authzRouter.HandleFunc("/policies/{id}", authzHandler.UpdatePolicy).Methods(http.MethodPut)
+		authzRouter.HandleFunc("/policies/{id}", authzHandler.DeletePolicy).Methods(http.MethodDelete)
+
+		// Group routes
+		authzRouter.HandleFunc("/groups", authzHandler.CreateGroup).Methods(http.MethodPost)
+		authzRouter.HandleFunc("/groups", authzHandler.ListGroups).Methods(http.MethodGet)
+		authzRouter.HandleFunc("/groups/{id}", authzHandler.GetGroup).Methods(http.MethodGet)
+		authzRouter.HandleFunc("/groups/{id}", authzHandler.DeleteGroup).Methods(http.MethodDelete)
+		authzRouter.HandleFunc("/groups/{id}/members", authzHandler.UpdateGroupMembers).Methods(http.MethodPut)
+		authzRouter.HandleFunc("/groups/{id}/members", authzHandler.ListGroupMembers).Methods(http.MethodGet)
+
+		// Attachment routes
+		authzRouter.HandleFunc("/attachments", authzHandler.CreateAttachment).Methods(http.MethodPost)
+		authzRouter.HandleFunc("/attachments", authzHandler.ListAttachments).Methods(http.MethodGet)
+		authzRouter.HandleFunc("/attachments/{id}", authzHandler.DeleteAttachment).Methods(http.MethodDelete)
+
+		// Admin routes
+		authzRouter.HandleFunc("/admins", authzHandler.AddAdmin).Methods(http.MethodPost)
+		authzRouter.HandleFunc("/admins", authzHandler.ListAdmins).Methods(http.MethodGet)
+		authzRouter.HandleFunc("/admins/{arn:.*}", authzHandler.RemoveAdmin).Methods(http.MethodDelete)
+
+		logger.Info("Cedar/AVP authorization enabled")
+	}
+
 	// Management cluster routes (require allowed account)
 	mgmtRouter := apiRouter.PathPrefix("/api/v0/management_clusters").Subrouter()
-	mgmtRouter.Use(authMiddleware.RequireAllowedAccount)
+	if authzMiddleware != nil {
+		mgmtRouter.Use(privilegedMiddleware.CheckPrivileged)
+		mgmtRouter.Use(authzMiddleware.Authorize)
+	} else {
+		mgmtRouter.Use(authMiddleware.RequireAllowedAccount)
+	}
 	mgmtRouter.HandleFunc("", mgmtClusterHandler.Create).Methods(http.MethodPost)
 	mgmtRouter.HandleFunc("", mgmtClusterHandler.List).Methods(http.MethodGet)
 	mgmtRouter.HandleFunc("/{id}", mgmtClusterHandler.Get).Methods(http.MethodGet)
 
 	// Resource bundle routes (require allowed account)
 	rbRouter := apiRouter.PathPrefix("/api/v0/resource_bundles").Subrouter()
-	rbRouter.Use(authMiddleware.RequireAllowedAccount)
+	if authzMiddleware != nil {
+		rbRouter.Use(privilegedMiddleware.CheckPrivileged)
+		rbRouter.Use(authzMiddleware.Authorize)
+	} else {
+		rbRouter.Use(authMiddleware.RequireAllowedAccount)
+	}
 	rbRouter.HandleFunc("", resourceBundleHandler.List).Methods(http.MethodGet)
 
 	// Work routes (require allowed account)
 	workRouter := apiRouter.PathPrefix("/api/v0/work").Subrouter()
-	workRouter.Use(authMiddleware.RequireAllowedAccount)
+	if authzMiddleware != nil {
+		workRouter.Use(privilegedMiddleware.CheckPrivileged)
+		workRouter.Use(authzMiddleware.Authorize)
+	} else {
+		workRouter.Use(authMiddleware.RequireAllowedAccount)
+	}
 	workRouter.HandleFunc("", workHandler.Create).Methods(http.MethodPost)
 
 	// Health routes on API server (no auth required)
@@ -70,7 +176,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	// Add CORS and logging
 	apiHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{"*"}),
-		handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete}),
+		handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodPut}),
 		handlers.AllowedHeaders([]string{"Content-Type", "Authorization"}),
 	)(apiRouter)
 

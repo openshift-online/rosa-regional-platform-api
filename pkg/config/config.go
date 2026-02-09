@@ -1,11 +1,16 @@
 package config
 
-import "time"
+import (
+	"time"
+
+	"github.com/openshift/rosa-regional-frontend-api/pkg/authz"
+)
 
 type Config struct {
 	Server          ServerConfig
 	Maestro         MaestroConfig
 	Logging         LoggingConfig
+	Authz           *authz.Config
 	AllowedAccounts []string
 }
 
@@ -54,5 +59,6 @@ func NewConfig() *Config {
 			Level:  "info",
 			Format: "json",
 		},
+		Authz: authz.DefaultConfig(),
 	}
 }

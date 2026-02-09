@@ -10,7 +10,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/openshift/rosa-regional-frontend-api/pkg/authz"
+	"github.com/openshift/rosa-regional-platform-api/pkg/authz"
 )
 
 // mockChecker implements authz.Checker for testing

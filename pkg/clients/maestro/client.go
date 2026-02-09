@@ -14,7 +14,7 @@ import (
 
 	"github.com/openshift-online/maestro/pkg/api/openapi"
 	"github.com/openshift-online/maestro/pkg/client/cloudevents/grpcsource"
-	"github.com/openshift/rosa-regional-frontend-api/pkg/config"
+	"github.com/openshift/rosa-regional-platform-api/pkg/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	workv1 "open-cluster-management.io/api/work/v1"
 	workv1client "open-cluster-management.io/api/client/work/clientset/versioned/typed/work/v1"
@@ -126,7 +126,7 @@ func NewClient(cfg config.MaestroConfig, logger *slog.Logger) *Client {
 		adaptedLogger,
 		openapiClient,
 		grpcOpts,
-		"rosa-regional-frontend-api", // Source ID
+		"rosa-regional-platform-api", // Source ID
 	)
 	if err != nil {
 		// Log the error but don't fail - the client can still be used for non-gRPC operations
@@ -142,7 +142,7 @@ func NewClient(cfg config.MaestroConfig, logger *slog.Logger) *Client {
 		},
 		logger:        logger,
 		grpcOpts:      grpcOpts,
-		sourceID:      "rosa-regional-frontend-api", // Default source ID
+		sourceID:      "rosa-regional-platform-api", // Default source ID
 		openapiClient: openapiClient,
 		workClient:    workClient,
 	}

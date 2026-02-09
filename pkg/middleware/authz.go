@@ -9,7 +9,7 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/openshift/rosa-regional-frontend-api/pkg/authz"
+	"github.com/openshift/rosa-regional-platform-api/pkg/authz"
 )
 
 // Authz provides Cedar/AVP-based authorization middleware

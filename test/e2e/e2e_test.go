@@ -123,7 +123,7 @@ func runCommandWithTimeout(timeout time.Duration, name string, args ...string) (
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "ROSA Regional Frontend API E2E Suite")
+	RunSpecs(t, "ROSA Regional Platform API E2E Suite")
 }
 
 var _ = Describe("E2E Tests", func() {
@@ -341,7 +341,7 @@ var _ = Describe("E2E Tests", func() {
 		// 		_, err := exec.LookPath("aws")
 		// 		if err == nil {
 		// 			paramNames := []string{
-		// 				"/rosa-regional-frontend/api_gateway_invoke_url",
+		// 				"/rosa-regional-platform/api_gateway_invoke_url",
 		// 				"/rosa/api_gateway_invoke_url",
 		// 				"api_gateway_invoke_url",
 		// 			}

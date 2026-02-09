@@ -146,8 +146,8 @@ func TestRootCmd(t *testing.T) {
 		t.Fatal("expected non-nil rootCmd")
 	}
 
-	if rootCmd.Use != "rosa-regional-frontend-api" {
-		t.Errorf("expected Use=rosa-regional-frontend-api, got %s", rootCmd.Use)
+	if rootCmd.Use != "rosa-regional-platform-api" {
+		t.Errorf("expected Use=rosa-regional-platform-api, got %s", rootCmd.Use)
 	}
 
 	if rootCmd.Short == "" {

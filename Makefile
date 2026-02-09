@@ -1,7 +1,7 @@
 .PHONY: build test test-unit test-authz test-coverage test-e2e lint clean image image-push run generate generate-swagger help fmt vet
 
-BINARY_NAME := rosa-regional-frontend-api
-IMAGE_REPO ?= quay.io/openshift/rosa-regional-frontend-api
+BINARY_NAME := rosa-regional-platform-api
+IMAGE_REPO ?= quay.io/openshift/rosa-regional-platform-api
 IMAGE_TAG ?= latest
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GOOS ?= linux
@@ -154,7 +154,7 @@ generate-swagger:
 		echo '<html lang="en">'; \
 		echo '<head>'; \
 		echo '  <meta charset="UTF-8">'; \
-		echo '  <title>ROSA Regional Frontend API - Swagger UI</title>'; \
+		echo '  <title>ROSA Regional Platform API - Swagger UI</title>'; \
 		echo '  <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.10.5/swagger-ui.css">'; \
 		echo '  <style>'; \
 		echo '    html {'; \

@@ -20,8 +20,8 @@ COPY . .
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags="-w -s" \
-    -o rosa-regional-frontend-api \
-    ./cmd/rosa-regional-frontend-api
+    -o rosa-regional-platform-api \
+    ./cmd/rosa-regional-platform-api
 
 # Runtime stage
 FROM gcr.io/distroless/static-debian12:nonroot
@@ -29,7 +29,7 @@ FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 
 # Copy the binary from builder
-COPY --from=builder /app/rosa-regional-frontend-api /app/rosa-regional-frontend-api
+COPY --from=builder /app/rosa-regional-platform-api /app/rosa-regional-platform-api
 
 # Expose ports
 EXPOSE 8000 8080 9090
@@ -37,5 +37,5 @@ EXPOSE 8000 8080 9090
 # Run as non-root user
 USER nonroot:nonroot
 
-ENTRYPOINT ["/app/rosa-regional-frontend-api"]
+ENTRYPOINT ["/app/rosa-regional-platform-api"]
 CMD ["serve"]

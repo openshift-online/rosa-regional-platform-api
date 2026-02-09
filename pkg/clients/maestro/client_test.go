@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openshift/rosa-regional-frontend-api/pkg/config"
+	"github.com/openshift/rosa-regional-platform-api/pkg/config"
 )
 
 func TestNewClient(t *testing.T) {

@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/openshift/rosa-regional-frontend-api/pkg/config"
-	"github.com/openshift/rosa-regional-frontend-api/pkg/server"
+	"github.com/openshift/rosa-regional-platform-api/pkg/config"
+	"github.com/openshift/rosa-regional-platform-api/pkg/server"
 )
 
 var (
@@ -35,9 +35,9 @@ func main() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "rosa-regional-frontend-api",
-	Short: "ROSA Regional Frontend API",
-	Long:  "Regional frontend API for ROSA (Red Hat OpenShift Service on AWS)",
+	Use:   "rosa-regional-platform-api",
+	Short: "ROSA Regional Platform API",
+	Long:  "Regional platform API for ROSA (Red Hat OpenShift Service on AWS)",
 }
 
 var serveCmd = &cobra.Command{
@@ -63,7 +63,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Create logger
 	logger := createLogger(logLevel, logFormat)
 
-	logger.Info("starting rosa-regional-frontend-api",
+	logger.Info("starting rosa-regional-platform-api",
 		"log_level", logLevel,
 		"log_format", logFormat,
 	)

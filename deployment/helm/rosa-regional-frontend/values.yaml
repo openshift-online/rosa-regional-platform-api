@@ -1,19 +1,19 @@
-# Default values for rosa-regional-frontend
+# Default values for rosa-regional-platform
 
 # Namespace to deploy into
-namespace: rosa-regional-frontend
+namespace: rosa-regional-platform
 
 # Service Account configuration
 serviceAccount:
   create: true
-  name: rosa-regional-frontend-sa
+  name: rosa-regional-platform-sa
   annotations: {}
 
 # Application configuration
 app:
-  name: rosa-regional-frontend
+  name: rosa-regional-platform
   image:
-    repository: quay.io/cdoan0/rosa-regional-frontend-api
+    repository: quay.io/cdoan0/rosa-regional-platform-api
     tag: latest
     pullPolicy: Always
 

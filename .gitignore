@@ -1,5 +1,5 @@
 # Binary (only in root)
-/rosa-regional-frontend-api
+/rosa-regional-platform-api
 
 # Test coverage
 coverage.out
@@ -23,4 +23,5 @@ vendor/
 
 .claude/settings.local.json
 
-rosa-regional-frontend-api.log
+rosa-regional-platform-api
+rosa-regional-platform-api.log

@@ -1,6 +1,6 @@
 # E2E Tests
 
-End-to-end integration and functional tests for the ROSA Regional Frontend API.
+End-to-end integration and functional tests for the ROSA Regional Platform API.
 
 ## Prerequisites
 

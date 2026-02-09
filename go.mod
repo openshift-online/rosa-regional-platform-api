@@ -1,4 +1,4 @@
-module github.com/openshift/rosa-regional-frontend-api
+module github.com/openshift/rosa-regional-platform-api
 
 go 1.25.4
 

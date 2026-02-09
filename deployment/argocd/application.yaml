@@ -1,14 +1,14 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: rosa-regional-frontend
+  name: rosa-regional-platform
   namespace: argocd
 spec:
   project: default
   source:
-    repoURL: https://github.com/openshift-online/rosa-regional-frontend-api
+    repoURL: https://github.com/openshift-online/rosa-regional-platform-api
     targetRevision: main
-    path: deployment/helm/rosa-regional-frontend
+    path: deployment/helm/rosa-regional-platform
     helm:
       parameters:
         - name: app.args.maestroUrl
@@ -17,7 +17,7 @@ spec:
           value: info
   destination:
     server: https://kubernetes.default.svc
-    namespace: rosa-regional-frontend
+    namespace: rosa-regional-platform
   ignoreDifferences:
     - group: eks.amazonaws.com
       kind: TargetGroupBinding

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
-  title: ROSA Regional Frontend API
-  description: Frontend API for ROSA HCP regional cluster management
+  title: ROSA Regional Platform API
+  description: Platform API for ROSA HCP regional cluster management
   version: 0.0.1
   license:
     name: Apache 2.0

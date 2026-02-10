@@ -22,6 +22,8 @@ var (
 	maestroURL      string
 	maestroGRPCURL  string
 	allowedAccounts string
+	dynamodbRegion  string
+	dynamodbPrefix  string
 	apiPort         int
 	healthPort      int
 	metricsPort     int
@@ -52,6 +54,8 @@ func init() {
 	serveCmd.Flags().StringVar(&maestroURL, "maestro-url", "http://maestro:8000", "Maestro service base URL")
 	serveCmd.Flags().StringVar(&allowedAccounts, "allowed-accounts", "", "Comma-separated list of allowed AWS account IDs")
 	serveCmd.Flags().StringVar(&maestroGRPCURL, "maestro-grpc-url", "maestro-grpc.maestro-server:8090", "Maestro gRPC service base URL")
+	serveCmd.Flags().StringVar(&dynamodbRegion, "dynamodb-region", "", "AWS region for DynamoDB (defaults to us-east-1)")
+	serveCmd.Flags().StringVar(&dynamodbPrefix, "dynamodb-prefix", "rosa", "Prefix for DynamoDB table names (default: rosa)")
 	serveCmd.Flags().IntVar(&apiPort, "api-port", 8000, "API server port")
 	serveCmd.Flags().IntVar(&healthPort, "health-port", 8080, "Health check server port")
 	serveCmd.Flags().IntVar(&metricsPort, "metrics-port", 9090, "Metrics server port")
@@ -78,6 +82,21 @@ func runServe(cmd *cobra.Command, args []string) error {
 	cfg.Server.APIPort = apiPort
 	cfg.Server.HealthPort = healthPort
 	cfg.Server.MetricsPort = metricsPort
+
+	// Set DynamoDB region from flag if provided
+	if dynamodbRegion != "" {
+		cfg.Authz.AWSRegion = dynamodbRegion
+		logger.Info("using DynamoDB region from flag", "region", dynamodbRegion)
+	}
+
+	// Set DynamoDB table name prefix
+	if dynamodbPrefix != "" {
+		cfg.Authz.AccountsTableName = dynamodbPrefix + "-authz-accounts"
+		cfg.Authz.AdminsTableName = dynamodbPrefix + "-authz-admins"
+		cfg.Authz.GroupsTableName = dynamodbPrefix + "-authz-groups"
+		cfg.Authz.MembersTableName = dynamodbPrefix + "-authz-group-members"
+		logger.Info("using DynamoDB table prefix", "prefix", dynamodbPrefix)
+	}
 
 	// Authz config from environment variables (for local development)
 	if endpoint := os.Getenv("DYNAMODB_ENDPOINT"); endpoint != "" {

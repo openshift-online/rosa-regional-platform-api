@@ -16,6 +16,7 @@ import (
 	"github.com/openshift-online/maestro/pkg/client/cloudevents/grpcsource"
 	"github.com/openshift/rosa-regional-platform-api/pkg/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/openshift/rosa-regional-platform-api/pkg/types"
 	workv1 "open-cluster-management.io/api/work/v1"
 	workv1client "open-cluster-management.io/api/client/work/clientset/versioned/typed/work/v1"
 	grpcoptions "open-cluster-management.io/sdk-go/pkg/cloudevents/generic/options/grpc"
@@ -365,4 +366,98 @@ func (c *Client) CreateManifestWork(ctx context.Context, clusterName string, man
 	c.logger.Debug("manifestwork created", "cluster", clusterName, "work_name", result.Name, "uid", result.UID)
 
 	return result, nil
+}
+
+// IsNotFound checks if an error represents a 404 Not Found response
+func IsNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	apiErr, ok := err.(*Error)
+	return ok && apiErr.Code == "404"
+}
+
+// ListClusters lists clusters from Maestro with pagination and optional status filter
+func (c *Client) ListClusters(ctx context.Context, accountID string, limit, offset int, status string) ([]*types.Cluster, int, error) {
+	// TODO: Implement actual Maestro API call
+	// This is a placeholder that returns empty results
+	c.logger.Debug("listing clusters", "account_id", accountID, "limit", limit, "offset", offset, "status", status)
+	return []*types.Cluster{}, 0, nil
+}
+
+// CreateCluster creates a new cluster in Maestro
+func (c *Client) CreateCluster(ctx context.Context, accountID, userEmail string, req *types.ClusterCreateRequest) (*types.Cluster, error) {
+	// TODO: Implement actual Maestro API call
+	c.logger.Debug("creating cluster", "account_id", accountID, "cluster_name", req.Name)
+	return nil, fmt.Errorf("not implemented")
+}
+
+// GetCluster retrieves a cluster by ID from Maestro
+func (c *Client) GetCluster(ctx context.Context, accountID, clusterID string) (*types.Cluster, error) {
+	// TODO: Implement actual Maestro API call
+	c.logger.Debug("getting cluster", "account_id", accountID, "cluster_id", clusterID)
+	return nil, fmt.Errorf("not implemented")
+}
+
+// UpdateCluster updates a cluster in Maestro
+func (c *Client) UpdateCluster(ctx context.Context, accountID, clusterID string, req *types.ClusterUpdateRequest) (*types.Cluster, error) {
+	// TODO: Implement actual Maestro API call
+	c.logger.Debug("updating cluster", "account_id", accountID, "cluster_id", clusterID)
+	return nil, fmt.Errorf("not implemented")
+}
+
+// DeleteCluster deletes a cluster in Maestro
+func (c *Client) DeleteCluster(ctx context.Context, accountID, clusterID string, force bool) error {
+	// TODO: Implement actual Maestro API call
+	c.logger.Debug("deleting cluster", "account_id", accountID, "cluster_id", clusterID, "force", force)
+	return fmt.Errorf("not implemented")
+}
+
+// GetClusterStatus retrieves cluster status from Maestro
+func (c *Client) GetClusterStatus(ctx context.Context, accountID, clusterID string) (*types.ClusterStatusResponse, error) {
+	// TODO: Implement actual Maestro API call
+	c.logger.Debug("getting cluster status", "account_id", accountID, "cluster_id", clusterID)
+	return nil, fmt.Errorf("not implemented")
+}
+
+// ListNodePools lists nodepools from Maestro with pagination and optional cluster filter
+func (c *Client) ListNodePools(ctx context.Context, accountID string, limit, offset int, clusterID string) ([]*types.NodePool, int, error) {
+	// TODO: Implement actual Maestro API call
+	c.logger.Debug("listing nodepools", "account_id", accountID, "limit", limit, "offset", offset, "cluster_id", clusterID)
+	return []*types.NodePool{}, 0, nil
+}
+
+// CreateNodePool creates a new nodepool in Maestro
+func (c *Client) CreateNodePool(ctx context.Context, accountID, userEmail string, req *types.NodePoolCreateRequest) (*types.NodePool, error) {
+	// TODO: Implement actual Maestro API call
+	c.logger.Debug("creating nodepool", "account_id", accountID, "cluster_id", req.ClusterID, "nodepool_name", req.Name)
+	return nil, fmt.Errorf("not implemented")
+}
+
+// GetNodePool retrieves a nodepool by ID from Maestro
+func (c *Client) GetNodePool(ctx context.Context, accountID, nodePoolID string) (*types.NodePool, error) {
+	// TODO: Implement actual Maestro API call
+	c.logger.Debug("getting nodepool", "account_id", accountID, "nodepool_id", nodePoolID)
+	return nil, fmt.Errorf("not implemented")
+}
+
+// UpdateNodePool updates a nodepool in Maestro
+func (c *Client) UpdateNodePool(ctx context.Context, accountID, nodePoolID string, req *types.NodePoolUpdateRequest) (*types.NodePool, error) {
+	// TODO: Implement actual Maestro API call
+	c.logger.Debug("updating nodepool", "account_id", accountID, "nodepool_id", nodePoolID)
+	return nil, fmt.Errorf("not implemented")
+}
+
+// DeleteNodePool deletes a nodepool in Maestro
+func (c *Client) DeleteNodePool(ctx context.Context, accountID, nodePoolID string) error {
+	// TODO: Implement actual Maestro API call
+	c.logger.Debug("deleting nodepool", "account_id", accountID, "nodepool_id", nodePoolID)
+	return fmt.Errorf("not implemented")
+}
+
+// GetNodePoolStatus retrieves nodepool status from Maestro
+func (c *Client) GetNodePoolStatus(ctx context.Context, accountID, nodePoolID string) (*types.NodePoolStatusResponse, error) {
+	// TODO: Implement actual Maestro API call
+	c.logger.Debug("getting nodepool status", "account_id", accountID, "nodepool_id", nodePoolID)
+	return nil, fmt.Errorf("not implemented")
 }

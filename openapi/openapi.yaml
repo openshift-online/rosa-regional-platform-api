@@ -268,6 +268,408 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  # Cluster Management Endpoints
+  /clusters:
+    get:
+      summary: List user's clusters
+      description: Retrieve clusters owned by the authenticated user
+      operationId: listUserClusters
+      tags:
+        - Clusters
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Maximum number of clusters to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of clusters to skip (pagination)
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [Pending, Progressing, Ready, Failed]
+          description: Filter by cluster status
+      responses:
+        '200':
+          description: List of user's clusters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      summary: Create cluster
+      description: Create a new cluster for the authenticated user
+      operationId: createUserCluster
+      tags:
+        - Clusters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterCreateRequest'
+      responses:
+        '201':
+          description: Cluster created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /clusters/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Cluster ID
+
+    get:
+      summary: Get cluster details
+      description: Retrieve cluster details (user must own the cluster)
+      operationId: getUserCluster
+      tags:
+        - Clusters
+      responses:
+        '200':
+          description: Cluster details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      summary: Update cluster
+      description: Update cluster (user must own the cluster)
+      operationId: updateUserCluster
+      tags:
+        - Clusters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterUpdateRequest'
+      responses:
+        '200':
+          description: Cluster updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      summary: Delete cluster
+      description: Delete cluster (user must own the cluster)
+      operationId: deleteUserCluster
+      tags:
+        - Clusters
+      parameters:
+        - name: force
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Force delete even if cluster has active resources
+      responses:
+        '202':
+          description: Cluster deletion initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  cluster_id:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /clusters/{id}/status:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Cluster ID
+
+    get:
+      summary: Get cluster status
+      description: Retrieve cluster status (user must own the cluster)
+      operationId: getUserClusterStatus
+      tags:
+        - Clusters
+      responses:
+        '200':
+          description: Cluster status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterStatusResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # NodePool Management Endpoints
+  /nodepools:
+    get:
+      summary: List nodepools
+      description: List nodepools for authenticated user (optionally filtered by cluster)
+      operationId: listUserNodePools
+      tags:
+        - NodePools
+      parameters:
+        - name: clusterId
+          in: query
+          schema:
+            type: string
+          description: Filter by cluster ID (optional)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Maximum number of nodepools to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of nodepools to skip (pagination)
+      responses:
+        '200':
+          description: List of nodepools
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePoolList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      summary: Create nodepool
+      description: Create a new nodepool for the authenticated user
+      operationId: createUserNodePool
+      tags:
+        - NodePools
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodePoolCreateRequest'
+      responses:
+        '201':
+          description: NodePool created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePool'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /nodepools/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: NodePool ID
+
+    get:
+      summary: Get nodepool details
+      description: Retrieve nodepool details (user must own the cluster)
+      operationId: getUserNodePool
+      tags:
+        - NodePools
+      responses:
+        '200':
+          description: NodePool details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePool'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      summary: Update nodepool
+      description: Update nodepool (user must own the cluster)
+      operationId: updateUserNodePool
+      tags:
+        - NodePools
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodePoolUpdateRequest'
+      responses:
+        '200':
+          description: NodePool updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePool'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      summary: Delete nodepool
+      description: Delete nodepool (user must own the cluster)
+      operationId: deleteUserNodePool
+      tags:
+        - NodePools
+      responses:
+        '202':
+          description: NodePool deletion initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  nodepool_id:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /nodepools/{id}/status:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: NodePool ID
+
+    get:
+      summary: Get nodepool status
+      description: Retrieve nodepool status (user must own the cluster)
+      operationId: getUserNodePoolStatus
+      tags:
+        - NodePools
+      responses:
+        '200':
+          description: NodePool status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePoolStatusResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /live:
     get:
       summary: Liveness probe
@@ -1883,3 +2285,432 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Admin'
+
+    # Cluster Schemas
+    Cluster:
+      type: object
+      description: A user cluster resource
+      required:
+        - id
+        - name
+        - target_project_id
+        - created_by
+        - generation
+        - resource_version
+        - spec
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the cluster
+        name:
+          type: string
+          description: Cluster name
+        target_project_id:
+          type: string
+          description: Target project ID
+        created_by:
+          type: string
+          description: Email of the user who created this cluster
+        generation:
+          type: integer
+          format: int64
+          description: Generation number for optimistic concurrency control
+        resource_version:
+          type: string
+          description: Resource version for optimistic concurrency control
+        spec:
+          type: object
+          description: Cluster specification
+          additionalProperties: true
+        status:
+          $ref: '#/components/schemas/ClusterStatusInfo'
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+
+    ClusterCreateRequest:
+      type: object
+      description: Request body for creating a cluster
+      required:
+        - name
+        - spec
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
+          minLength: 3
+          maxLength: 63
+          description: DNS-compatible cluster name
+        target_project_id:
+          type: string
+          description: Target project ID
+        spec:
+          type: object
+          description: Cluster specification
+          additionalProperties: true
+
+    ClusterUpdateRequest:
+      type: object
+      description: Request body for updating a cluster
+      required:
+        - spec
+      properties:
+        spec:
+          type: object
+          description: Cluster specification
+          additionalProperties: true
+
+    ClusterStatusInfo:
+      type: object
+      description: Kubernetes-like aggregated status for clusters
+      properties:
+        observedGeneration:
+          type: integer
+          format: int64
+          description: Last generation processed by controllers
+        conditions:
+          type: array
+          description: Status conditions
+          items:
+            $ref: '#/components/schemas/Condition'
+        phase:
+          type: string
+          enum: [Pending, Progressing, Ready, Failed]
+          description: High-level cluster phase
+        message:
+          type: string
+          description: Human-readable status message
+        reason:
+          type: string
+          description: Machine-readable reason code
+        lastUpdateTime:
+          type: string
+          format: date-time
+          description: When status was last calculated
+
+    Condition:
+      type: object
+      description: Status condition
+      properties:
+        type:
+          type: string
+          description: Condition type
+        status:
+          type: string
+          enum: [True, False, Unknown]
+          description: Condition status
+        lastTransitionTime:
+          type: string
+          format: date-time
+          description: Last time the condition transitioned
+        reason:
+          type: string
+          description: Machine-readable reason code
+        message:
+          type: string
+          description: Human-readable message
+
+    ClusterControllerStatus:
+      type: object
+      description: Controller-specific status for a cluster
+      properties:
+        cluster_id:
+          type: string
+          description: Cluster ID
+        controller_name:
+          type: string
+          description: Name of the controller
+        observed_generation:
+          type: integer
+          format: int64
+          description: Last generation observed by this controller
+        conditions:
+          type: array
+          description: Controller-specific conditions
+          items:
+            $ref: '#/components/schemas/Condition'
+        metadata:
+          type: object
+          description: Controller-specific metadata
+          additionalProperties: true
+        last_updated:
+          type: string
+          format: date-time
+          description: When this controller last updated
+
+    ClusterStatusResponse:
+      type: object
+      description: Response for cluster status endpoint
+      properties:
+        cluster_id:
+          type: string
+          description: Cluster ID
+        status:
+          $ref: '#/components/schemas/ClusterStatusInfo'
+        controller_statuses:
+          type: array
+          description: Individual controller status reports
+          items:
+            $ref: '#/components/schemas/ClusterControllerStatus'
+
+    ClusterList:
+      type: object
+      description: Paginated list of clusters
+      required:
+        - clusters
+        - total
+        - limit
+        - offset
+      properties:
+        clusters:
+          type: array
+          items:
+            $ref: '#/components/schemas/Cluster'
+        total:
+          type: integer
+          description: Total number of clusters
+        limit:
+          type: integer
+          description: Number of items per page
+        offset:
+          type: integer
+          description: Number of items skipped
+
+    # NodePool Schemas
+    NodePool:
+      type: object
+      description: A nodepool resource
+      required:
+        - id
+        - cluster_id
+        - name
+        - created_by
+        - generation
+        - resource_version
+        - spec
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the nodepool
+        cluster_id:
+          type: string
+          description: Parent cluster ID
+        name:
+          type: string
+          description: NodePool name
+        created_by:
+          type: string
+          description: Email of the user who created this nodepool
+        generation:
+          type: integer
+          format: int64
+          description: Generation number for optimistic concurrency control
+        resource_version:
+          type: string
+          description: Resource version for optimistic concurrency control
+        spec:
+          $ref: '#/components/schemas/NodePoolSpec'
+        status:
+          $ref: '#/components/schemas/NodePoolStatusInfo'
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+
+    NodePoolCreateRequest:
+      type: object
+      description: Request body for creating a nodepool
+      required:
+        - cluster_id
+        - name
+        - spec
+      properties:
+        cluster_id:
+          type: string
+          description: Parent cluster ID
+        name:
+          type: string
+          pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
+          minLength: 3
+          maxLength: 63
+          description: DNS-compatible nodepool name
+        spec:
+          $ref: '#/components/schemas/NodePoolSpec'
+
+    NodePoolUpdateRequest:
+      type: object
+      description: Request body for updating a nodepool
+      required:
+        - spec
+      properties:
+        spec:
+          $ref: '#/components/schemas/NodePoolSpec'
+
+    NodePoolSpec:
+      type: object
+      description: NodePool specification defining desired state
+      properties:
+        replicas:
+          type: integer
+          format: int32
+          description: Number of worker nodes in the pool
+        management:
+          type: object
+          description: Node pool management configuration
+          additionalProperties: true
+        platform:
+          type: object
+          description: Platform-specific configuration
+          additionalProperties: true
+        release:
+          type: object
+          description: Release/version configuration
+          additionalProperties: true
+        nodeDrainTimeout:
+          type: string
+          description: Timeout for draining nodes
+
+    NodePoolStatusInfo:
+      type: object
+      description: Kubernetes-like aggregated status for nodepools
+      properties:
+        observedGeneration:
+          type: integer
+          format: int64
+          description: Last generation processed by controllers
+        conditions:
+          type: array
+          description: Status conditions
+          items:
+            $ref: '#/components/schemas/Condition'
+        phase:
+          type: string
+          enum: [Pending, Progressing, Ready, Failed]
+          description: High-level nodepool phase
+        message:
+          type: string
+          description: Human-readable status message
+        reason:
+          type: string
+          description: Machine-readable reason code
+        lastUpdateTime:
+          type: string
+          format: date-time
+          description: When status was last calculated
+
+    NodePoolControllerStatus:
+      type: object
+      description: Controller-specific status for a nodepool
+      properties:
+        nodepool_id:
+          type: string
+          description: NodePool ID
+        controller_name:
+          type: string
+          description: Name of the controller
+        observed_generation:
+          type: integer
+          format: int64
+          description: Last generation observed by this controller
+        conditions:
+          type: array
+          description: Controller-specific conditions
+          items:
+            $ref: '#/components/schemas/Condition'
+        metadata:
+          type: object
+          description: Controller-specific metadata
+          additionalProperties: true
+        last_updated:
+          type: string
+          format: date-time
+          description: When this controller last updated
+
+    NodePoolStatusResponse:
+      type: object
+      description: Response for nodepool status endpoint
+      properties:
+        nodepool_id:
+          type: string
+          description: NodePool ID
+        status:
+          $ref: '#/components/schemas/NodePoolStatusInfo'
+        controller_statuses:
+          type: array
+          description: Individual controller status reports
+          items:
+            $ref: '#/components/schemas/NodePoolControllerStatus'
+
+    NodePoolList:
+      type: object
+      description: Paginated list of nodepools
+      required:
+        - nodepools
+        - total
+        - limit
+        - offset
+      properties:
+        nodepools:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodePool'
+        total:
+          type: integer
+          description: Total number of nodepools
+        limit:
+          type: integer
+          description: Number of items per page
+        offset:
+          type: integer
+          description: Number of items skipped
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

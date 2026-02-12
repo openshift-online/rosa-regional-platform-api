@@ -74,6 +74,14 @@ func GetCallerARN(ctx context.Context) string {
 	return ""
 }
 
+// GetUserID retrieves the AWS user ID from context
+func GetUserID(ctx context.Context) string {
+	if v := ctx.Value(ContextKeyUserID); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
 // GetRequestID retrieves the request ID from context
 func GetRequestID(ctx context.Context) string {
 	if v := ctx.Value(ContextKeyRequestID); v != nil {

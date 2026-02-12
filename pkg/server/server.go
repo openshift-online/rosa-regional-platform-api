@@ -42,6 +42,8 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(maestroClient, logger)
 	resourceBundleHandler := apphandlers.NewResourceBundleHandler(maestroClient, logger)
 	workHandler := apphandlers.NewWorkHandler(maestroClient, logger)
+	clusterHandler := apphandlers.NewClusterHandler(maestroClient, logger)
+	nodePoolHandler := apphandlers.NewNodePoolHandler(maestroClient, logger)
 
 	// Create legacy authorization middleware (for non-authz routes)
 	authMiddleware := middleware.NewAuthorization(cfg.AllowedAccounts, logger)
@@ -168,6 +170,36 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		workRouter.Use(authMiddleware.RequireAllowedAccount)
 	}
 	workRouter.HandleFunc("", workHandler.Create).Methods(http.MethodPost)
+
+	// Cluster routes (user-facing, require authz)
+	clusterRouter := apiRouter.PathPrefix("/api/v0/clusters").Subrouter()
+	if authzMiddleware != nil {
+		clusterRouter.Use(privilegedMiddleware.CheckPrivileged)
+		clusterRouter.Use(authzMiddleware.Authorize)
+	} else {
+		clusterRouter.Use(authMiddleware.RequireAllowedAccount)
+	}
+	clusterRouter.HandleFunc("", clusterHandler.List).Methods(http.MethodGet)
+	clusterRouter.HandleFunc("", clusterHandler.Create).Methods(http.MethodPost)
+	clusterRouter.HandleFunc("/{id}", clusterHandler.Get).Methods(http.MethodGet)
+	clusterRouter.HandleFunc("/{id}", clusterHandler.Update).Methods(http.MethodPut)
+	clusterRouter.HandleFunc("/{id}", clusterHandler.Delete).Methods(http.MethodDelete)
+	clusterRouter.HandleFunc("/{id}/status", clusterHandler.GetStatus).Methods(http.MethodGet)
+
+	// NodePool routes (user-facing, require authz)
+	nodePoolRouter := apiRouter.PathPrefix("/api/v0/nodepools").Subrouter()
+	if authzMiddleware != nil {
+		nodePoolRouter.Use(privilegedMiddleware.CheckPrivileged)
+		nodePoolRouter.Use(authzMiddleware.Authorize)
+	} else {
+		nodePoolRouter.Use(authMiddleware.RequireAllowedAccount)
+	}
+	nodePoolRouter.HandleFunc("", nodePoolHandler.List).Methods(http.MethodGet)
+	nodePoolRouter.HandleFunc("", nodePoolHandler.Create).Methods(http.MethodPost)
+	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Get).Methods(http.MethodGet)
+	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Update).Methods(http.MethodPut)
+	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Delete).Methods(http.MethodDelete)
+	nodePoolRouter.HandleFunc("/{id}/status", nodePoolHandler.GetStatus).Methods(http.MethodGet)
 
 	// Health routes on API server (no auth required)
 	apiRouter.HandleFunc("/api/v0/live", healthHandler.Liveness).Methods(http.MethodGet)

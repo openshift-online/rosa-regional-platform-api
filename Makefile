@@ -123,7 +123,7 @@ install-golangci-lint:
 
 # Run linter
 lint: install-golangci-lint
-	golangci-lint run --modules-download-mode=readonly ./...
+	GOLANGCI_LINT_CACHE=/tmp/golangci-lint-cache golangci-lint run --modules-download-mode=readonly ./...
 
 # Clean build artifacts
 clean:

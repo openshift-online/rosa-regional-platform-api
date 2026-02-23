@@ -60,7 +60,7 @@ func TestNewConfig(t *testing.T) {
 	}
 
 	// Test that AllowedAccounts defaults to empty/nil
-	if cfg.AllowedAccounts != nil && len(cfg.AllowedAccounts) != 0 {
+	if len(cfg.AllowedAccounts) != 0 {
 		t.Errorf("expected empty AllowedAccounts, got %d items", len(cfg.AllowedAccounts))
 	}
 }

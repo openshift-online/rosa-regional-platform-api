@@ -56,7 +56,9 @@ func (h *ManagementClusterHandler) Create(w http.ResponseWriter, r *http.Request
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(consumer)
+	if err := json.NewEncoder(w).Encode(consumer); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 // List handles GET /api/v0/management_clusters
@@ -95,7 +97,9 @@ func (h *ManagementClusterHandler) List(w http.ResponseWriter, r *http.Request) 
 	h.logger.Debug("management clusters listed", "total", list.Total, "account_id", accountID)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(list)
+	if err := json.NewEncoder(w).Encode(list); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 // Get handles GET /api/v0/management_clusters/{id}
@@ -126,7 +130,9 @@ func (h *ManagementClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	h.logger.Debug("management cluster retrieved", "id", consumer.ID, "name", consumer.Name, "account_id", accountID)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(consumer)
+	if err := json.NewEncoder(w).Encode(consumer); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *ManagementClusterHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
@@ -139,5 +145,7 @@ func (h *ManagementClusterHandler) writeError(w http.ResponseWriter, status int,
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		h.logger.Error("failed to encode error response", "error", err)
+	}
 }

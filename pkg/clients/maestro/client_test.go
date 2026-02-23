@@ -75,7 +75,7 @@ func TestClient_CreateConsumer_Success(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(expectedConsumer)
+		_ = json.NewEncoder(w).Encode(expectedConsumer)
 	}))
 	defer server.Close()
 
@@ -108,7 +108,7 @@ func TestClient_CreateConsumer_Success(t *testing.T) {
 func TestClient_CreateConsumer_MaestroError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(&Error{
+		_ = json.NewEncoder(w).Encode(&Error{
 			Kind:   "Error",
 			Code:   "invalid-request",
 			Reason: "Name is required",
@@ -151,7 +151,7 @@ func TestClient_CreateConsumer_MaestroError(t *testing.T) {
 func TestClient_CreateConsumer_UnexpectedStatusCode(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Internal server error"))
+		_, _ = w.Write([]byte("Internal server error"))
 	}))
 	defer server.Close()
 
@@ -221,7 +221,7 @@ func TestClient_ListConsumers_Success(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(expectedList)
+		_ = json.NewEncoder(w).Encode(expectedList)
 	}))
 	defer server.Close()
 
@@ -259,7 +259,7 @@ func TestClient_ListConsumers_WithoutPagination(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(&ConsumerList{
+		_ = json.NewEncoder(w).Encode(&ConsumerList{
 			Kind:  "ConsumerList",
 			Page:  0,
 			Size:  0,
@@ -285,7 +285,7 @@ func TestClient_ListConsumers_WithoutPagination(t *testing.T) {
 func TestClient_ListConsumers_MaestroError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(&Error{
+		_ = json.NewEncoder(w).Encode(&Error{
 			Kind:   "Error",
 			Code:   "server-error",
 			Reason: "Database connection failed",
@@ -341,7 +341,7 @@ func TestClient_GetConsumer_Success(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(expectedConsumer)
+		_ = json.NewEncoder(w).Encode(expectedConsumer)
 	}))
 	defer server.Close()
 
@@ -393,7 +393,7 @@ func TestClient_GetConsumer_NotFound(t *testing.T) {
 func TestClient_GetConsumer_MaestroError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(&Error{
+		_ = json.NewEncoder(w).Encode(&Error{
 			Kind:   "Error",
 			Code:   "forbidden",
 			Reason: "Access denied",
@@ -475,7 +475,7 @@ func TestClient_ListResourceBundles_Success(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(expectedList)
+		_ = json.NewEncoder(w).Encode(expectedList)
 	}))
 	defer server.Close()
 
@@ -522,7 +522,7 @@ func TestClient_ListResourceBundles_WithFilters(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(&ResourceBundleList{
+		_ = json.NewEncoder(w).Encode(&ResourceBundleList{
 			Kind:  "ResourceBundleList",
 			Page:  1,
 			Size:  10,
@@ -548,7 +548,7 @@ func TestClient_ListResourceBundles_WithFilters(t *testing.T) {
 func TestClient_ListResourceBundles_MaestroError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(&Error{
+		_ = json.NewEncoder(w).Encode(&Error{
 			Kind:   "Error",
 			Code:   "invalid-search",
 			Reason: "Invalid search syntax",

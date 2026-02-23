@@ -64,7 +64,9 @@ func (h *ResourceBundleHandler) List(w http.ResponseWriter, r *http.Request) {
 	h.logger.Debug("resource bundles listed", "total", list.Total, "account_id", accountID)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(list)
+	if err := json.NewEncoder(w).Encode(list); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *ResourceBundleHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
@@ -77,5 +79,7 @@ func (h *ResourceBundleHandler) writeError(w http.ResponseWriter, status int, co
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		h.logger.Error("failed to encode error response", "error", err)
+	}
 }

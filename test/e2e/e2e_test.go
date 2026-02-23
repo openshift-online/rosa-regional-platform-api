@@ -952,7 +952,8 @@ var _ = Describe("E2E Tests", func() {
 			tmpFile, err := os.CreateTemp("", "payload-*.json")
 			Expect(err).NotTo(HaveOccurred(), "Failed to create temporary file")
 			payloadPath := tmpFile.Name()
-			tmpFile.Close() // Close immediately as createPayloadJSON will write to it
+			err = tmpFile.Close() // Close immediately as createPayloadJSON will write to it
+			Expect(err).NotTo(HaveOccurred(), "Failed to close temporary file")
 
 			// Clean up temporary file after test
 			defer func() {

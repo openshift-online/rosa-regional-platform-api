@@ -228,5 +228,7 @@ func (a *Authz) writeError(w http.ResponseWriter, status int, code, reason strin
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		a.logger.Error("failed to encode error response", "error", err)
+	}
 }

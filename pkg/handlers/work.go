@@ -7,9 +7,9 @@ import (
 
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
-	workv1 "open-cluster-management.io/api/work/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	workv1 "open-cluster-management.io/api/work/v1"
 )
 
 // WorkHandler handles work/manifestwork endpoints
@@ -77,7 +77,7 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Create a scheme and decoder for ManifestWork
 	scheme := runtime.NewScheme()
-	_ = workv1.AddToScheme(scheme)
+	_ = workv1.Install(scheme)
 	decoder := serializer.NewCodecFactory(scheme).UniversalDeserializer()
 
 	// Decode the ManifestWork from the data payload
@@ -128,7 +128,9 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *WorkHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
@@ -141,5 +143,7 @@ func (h *WorkHandler) writeError(w http.ResponseWriter, status int, code, reason
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		h.logger.Error("failed to encode error response", "error", err)
+	}
 }

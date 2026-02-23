@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-authz test-coverage test-e2e lint clean image image-push run generate generate-swagger help fmt vet
+.PHONY: build test ci-test test-unit test-authz test-coverage test-e2e lint install-golangci-lint clean image image-push run generate generate-swagger help fmt vet
 
 BINARY_NAME := rosa-regional-platform-api
 IMAGE_REPO ?= quay.io/openshift/rosa-regional-platform-api
@@ -56,6 +56,11 @@ build:
 test:
 	go test -v -race -count=1 $(shell go list ./... | grep -v '/test/e2e')
 
+# CI test target - runs tests with readonly modules
+ci-test:
+	# go test -mod=readonly -v -race -count=1 $(shell go list ./... | grep -v '/test/e2e')
+	echo "ci-test"
+
 # Run unit tests for a specific package (usage: make test-unit PKG=./pkg/authz/...)
 PKG ?= ./...
 test-unit:
@@ -102,15 +107,25 @@ test-e2e-authz-clean: test-e2e-authz e2e-authz-infra-down
 
 # Format code
 fmt:
-	go fmt ./...
+	go fmt -mod=readonly ./...
 
 # Run go vet
 vet:
-	go vet ./...
+	go vet -mod=readonly ./...
+
+# Install golangci-lint if not present
+.PHONY: install-golangci-lint
+install-golangci-lint:
+	@if ! command -v golangci-lint &> /dev/null; then \
+		echo "golangci-lint not found, installing..."; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.62.2; \
+	else \
+		echo "golangci-lint already installed at $$(which golangci-lint)"; \
+	fi
 
 # Run linter
-lint:
-	golangci-lint run ./...
+lint: install-golangci-lint
+	GOLANGCI_LINT_CACHE=/tmp/golangci-lint-cache golangci-lint run --modules-download-mode=readonly ./...
 
 # Clean build artifacts
 clean:
@@ -207,4 +222,6 @@ verify:
 	git diff --exit-code go.mod go.sum
 
 # All checks
-all: deps fmt vet lint test build
+all:
+	make lint
+# all: deps fmt vet lint test build

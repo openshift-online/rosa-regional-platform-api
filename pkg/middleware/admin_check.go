@@ -73,5 +73,7 @@ func (a *AdminCheck) writeError(w http.ResponseWriter, status int, code, reason 
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		a.logger.Error("failed to encode error response", "error", err)
+	}
 }

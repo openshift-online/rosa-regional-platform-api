@@ -15,10 +15,10 @@ import (
 	"github.com/openshift-online/maestro/pkg/api/openapi"
 	"github.com/openshift-online/maestro/pkg/client/cloudevents/grpcsource"
 	"github.com/openshift/rosa-regional-platform-api/pkg/config"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"github.com/openshift/rosa-regional-platform-api/pkg/types"
-	workv1 "open-cluster-management.io/api/work/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	workv1client "open-cluster-management.io/api/client/work/clientset/versioned/typed/work/v1"
+	workv1 "open-cluster-management.io/api/work/v1"
 	grpcoptions "open-cluster-management.io/sdk-go/pkg/cloudevents/generic/options/grpc"
 )
 
@@ -136,8 +136,8 @@ func NewClient(cfg config.MaestroConfig, logger *slog.Logger) *Client {
 	}
 
 	return &Client{
-		baseURL:       cfg.BaseURL,
-		grpcBaseURL:   cfg.GRPCBaseURL,
+		baseURL:     cfg.BaseURL,
+		grpcBaseURL: cfg.GRPCBaseURL,
 		httpClient: &http.Client{
 			Timeout: cfg.Timeout,
 		},
@@ -168,7 +168,7 @@ func (c *Client) CreateConsumer(ctx context.Context, req *ConsumerCreateRequest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -220,7 +220,7 @@ func (c *Client) ListConsumers(ctx context.Context, page, size int) (*ConsumerLi
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -258,7 +258,7 @@ func (c *Client) GetConsumer(ctx context.Context, id string) (*Consumer, error) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -323,7 +323,7 @@ func (c *Client) ListResourceBundles(ctx context.Context, page, size int, search
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

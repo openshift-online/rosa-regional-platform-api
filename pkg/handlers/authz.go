@@ -163,13 +163,15 @@ func (h *AuthzHandler) CreatePolicy(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(PolicyResponse{
+	if err := json.NewEncoder(w).Encode(PolicyResponse{
 		Kind:        "Policy",
 		PolicyID:    p.PolicyID,
 		Name:        p.Name,
 		Description: p.Description,
 		CreatedAt:   p.CreatedAt,
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) ListPolicies(w http.ResponseWriter, r *http.Request) {
@@ -195,11 +197,13 @@ func (h *AuthzHandler) ListPolicies(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(PolicyListResponse{
+	if err := json.NewEncoder(w).Encode(PolicyListResponse{
 		Kind:  "PolicyList",
 		Items: items,
 		Total: len(items),
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) GetPolicy(w http.ResponseWriter, r *http.Request) {
@@ -221,13 +225,15 @@ func (h *AuthzHandler) GetPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(PolicyResponse{
+	if err := json.NewEncoder(w).Encode(PolicyResponse{
 		Kind:        "Policy",
 		PolicyID:    p.PolicyID,
 		Name:        p.Name,
 		Description: p.Description,
 		CreatedAt:   p.CreatedAt,
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
@@ -250,13 +256,15 @@ func (h *AuthzHandler) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(PolicyResponse{
+	if err := json.NewEncoder(w).Encode(PolicyResponse{
 		Kind:        "Policy",
 		PolicyID:    p.PolicyID,
 		Name:        p.Name,
 		Description: p.Description,
 		CreatedAt:   p.CreatedAt,
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) DeletePolicy(w http.ResponseWriter, r *http.Request) {
@@ -305,13 +313,15 @@ func (h *AuthzHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(GroupResponse{
+	if err := json.NewEncoder(w).Encode(GroupResponse{
 		Kind:        "Group",
 		GroupID:     g.GroupID,
 		Name:        g.Name,
 		Description: g.Description,
 		CreatedAt:   g.CreatedAt,
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
@@ -337,11 +347,13 @@ func (h *AuthzHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(GroupListResponse{
+	if err := json.NewEncoder(w).Encode(GroupListResponse{
 		Kind:  "GroupList",
 		Items: items,
 		Total: len(items),
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) GetGroup(w http.ResponseWriter, r *http.Request) {
@@ -363,13 +375,15 @@ func (h *AuthzHandler) GetGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(GroupResponse{
+	if err := json.NewEncoder(w).Encode(GroupResponse{
 		Kind:        "Group",
 		GroupID:     g.GroupID,
 		Name:        g.Name,
 		Description: g.Description,
 		CreatedAt:   g.CreatedAt,
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
@@ -427,11 +441,13 @@ func (h *AuthzHandler) UpdateGroupMembers(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(MemberListResponse{
+	if err := json.NewEncoder(w).Encode(MemberListResponse{
 		Kind:  "MemberList",
 		Items: members,
 		Total: len(members),
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) ListGroupMembers(w http.ResponseWriter, r *http.Request) {
@@ -448,11 +464,13 @@ func (h *AuthzHandler) ListGroupMembers(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(MemberListResponse{
+	if err := json.NewEncoder(w).Encode(MemberListResponse{
 		Kind:  "MemberList",
 		Items: members,
 		Total: len(members),
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 // Attachment Handlers
@@ -486,14 +504,16 @@ func (h *AuthzHandler) CreateAttachment(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(AttachmentResponse{
+	if err := json.NewEncoder(w).Encode(AttachmentResponse{
 		Kind:         "Attachment",
 		AttachmentID: a.AttachmentID,
 		PolicyID:     a.PolicyID,
 		TargetType:   string(a.TargetType),
 		TargetID:     a.TargetID,
 		CreatedAt:    a.CreatedAt,
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) ListAttachments(w http.ResponseWriter, r *http.Request) {
@@ -527,11 +547,13 @@ func (h *AuthzHandler) ListAttachments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AttachmentListResponse{
+	if err := json.NewEncoder(w).Encode(AttachmentListResponse{
 		Kind:  "AttachmentList",
 		Items: items,
 		Total: len(items),
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
@@ -577,10 +599,12 @@ func (h *AuthzHandler) AddAdmin(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	if err := json.NewEncoder(w).Encode(map[string]any{
 		"kind":         "Admin",
 		"principalArn": req.PrincipalARN,
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) ListAdmins(w http.ResponseWriter, r *http.Request) {
@@ -595,11 +619,13 @@ func (h *AuthzHandler) ListAdmins(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AdminListResponse{
+	if err := json.NewEncoder(w).Encode(AdminListResponse{
 		Kind:  "AdminList",
 		Items: admins,
 		Total: len(admins),
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) RemoveAdmin(w http.ResponseWriter, r *http.Request) {
@@ -669,10 +695,12 @@ func (h *AuthzHandler) CheckAuthorization(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(CheckAuthorizationResponse{
+	if err := json.NewEncoder(w).Encode(CheckAuthorizationResponse{
 		Kind:     "AuthorizationDecision",
 		Decision: decision,
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
@@ -685,5 +713,7 @@ func (h *AuthzHandler) writeError(w http.ResponseWriter, status int, code, reaso
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		h.logger.Error("failed to encode error response", "error", err)
+	}
 }

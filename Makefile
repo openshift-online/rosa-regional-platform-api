@@ -116,10 +116,12 @@ vet:
 # Install golangci-lint if not present
 .PHONY: install-golangci-lint
 install-golangci-lint:
-	@which golangci-lint > /dev/null || { \
-		echo "Installing golangci-lint..."; \
+	@if ! command -v golangci-lint &> /dev/null; then \
+		echo "golangci-lint not found, installing..."; \
 		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.62.2; \
-	}
+	else \
+		echo "golangci-lint already installed at $$(which golangci-lint)"; \
+	fi
 
 # Run linter
 lint: install-golangci-lint

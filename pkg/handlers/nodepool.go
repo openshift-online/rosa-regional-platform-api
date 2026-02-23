@@ -213,7 +213,9 @@ func (h *NodePoolHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 func (h *NodePoolHandler) writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		h.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *NodePoolHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
@@ -224,5 +226,7 @@ func (h *NodePoolHandler) writeError(w http.ResponseWriter, status int, code, re
 		"code":   code,
 		"reason": reason,
 	}
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		h.logger.Error("failed to encode error response", "error", err)
+	}
 }

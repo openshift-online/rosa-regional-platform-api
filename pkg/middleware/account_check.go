@@ -69,5 +69,5 @@ func (a *AccountCheck) writeError(w http.ResponseWriter, status int, code, reaso
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }

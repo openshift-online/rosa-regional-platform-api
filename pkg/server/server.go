@@ -24,7 +24,6 @@ type Server struct {
 	cfg           *config.Config
 	logger        *slog.Logger
 	apiServer     *http.Server
-	grpcServer    *http.Server
 	healthServer  *http.Server
 	metricsServer *http.Server
 	healthHandler *apphandlers.HealthHandler
@@ -38,7 +37,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	maestroClient := maestro.NewClient(cfg.Maestro, logger)
 
 	// Create handlers
-	healthHandler := apphandlers.NewHealthHandler()
+	healthHandler := apphandlers.NewHealthHandler(logger)
 	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(maestroClient, logger)
 	resourceBundleHandler := apphandlers.NewResourceBundleHandler(maestroClient, logger)
 	workHandler := apphandlers.NewWorkHandler(maestroClient, logger)

@@ -27,9 +27,9 @@ type mockTemplate struct {
 
 // mockPolicy holds a resolved Cedar policy (static or template-linked) in memory.
 type mockPolicy struct {
-	cedarText   string                      // resolved Cedar text sent to cedar-agent
-	templateID  string                      // non-empty if template-linked
-	principal   *avptypes.EntityIdentifier  // principal entity for template-linked policies
+	cedarText   string                     // resolved Cedar text sent to cedar-agent
+	templateID  string                     // non-empty if template-linked
+	principal   *avptypes.EntityIdentifier // principal entity for template-linked policies
 	createdDate time.Time
 }
 

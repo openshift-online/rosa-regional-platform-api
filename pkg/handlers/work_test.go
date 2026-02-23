@@ -13,8 +13,8 @@ import (
 
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
-	workv1 "open-cluster-management.io/api/work/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	workv1 "open-cluster-management.io/api/work/v1"
 )
 
 // mockWorkMaestroClient is a mock implementation for work tests

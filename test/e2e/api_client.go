@@ -2,14 +2,47 @@ package e2e_test
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
+
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/config"
 )
+
+// SHA256 of empty string (for GET/empty body). Used for SigV4 payload hash.
+const emptyPayloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+// apiGatewayRegionFromURL extracts the AWS region from an API Gateway URL.
+// e.g. https://id.execute-api.us-east-2.amazonaws.com/prod -> "us-east-2".
+// Returns empty string if the URL is not an API Gateway URL.
+func apiGatewayRegionFromURL(baseURL string) string {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return ""
+	}
+	// host is like "id.execute-api.us-east-2.amazonaws.com"
+	if !strings.Contains(u.Host, "execute-api.") || !strings.Contains(u.Host, ".amazonaws.com") {
+		return ""
+	}
+	// ...execute-api.<region>.amazonaws.com
+	parts := strings.Split(u.Host, ".")
+	for i, p := range parts {
+		if p == "execute-api" && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
 
 // APIClient provides methods for making requests to the ROSA API
 type APIClient struct {
@@ -33,15 +66,17 @@ func NewAPIClient(baseURL string) *APIClient {
 	}
 }
 
-// Do performs an HTTP request
+// Do performs an HTTP request. When baseURL is an API Gateway URL, the request is signed with SigV4 using default AWS credentials.
 func (c *APIClient) Do(method, path string, body interface{}, accountID string) (*APIResponse, error) {
+	var bodyBytes []byte
 	var bodyReader io.Reader
 	if body != nil {
-		jsonBody, err := json.Marshal(body)
+		var err error
+		bodyBytes, err = json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal body: %w", err)
 		}
-		bodyReader = bytes.NewReader(jsonBody)
+		bodyReader = bytes.NewReader(bodyBytes)
 	}
 
 	req, err := http.NewRequest(method, c.baseURL+path, bodyReader)
@@ -55,6 +90,27 @@ func (c *APIClient) Do(method, path string, body interface{}, accountID string) 
 	}
 	if c.CallerARN != "" {
 		req.Header.Set("X-Amz-Caller-Arn", c.CallerARN)
+	}
+
+	// Sign with SigV4 when targeting API Gateway (avoids 403 Missing Authentication Token)
+	if region := apiGatewayRegionFromURL(c.baseURL); region != "" {
+		cfg, err := config.LoadDefaultConfig(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("loading AWS config for SigV4: %w", err)
+		}
+		creds, err := cfg.Credentials.Retrieve(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("retrieving AWS credentials for SigV4: %w", err)
+		}
+		payloadHash := emptyPayloadHash
+		if len(bodyBytes) > 0 {
+			sum := sha256.Sum256(bodyBytes)
+			payloadHash = hex.EncodeToString(sum[:])
+		}
+		signer := v4.NewSigner()
+		if err := signer.SignHTTP(context.Background(), creds, req, payloadHash, "execute-api", region, time.Now()); err != nil {
+			return nil, fmt.Errorf("signing request with SigV4: %w", err)
+		}
 	}
 
 	resp, err := c.httpClient.Do(req)

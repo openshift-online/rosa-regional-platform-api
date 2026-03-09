@@ -1,13 +1,30 @@
 .PHONY: build test test-unit test-authz test-coverage test-e2e lint clean image image-push run generate generate-swagger help fmt vet
 
 BINARY_NAME := rosa-regional-platform-api
-IMAGE_REPO ?= quay.io/openshift/rosa-regional-platform-api
+IMAGE_REPO ?= quay.io/openshift-online/rosa-regional-platform-api
 IMAGE_TAG ?= latest
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GOOS ?= linux
 GOARCH ?= amd64
+PLATFORMS ?= linux/amd64,linux/arm64
 DYNAMODB_ENDPOINT ?= http://localhost:8180
 CEDAR_AGENT_ENDPOINT ?= http://localhost:8181
+
+# AWS settings - these can be overridden by environment variables or command line
+AWS_PROFILE ?=
+AWS_REGION ?=
+FOCUS ?=
+SKIP ?= Authz
+
+# Detect host platform for native builds
+HOST_OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
+HOST_ARCH := $(shell uname -m)
+ifeq ($(HOST_ARCH),x86_64)
+	HOST_ARCH := amd64
+endif
+ifeq ($(HOST_ARCH),aarch64)
+	HOST_ARCH := arm64
+endif
 
 # Show available make targets
 help:
@@ -19,12 +36,15 @@ help:
 	@echo "  clean          - Clean build artifacts"
 	@echo ""
 	@echo "Testing:"
-	@echo "  test           - Run all unit tests (excludes e2e)"
-	@echo "  test-unit      - Run unit tests for a specific package (PKG=./pkg/authz/...)"
-	@echo "  test-authz     - Run authorization package tests only"
-	@echo "  test-coverage  - Run unit tests with coverage report"
-	@echo "  test-e2e       - Run e2e integration tests"
-	@echo "  test-e2e-authz - Run authz e2e tests with local infrastructure"
+	@echo "  test                           - Run all unit tests (excludes e2e)"
+	@echo "  test-unit                      - Run unit tests for a specific package (PKG=./pkg/authz/...)"
+	@echo "  test-authz                     - Run authorization package tests only"
+	@echo "  test-coverage                  - Run unit tests with coverage report"
+	@echo "  test-e2e                       - Run e2e integration tests (native)"
+	@echo "  test-e2e-awscreds              - Run AWS credentials check test only"
+	@echo "  test-e2e-container             - Run e2e tests in container"
+	@echo "                                   Supports: AWS_PROFILE=..., FOCUS='pattern', SKIP='pattern'"
+	@echo "  test-e2e-authz                 - Run authz e2e tests with local infrastructure"
 	@echo ""
 	@echo "E2E Infrastructure:"
 	@echo "  e2e-authz-infra-up   - Start DynamoDB Local and cedar-agent containers"
@@ -38,8 +58,11 @@ help:
 	@echo "  verify         - Verify go.mod is tidy"
 	@echo ""
 	@echo "Docker:"
-	@echo "  image          - Build Docker image"
-	@echo "  image-push     - Push Docker image"
+	@echo "  image                    - Build Docker image"
+	@echo "  image-push               - Push Docker image"
+	@echo "  image-e2e                - Build E2E test container (single platform)"
+	@echo "  image-e2e-multiarch      - Build E2E test container (multiarch)"
+	@echo "  image-e2e-push-multiarch - Build and push E2E test container (multiarch)"
 	@echo ""
 	@echo "Code Generation:"
 	@echo "  deps           - Download and tidy dependencies"
@@ -71,9 +94,19 @@ test-coverage:
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
 
-# Run e2e tests
+# Run e2e tests (native - works on Linux, macOS, Windows)
 test-e2e:
-	ginkgo -v ./test/e2e
+	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo -v \
+	--skip="Authz" --junit-report=junit.xml \
+	--output-dir=./test-results ./test/e2e
+
+test-e2e-quiet:
+	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo --skip="Authz" \
+	--junit-report=junit.xml --output-dir=./test-results ./test/e2e
+
+# Run just the AWS credentials check test
+test-e2e-awscreds:
+	ginkgo -v --focus="AWS Credentials Check" ./test/e2e
 
 # E2E infrastructure targets
 .PHONY: e2e-authz-infra-up e2e-authz-infra-down e2e-init-db test-e2e-authz
@@ -121,6 +154,55 @@ clean:
 image:
 	docker build --platform $(GOOS)/$(GOARCH) -t $(IMAGE_REPO):$(IMAGE_TAG) .
 	docker tag $(IMAGE_REPO):$(IMAGE_TAG) $(IMAGE_REPO):$(GIT_SHA)
+
+# Build E2E test container (single platform)
+image-e2e:
+	docker build -f Containerfile.e2e \
+		--platform $(GOOS)/$(GOARCH) \
+		-t $(IMAGE_REPO)-e2e:$(IMAGE_TAG) .
+	docker tag $(IMAGE_REPO)-e2e:$(IMAGE_TAG) $(IMAGE_REPO)-e2e:$(GIT_SHA)
+
+# Build E2E test container for multiple architectures
+image-e2e-multiarch:
+	docker buildx build -f Containerfile.e2e \
+		--platform $(PLATFORMS) \
+		-t $(IMAGE_REPO)-e2e:$(IMAGE_TAG) \
+		-t $(IMAGE_REPO)-e2e:$(GIT_SHA) \
+		--load .
+
+# Build and push E2E test container for multiple architectures
+image-e2e-push-multiarch:
+	docker buildx build -f Containerfile.e2e \
+		--platform $(PLATFORMS) \
+		-t $(IMAGE_REPO)-e2e:$(IMAGE_TAG) \
+		-t $(IMAGE_REPO)-e2e:$(GIT_SHA) \
+		--push .
+
+# Build ginkgo command with focus/skip flags
+GINKGO_CMD := ginkgo -v
+ifneq ($(FOCUS),)
+	GINKGO_CMD += --focus="$(FOCUS)"
+endif
+ifneq ($(SKIP),)
+	GINKGO_CMD += --skip="$(SKIP)"
+endif
+GINKGO_CMD += --junit-report=junit.xml --output-dir=/app/test-results ./test/e2e
+
+# Since we're using dynamic credentials in our aws config, we need to export the 
+# credentials to the container
+test-e2e-container: image-e2e-multiarch
+	@echo "✅ Exporting static credentials from profile $(AWS_PROFILE)..."
+	@eval "$$(aws configure export-credentials --profile $(AWS_PROFILE) --format env-no-export)" && \
+	docker run --rm \
+		-e E2E_BASE_URL="$(BASE_URL)" \
+		-e E2E_ACCOUNT_ID="$(E2E_ACCOUNT_ID)" \
+		-e AWS_ACCESS_KEY_ID="$$AWS_ACCESS_KEY_ID" \
+		-e AWS_SECRET_ACCESS_KEY="$$AWS_SECRET_ACCESS_KEY" \
+		-e AWS_SESSION_TOKEN="$$AWS_SESSION_TOKEN" \
+		-e AWS_REGION="$(AWS_REGION)" \
+		-v $(PWD)/test-results:/app/test-results \
+		$(IMAGE_REPO)-e2e:$(IMAGE_TAG) \
+		$(GINKGO_CMD)
 
 # Push Docker image
 image-push: image

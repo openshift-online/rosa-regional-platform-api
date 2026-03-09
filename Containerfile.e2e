@@ -1,0 +1,37 @@
+# E2E Test Container
+# This container runs the Ginkgo e2e tests and outputs JUnit XML results
+#
+# Note: Containers run Linux only. This supports linux/amd64 and linux/arm64.
+# For native macOS testing, use: make test-e2e-native
+
+# Build arguments for multi-architecture support
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+FROM --platform=${TARGETOS}/${TARGETARCH} golang:1.25-alpine
+
+WORKDIR /app
+
+# Install dependencies
+RUN apk add --no-cache git ca-certificates make bash
+
+# Install ginkgo CLI
+RUN go install github.com/onsi/ginkgo/v2/ginkgo@v2.28.1
+
+# Copy go mod files and download dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code and tests
+COPY . .
+
+# Create test-results directory
+RUN mkdir -p test-results
+
+# Set environment variables (can be overridden at runtime)
+ENV E2E_BASE_URL=""
+ENV E2E_ACCOUNT_ID=""
+
+# Run e2e tests by default
+# Results will be written to /app/test-results/junit.xml
+CMD ["ginkgo", "-v", "--skip=Authz", "--junit-report=junit.xml", "--output-dir=/app/test-results", "./test/e2e"]

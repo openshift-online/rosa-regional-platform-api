@@ -7,6 +7,8 @@ GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GOOS ?= linux
 GOARCH ?= amd64
 PLATFORMS ?= linux/amd64,linux/arm64
+# In Prow CI, ARTIFACT_DIR is set automatically; locally default to ./test-results
+TEST_OUTPUT_DIR ?= $(or $(ARTIFACT_DIR),./test-results)
 DYNAMODB_ENDPOINT ?= http://localhost:8180
 CEDAR_AGENT_ENDPOINT ?= http://localhost:8181
 
@@ -98,11 +100,11 @@ test-coverage:
 test-e2e:
 	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo -v \
 	--skip="Authz" --junit-report=junit.xml \
-	--output-dir=./test-results ./test/e2e
+	--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
 
 test-e2e-quiet:
 	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo --skip="Authz" \
-	--junit-report=junit.xml --output-dir=./test-results ./test/e2e
+	--junit-report=junit.xml --output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
 
 # Run just the AWS credentials check test
 test-e2e-awscreds:

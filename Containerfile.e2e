@@ -34,4 +34,4 @@ ENV E2E_ACCOUNT_ID=""
 
 # Run e2e tests by default
 # Results will be written to /app/test-results/junit.xml
-CMD ["ginkgo", "-v", "--skip=Authz", "--junit-report=junit.xml", "--output-dir=/app/test-results", "./test/e2e"]
+CMD ["ginkgo", "-vv", "--skip=Authz", "--junit-report=junit.xml", "--output-dir=/app/test-results", "./test/e2e"]

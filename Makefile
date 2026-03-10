@@ -98,7 +98,7 @@ test-coverage:
 
 # Run e2e tests (native - works on Linux, macOS, Windows)
 test-e2e:
-	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo -v \
+	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo -vv \
 	--skip="Authz" --junit-report=junit.xml \
 	--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
 
@@ -108,7 +108,7 @@ test-e2e-quiet:
 
 # Run just the AWS credentials check test
 test-e2e-awscreds:
-	ginkgo -v --focus="AWS Credentials Check" ./test/e2e
+	ginkgo -vv --focus="AWS Credentials Check" ./test/e2e
 
 # E2E infrastructure targets
 .PHONY: e2e-authz-infra-up e2e-authz-infra-down e2e-init-db test-e2e-authz
@@ -181,7 +181,7 @@ image-e2e-push-multiarch:
 		--push .
 
 # Build ginkgo command with focus/skip flags
-GINKGO_CMD := ginkgo -v
+GINKGO_CMD := ginkgo -vv
 ifneq ($(FOCUS),)
 	GINKGO_CMD += --focus="$(FOCUS)"
 endif

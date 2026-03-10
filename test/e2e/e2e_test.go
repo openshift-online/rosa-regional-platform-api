@@ -356,51 +356,68 @@ var _ = Describe("Platform API", Ordered, func() {
 	// if there are statusfeedback then maestro-server is connected to maestro-client
 	It("should be have maestro-server connected to maestro-agent", func() {
 		By("having resource bundles records with statusfeedback and statusfeedbackSynced true", func() {
-			response := getAndExpectOK(apiClient, "/api/v0/resource_bundles", accountID, "")
-			Expect(response.StatusCode).To(Equal(http.StatusOK))
-			Expect(response.Headers).To(HaveKey("Content-Type"))
-			Expect(response.Headers).To(HaveKey("X-Amz-Apigw-Id"))
-			var list struct {
-				Items []map[string]interface{} `json:"items"`
-			}
-			err := json.Unmarshal(response.Body, &list)
-			Expect(err).To(BeNil())
-			Expect(list.Items).ToNot(BeEmpty())
-
-			// Track whether we found at least one bundle showing connectivity
-			foundOrSynced := false
-
-			// Structure: status.resourceStatus[] has statusFeedback and conditions (e.g. type StatusFeedbackSynced, status True)
-			for _, item := range list.Items {
-				status, _ := item["status"].(map[string]interface{})
-				if status == nil {
-					continue
+			// Poll for status feedback with timeout to avoid race condition
+			// Status feedback is updated asynchronously when maestro-agent communicates with maestro-server
+			Eventually(func() bool {
+				response, err := apiClient.Get("/api/v0/resource_bundles", accountID)
+				if err != nil {
+					GinkgoWriter.Printf("Error getting resource bundles: %v\n", err)
+					return false
 				}
-				resourceStatusList, _ := status["resourceStatus"].([]interface{})
-				for _, rs := range resourceStatusList {
-					rsMap, _ := rs.(map[string]interface{})
-					if rsMap == nil {
+
+				if response.StatusCode != http.StatusOK {
+					GinkgoWriter.Printf("Unexpected status code: %d\n", response.StatusCode)
+					return false
+				}
+
+				var list struct {
+					Items []map[string]interface{} `json:"items"`
+				}
+				err = json.Unmarshal(response.Body, &list)
+				if err != nil {
+					GinkgoWriter.Printf("Error unmarshaling response: %v\n", err)
+					return false
+				}
+
+				if len(list.Items) == 0 {
+					GinkgoWriter.Printf("No resource bundles found yet\n")
+					return false
+				}
+
+				// Track whether we found at least one bundle showing connectivity
+				foundOrSynced := false
+
+				// Structure: status.resourceStatus[] has statusFeedback and conditions (e.g. type StatusFeedbackSynced, status True)
+				for _, item := range list.Items {
+					status, _ := item["status"].(map[string]interface{})
+					if status == nil {
 						continue
 					}
-					statusFeedback, _ := rsMap["statusFeedback"].(map[string]interface{})
-					conditions, _ := rsMap["conditions"].([]interface{})
-					hasFeedbackSynced := false
-					for _, c := range conditions {
-						cond, _ := c.(map[string]interface{})
-						if cond != nil && cond["type"] == "StatusFeedbackSynced" && cond["status"] == "True" {
-							hasFeedbackSynced = true
-							break
+					resourceStatusList, _ := status["resourceStatus"].([]interface{})
+					for _, rs := range resourceStatusList {
+						rsMap, _ := rs.(map[string]interface{})
+						if rsMap == nil {
+							continue
+						}
+						statusFeedback, _ := rsMap["statusFeedback"].(map[string]interface{})
+						conditions, _ := rsMap["conditions"].([]interface{})
+						hasFeedbackSynced := false
+						for _, c := range conditions {
+							cond, _ := c.(map[string]interface{})
+							if cond != nil && cond["type"] == "StatusFeedbackSynced" && cond["status"] == "True" {
+								hasFeedbackSynced = true
+								break
+							}
+						}
+						if hasFeedbackSynced || (statusFeedback != nil && len(statusFeedback) > 0) {
+							foundOrSynced = true
+							GinkgoWriter.Printf("resource_bundle id=%v name=%v resourceStatus with statusFeedback / StatusFeedbackSynced: %v\n", item["id"], item["name"], statusFeedback)
 						}
 					}
-					if hasFeedbackSynced || (statusFeedback != nil && len(statusFeedback) > 0) {
-						foundOrSynced = true
-						GinkgoWriter.Printf("resource_bundle id=%v name=%v resourceStatus with statusFeedback / StatusFeedbackSynced: %v\n", item["id"], item["name"], statusFeedback)
-					}
 				}
-			}
 
-			// Fail if no resource bundle shows maestro-server to maestro-agent connectivity
-			Expect(foundOrSynced).To(BeTrue(), "No resource bundles found with statusFeedback or StatusFeedbackSynced - maestro-server may not be connected to maestro-agent")
+				return foundOrSynced
+			}, "2m", "5s").Should(BeTrue(), "No resource bundles found with statusFeedback or StatusFeedbackSynced - maestro-server may not be connected to maestro-agent")
 		})
 	})
 

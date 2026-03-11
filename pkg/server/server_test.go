@@ -64,8 +64,9 @@ func TestNew_WithCustomConfig(t *testing.T) {
 			ShutdownTimeout:    15 * time.Second,
 		},
 		Maestro: config.MaestroConfig{
-			BaseURL: "http://localhost:8001",
-			Timeout: 30 * time.Second,
+			BaseURL:     "http://localhost:8001",
+			Timeout:     30 * time.Second,
+			GRPCBaseURL: "grpc://localhost:8091",
 		},
 		Logging: config.LoggingConfig{
 			Level:  "debug",
@@ -201,6 +202,7 @@ func TestServer_ResourceBundleRoutes_Unauthorized(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 	cfg.AllowedAccounts = []string{"123456789012"}
+	cfg.Authz.Enabled = false // TODO: cdoan - add e2e test for authz enabled
 
 	server, err := New(cfg, logger)
 	if err != nil {
@@ -437,8 +439,9 @@ func TestServer_ServerAddresses(t *testing.T) {
 			ShutdownTimeout:    30 * time.Second,
 		},
 		Maestro: config.MaestroConfig{
-			BaseURL: "http://maestro:8000",
-			Timeout: 30 * time.Second,
+			BaseURL:     "http://maestro:8000",
+			GRPCBaseURL: "grpc://maestro-grpc.maestro-server:8090",
+			Timeout:     30 * time.Second,
 		},
 		Logging: config.LoggingConfig{
 			Level:  "info",

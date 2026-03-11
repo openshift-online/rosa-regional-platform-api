@@ -140,6 +140,7 @@ func (h *AuthzHandler) CreatePolicy(w http.ResponseWriter, r *http.Request) {
 
 	var req CreatePolicyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("failed to decode request body", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
 		return
 	}
@@ -238,6 +239,7 @@ func (h *AuthzHandler) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
 
 	var req CreatePolicyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("failed to decode request body", "error", err, "account_id", accountID, "policy_id", policyID)
 		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
 		return
 	}
@@ -287,6 +289,7 @@ func (h *AuthzHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	var req CreateGroupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("failed to decode request body", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
 		return
 	}
@@ -396,6 +399,7 @@ func (h *AuthzHandler) UpdateGroupMembers(w http.ResponseWriter, r *http.Request
 
 	var req UpdateMembersRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("failed to decode request body", "error", err, "account_id", accountID, "group_id", groupID)
 		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
 		return
 	}
@@ -463,6 +467,7 @@ func (h *AuthzHandler) CreateAttachment(w http.ResponseWriter, r *http.Request) 
 
 	var req CreateAttachmentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("failed to decode request body", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
 		return
 	}
@@ -559,6 +564,7 @@ func (h *AuthzHandler) AddAdmin(w http.ResponseWriter, r *http.Request) {
 
 	var req AddAdminRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("failed to decode request body", "error", err, "account_id", accountID, "caller_arn", callerARN)
 		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
 		return
 	}
@@ -626,6 +632,7 @@ func (h *AuthzHandler) CheckAuthorization(w http.ResponseWriter, r *http.Request
 
 	var req CheckAuthorizationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("failed to decode request body", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
 		return
 	}

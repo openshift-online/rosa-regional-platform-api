@@ -36,6 +36,7 @@ func (h *ManagementClusterHandler) Create(w http.ResponseWriter, r *http.Request
 	var req maestro.ConsumerCreateRequest
 	if r.Body != nil && r.ContentLength > 0 {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			h.logger.Error("failed to decode request body", "error", err, "account_id", accountID)
 			h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
 			return
 		}

@@ -79,6 +79,7 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var req types.NodePoolCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("failed to decode request body", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-CREATE-001", "Invalid request body")
 		return
 	}
@@ -133,6 +134,7 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var req types.NodePoolUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("failed to decode request body", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-001", "Invalid request body")
 		return
 	}

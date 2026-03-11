@@ -52,7 +52,7 @@ func NewConfig() *Config {
 		},
 		Maestro: MaestroConfig{
 			BaseURL:     "http://maestro:8000",
-			GRPCBaseURL: "maestro-grpc.maestro-server:8090",
+			GRPCBaseURL: "grpc://maestro-grpc.maestro-server:8090",
 			Timeout:     30 * time.Second,
 		},
 		Logging: LoggingConfig{

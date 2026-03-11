@@ -57,6 +57,7 @@ func (h *AccountsHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var req EnableAccountRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("failed to decode request body", "error", err, "caller_arn", callerARN)
 		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
 		return
 	}

@@ -6,7 +6,7 @@ FROM registry.ci.openshift.org/openshift/release:rhel-9-release-golang-1.25-open
 ARG GOLANGCI_LINT_VERSION=v2.1.6
 
 # golangci-lint (pinned version, checksum-verified by install script)
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh \
+RUN curl -sSfL "https://raw.githubusercontent.com/golangci/golangci-lint/${GOLANGCI_LINT_VERSION}/install.sh" \
     | sh -s -- -b /usr/local/bin "${GOLANGCI_LINT_VERSION}" && \
     golangci-lint --version
 

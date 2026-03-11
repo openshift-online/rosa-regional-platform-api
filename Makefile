@@ -99,6 +99,7 @@ test-coverage:
 # Run e2e tests (native - works on Linux, macOS, Windows)
 test-e2e:
 	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo -vv \
+	--ginkgo.no-color \
 	--skip="Authz" --junit-report=junit.xml \
 	--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
 

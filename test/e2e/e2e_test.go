@@ -1,7 +1,6 @@
 package e2e_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,98 +14,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// apiGatewayPublicURL stores the public URL of the API Gateway found in the AWS account
-var apiGatewayPublicURL string
-
-// createPayloadJSON creates a dynamic payload.json file similar to the bash script
-// It generates a ManifestWork with a timestamp and wraps it in a payload structure
-func createPayloadJSON(clusterID string, outputPath string) (string, error) {
-	timestamp := time.Now().Unix()
-	timestampStr := fmt.Sprintf("%d", timestamp)
-
-	// Create the ManifestWork structure
-	manifestWork := map[string]interface{}{
-		"apiVersion": "work.open-cluster-management.io/v1",
-		"kind":       "ManifestWork",
-		"metadata": map[string]interface{}{
-			"name": fmt.Sprintf("maestro-payload-%s", timestampStr),
-		},
-		"spec": map[string]interface{}{
-			"workload": map[string]interface{}{
-				"manifests": []map[string]interface{}{
-					{
-						"apiVersion": "v1",
-						"kind":       "ConfigMap",
-						"metadata": map[string]interface{}{
-							"name":      fmt.Sprintf("maestro-payload-%s", timestampStr),
-							"namespace": "default",
-							"labels": map[string]string{
-								"test":      "maestro-distribution",
-								"timestamp": timestampStr,
-							},
-						},
-						"data": map[string]string{
-							"message":             fmt.Sprintf("Hello from Regional Cluster via Maestro MQTT %s", timestampStr),
-							"cluster_source":      "regional-cluster",
-							"cluster_destination": clusterID,
-							"transport":           "aws-iot-core-mqtt",
-							"test_id":             timestampStr,
-							"payload_size":        "This tests MQTT payload distribution through AWS IoT Core",
-						},
-					},
-				},
-			},
-			"deleteOption": map[string]string{
-				"propagationPolicy": "Foreground",
-			},
-			"manifestConfigs": []map[string]interface{}{
-				{
-					"resourceIdentifier": map[string]string{
-						"group":     "",
-						"resource":  "configmaps",
-						"namespace": "default",
-						"name":      fmt.Sprintf("maestro-payload-%s", timestampStr),
-					},
-					"feedbackRules": []map[string]interface{}{
-						{
-							"type": "JSONPaths",
-							"jsonPaths": []map[string]string{
-								{
-									"name": "status",
-									"path": ".metadata",
-								},
-							},
-						},
-					},
-					"updateStrategy": map[string]string{
-						"type": "ServerSideApply",
-					},
-				},
-			},
-		},
-	}
-
-	// Create the payload structure
-	payload := map[string]interface{}{
-		"cluster_id": clusterID,
-		"data":       manifestWork,
-	}
-
-	// Marshal to JSON with indentation
-	jsonData, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal payload JSON: %w", err)
-	}
-
-	// Write to file
-	err = os.WriteFile(outputPath, jsonData, 0644)
-	if err != nil {
-		return "", fmt.Errorf("failed to write payload.json: %w", err)
-	}
-
-	return timestampStr, nil
-}
-
 // getAndExpectOK performs a GET request and asserts no error. If bodyContains is non-empty,
 // it asserts the response body contains that substring. Returns the response for further assertions or logging.
 func getAndExpectOK(client *APIClient, path, accountID, bodyContains string) *APIResponse {
@@ -116,17 +23,6 @@ func getAndExpectOK(client *APIClient, path, accountID, bodyContains string) *AP
 		Expect(response.Body).To(ContainSubstring(bodyContains))
 	}
 	return response
-}
-
-// runCommandWithTimeout executes a command with a timeout and returns the output and error
-// The context is automatically cancelled after the command completes or times out
-func runCommandWithTimeout(timeout time.Duration, name string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, name, args...)
-	output, err := cmd.CombinedOutput()
-	return output, err
 }
 
 func TestE2E(t *testing.T) {
@@ -409,7 +305,7 @@ var _ = Describe("Platform API", Ordered, func() {
 								break
 							}
 						}
-						if hasFeedbackSynced || (statusFeedback != nil && len(statusFeedback) > 0) {
+						if hasFeedbackSynced || len(statusFeedback) > 0 {
 							foundOrSynced = true
 							GinkgoWriter.Printf("resource_bundle id=%v name=%v resourceStatus with statusFeedback / StatusFeedbackSynced: %v\n", item["id"], item["name"], statusFeedback)
 						}

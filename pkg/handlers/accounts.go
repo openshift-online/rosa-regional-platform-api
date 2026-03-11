@@ -90,14 +90,16 @@ func (h *AccountsHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(AccountResponse{
+	if err := json.NewEncoder(w).Encode(AccountResponse{
 		Kind:          "Account",
 		AccountID:     account.AccountID,
 		PolicyStoreID: account.PolicyStoreID,
 		Privileged:    account.Privileged,
 		CreatedAt:     account.CreatedAt,
 		CreatedBy:     account.CreatedBy,
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode JSON response", "error", err)
+	}
 }
 
 // List handles GET /api/v0/accounts
@@ -124,11 +126,13 @@ func (h *AccountsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AccountListResponse{
+	if err := json.NewEncoder(w).Encode(AccountListResponse{
 		Kind:  "AccountList",
 		Items: items,
 		Total: len(items),
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode JSON response", "error", err)
+	}
 }
 
 // Get handles GET /api/v0/accounts/{id}
@@ -150,14 +154,16 @@ func (h *AccountsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AccountResponse{
+	if err := json.NewEncoder(w).Encode(AccountResponse{
 		Kind:          "Account",
 		AccountID:     account.AccountID,
 		PolicyStoreID: account.PolicyStoreID,
 		Privileged:    account.Privileged,
 		CreatedAt:     account.CreatedAt,
 		CreatedBy:     account.CreatedBy,
-	})
+	}); err != nil {
+		h.logger.Error("failed to encode JSON response", "error", err)
+	}
 }
 
 // Delete handles DELETE /api/v0/accounts/{id}
@@ -191,5 +197,7 @@ func (h *AccountsHandler) writeError(w http.ResponseWriter, status int, code, re
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		h.logger.Error("failed to encode error response", "error", err)
+	}
 }

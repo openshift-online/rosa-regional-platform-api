@@ -692,5 +692,7 @@ func (h *AuthzHandler) writeError(w http.ResponseWriter, status int, code, reaso
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		h.logger.Error("failed to encode error response", "error", err)
+	}
 }

@@ -15,10 +15,10 @@ import (
 
 // mockChecker implements authz.Checker for testing
 type mockChecker struct {
-	isAdminFn             func(ctx context.Context, accountID, principalARN string) (bool, error)
-	isPrivilegedFn        func(ctx context.Context, accountID string) (bool, error)
+	isAdminFn              func(ctx context.Context, accountID, principalARN string) (bool, error)
+	isPrivilegedFn         func(ctx context.Context, accountID string) (bool, error)
 	isAccountProvisionedFn func(ctx context.Context, accountID string) (bool, error)
-	authorizeFn           func(ctx context.Context, req *authz.AuthzRequest) (bool, error)
+	authorizeFn            func(ctx context.Context, req *authz.AuthzRequest) (bool, error)
 }
 
 func (m *mockChecker) IsAdmin(ctx context.Context, accountID, principalARN string) (bool, error) {

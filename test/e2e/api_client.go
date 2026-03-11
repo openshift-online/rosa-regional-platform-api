@@ -22,26 +22,35 @@ import (
 // SHA256 of empty string (for GET/empty body). Used for SigV4 payload hash.
 const emptyPayloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
-// apiGatewayRegionFromURL extracts the AWS region from an API Gateway URL.
-// e.g. https://id.execute-api.us-east-2.amazonaws.com/prod -> "us-east-2".
-// Returns empty string if the URL is not an API Gateway URL.
+// apiGatewayRegionFromURL extracts the AWS region from an API Gateway URL or ROSA int URL.
+// e.g. https://id.execute-api.us-east-2.amazonaws.com/prod -> "us-east-2"
+// e.g. https://api.us-east-1.int.rosa.devshift.net -> "us-east-1"
+// Returns empty string if the URL does not match a known pattern.
 func apiGatewayRegionFromURL(baseURL string) string {
 	u, err := url.Parse(baseURL)
 	if err != nil {
 		return ""
 	}
+	host := u.Host
+	// api.<region>.int.rosa.devshift.net (e.g. api.us-east-1.int.rosa.devshift.net)
+	if strings.HasSuffix(host, ".int.rosa.devshift.net") && strings.HasPrefix(host, "api.") {
+		parts := strings.Split(host, ".")
+		if len(parts) >= 2 {
+			return parts[1] // region is the second component
+		}
+	}
 	// host is like "id.execute-api.us-east-2.amazonaws.com"
-	if !strings.Contains(u.Host, "execute-api.") || !strings.Contains(u.Host, ".amazonaws.com") {
+	if !strings.Contains(host, "execute-api.") || !strings.Contains(host, ".amazonaws.com") {
 		return ""
 	}
 	// ...execute-api.<region>.amazonaws.com
-	parts := strings.Split(u.Host, ".")
+	parts := strings.Split(host, ".")
 	for i, p := range parts {
 		if p == "execute-api" && i+1 < len(parts) {
 			return parts[i+1]
 		}
 	}
-	return ""
+	return "us-east-1"
 }
 
 // APIClient provides methods for making requests to the ROSA API

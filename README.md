@@ -20,13 +20,9 @@ flowchart LR
     MgmtCluster -->|gRPC| Maestro["Maestro"]
 ```
 
-## Endpoints
+## API Documentation
 
-| Endpoint                               | Auth       | Description                                  |
-| -------------------------------------- | ---------- | -------------------------------------------- |
-| `POST /api/v0/management_clusters`     | privileged | Create management cluster (Maestro consumer) |
-| `GET /api/v0/management_clusters`      | privileged | List management clusters                     |
-| `GET /api/v0/management_clusters/{id}` | privileged | Get management cluster                       |
+[View the full API spec (Swagger UI)](https://petstore.swagger.io/?url=https://raw.githubusercontent.com/openshift-online/rosa-regional-platform-api/main/openapi/openapi.yaml)
 
 ## Configuration
 

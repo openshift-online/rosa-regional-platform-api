@@ -7,9 +7,9 @@ import (
 
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
-	workv1 "open-cluster-management.io/api/work/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	workv1 "open-cluster-management.io/api/work/v1"
 )
 
 // WorkHandler handles work/manifestwork endpoints

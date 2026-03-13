@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/gorilla/mux"
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
 )
@@ -65,6 +66,42 @@ func (h *ResourceBundleHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(list)
+}
+
+// Delete handles DELETE /api/v0/resource_bundles/{id}
+func (h *ResourceBundleHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	accountID := middleware.GetAccountID(ctx)
+
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	if id == "" {
+		h.logger.Error("resource bundle ID is required", "account_id", accountID)
+		h.writeError(w, http.StatusBadRequest, "invalid-request", "Resource bundle ID is required")
+		return
+	}
+
+	h.logger.Debug("deleting resource bundle", "id", id, "account_id", accountID)
+
+	err := h.maestroClient.DeleteResourceBundle(ctx, id)
+	if err != nil {
+		h.logger.Error("failed to delete resource bundle from Maestro", "error", err, "id", id, "account_id", accountID)
+		if maestroErr, ok := err.(*maestro.Error); ok {
+			if maestroErr.Code == "404" {
+				h.writeError(w, http.StatusNotFound, maestroErr.Code, maestroErr.Reason)
+				return
+			}
+			h.writeError(w, http.StatusBadGateway, maestroErr.Code, maestroErr.Reason)
+			return
+		}
+		h.writeError(w, http.StatusInternalServerError, "maestro-error", "Failed to delete resource bundle")
+		return
+	}
+
+	h.logger.Debug("resource bundle deleted", "id", id, "account_id", accountID)
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *ResourceBundleHandler) writeError(w http.ResponseWriter, status int, code, reason string) {

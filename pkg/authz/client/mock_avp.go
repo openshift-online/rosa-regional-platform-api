@@ -129,7 +129,7 @@ func (m *MockAVPClient) syncPolicies(ctx context.Context, policyStoreID string) 
 	if err != nil {
 		return fmt.Errorf("failed to sync policies: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -572,7 +572,7 @@ func (m *MockAVPClient) IsAuthorized(ctx context.Context, params *verifiedpermis
 	if err != nil {
 		return nil, fmt.Errorf("cedar-agent request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

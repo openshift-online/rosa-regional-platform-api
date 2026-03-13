@@ -75,7 +75,10 @@ func TestClient_CreateConsumer_Success(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(expectedConsumer)
+		err := json.NewEncoder(w).Encode(expectedConsumer)
+		if err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -108,11 +111,14 @@ func TestClient_CreateConsumer_Success(t *testing.T) {
 func TestClient_CreateConsumer_MaestroError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(&Error{
+		err := json.NewEncoder(w).Encode(&Error{
 			Kind:   "Error",
 			Code:   "invalid-request",
 			Reason: "Name is required",
 		})
+		if err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -151,7 +157,10 @@ func TestClient_CreateConsumer_MaestroError(t *testing.T) {
 func TestClient_CreateConsumer_UnexpectedStatusCode(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Internal server error"))
+		_, err := w.Write([]byte("Internal server error"))
+		if err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -221,7 +230,10 @@ func TestClient_ListConsumers_Success(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(expectedList)
+		err := json.NewEncoder(w).Encode(expectedList)
+		if err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -259,13 +271,16 @@ func TestClient_ListConsumers_WithoutPagination(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(&ConsumerList{
+		err := json.NewEncoder(w).Encode(&ConsumerList{
 			Kind:  "ConsumerList",
 			Page:  0,
 			Size:  0,
 			Total: 0,
 			Items: []Consumer{},
 		})
+		if err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -285,11 +300,14 @@ func TestClient_ListConsumers_WithoutPagination(t *testing.T) {
 func TestClient_ListConsumers_MaestroError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(&Error{
+		err := json.NewEncoder(w).Encode(&Error{
 			Kind:   "Error",
 			Code:   "server-error",
 			Reason: "Database connection failed",
 		})
+		if err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -341,7 +359,10 @@ func TestClient_GetConsumer_Success(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(expectedConsumer)
+		err := json.NewEncoder(w).Encode(expectedConsumer)
+		if err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -393,11 +414,14 @@ func TestClient_GetConsumer_NotFound(t *testing.T) {
 func TestClient_GetConsumer_MaestroError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(&Error{
+		err := json.NewEncoder(w).Encode(&Error{
 			Kind:   "Error",
 			Code:   "forbidden",
 			Reason: "Access denied",
 		})
+		if err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -475,7 +499,10 @@ func TestClient_ListResourceBundles_Success(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(expectedList)
+		err := json.NewEncoder(w).Encode(expectedList)
+		if err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -522,13 +549,16 @@ func TestClient_ListResourceBundles_WithFilters(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(&ResourceBundleList{
+		err := json.NewEncoder(w).Encode(&ResourceBundleList{
 			Kind:  "ResourceBundleList",
 			Page:  1,
 			Size:  10,
 			Total: 0,
 			Items: []ResourceBundle{},
 		})
+		if err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -548,11 +578,14 @@ func TestClient_ListResourceBundles_WithFilters(t *testing.T) {
 func TestClient_ListResourceBundles_MaestroError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(&Error{
+		err := json.NewEncoder(w).Encode(&Error{
 			Kind:   "Error",
 			Code:   "invalid-search",
 			Reason: "Invalid search syntax",
 		})
+		if err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 

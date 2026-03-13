@@ -163,7 +163,7 @@ func (h *AuthzHandler) CreatePolicy(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(PolicyResponse{
+	_ = json.NewEncoder(w).Encode(PolicyResponse{
 		Kind:        "Policy",
 		PolicyID:    p.PolicyID,
 		Name:        p.Name,
@@ -195,7 +195,7 @@ func (h *AuthzHandler) ListPolicies(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(PolicyListResponse{
+	_ = json.NewEncoder(w).Encode(PolicyListResponse{
 		Kind:  "PolicyList",
 		Items: items,
 		Total: len(items),
@@ -221,7 +221,7 @@ func (h *AuthzHandler) GetPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(PolicyResponse{
+	_ = json.NewEncoder(w).Encode(PolicyResponse{
 		Kind:        "Policy",
 		PolicyID:    p.PolicyID,
 		Name:        p.Name,
@@ -250,7 +250,7 @@ func (h *AuthzHandler) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(PolicyResponse{
+	_ = json.NewEncoder(w).Encode(PolicyResponse{
 		Kind:        "Policy",
 		PolicyID:    p.PolicyID,
 		Name:        p.Name,
@@ -305,7 +305,7 @@ func (h *AuthzHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(GroupResponse{
+	_ = json.NewEncoder(w).Encode(GroupResponse{
 		Kind:        "Group",
 		GroupID:     g.GroupID,
 		Name:        g.Name,
@@ -337,7 +337,7 @@ func (h *AuthzHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(GroupListResponse{
+	_ = json.NewEncoder(w).Encode(GroupListResponse{
 		Kind:  "GroupList",
 		Items: items,
 		Total: len(items),
@@ -363,7 +363,7 @@ func (h *AuthzHandler) GetGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(GroupResponse{
+	_ = json.NewEncoder(w).Encode(GroupResponse{
 		Kind:        "Group",
 		GroupID:     g.GroupID,
 		Name:        g.Name,
@@ -427,7 +427,7 @@ func (h *AuthzHandler) UpdateGroupMembers(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(MemberListResponse{
+	_ = json.NewEncoder(w).Encode(MemberListResponse{
 		Kind:  "MemberList",
 		Items: members,
 		Total: len(members),
@@ -448,7 +448,7 @@ func (h *AuthzHandler) ListGroupMembers(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(MemberListResponse{
+	_ = json.NewEncoder(w).Encode(MemberListResponse{
 		Kind:  "MemberList",
 		Items: members,
 		Total: len(members),
@@ -486,7 +486,7 @@ func (h *AuthzHandler) CreateAttachment(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(AttachmentResponse{
+	_ = json.NewEncoder(w).Encode(AttachmentResponse{
 		Kind:         "Attachment",
 		AttachmentID: a.AttachmentID,
 		PolicyID:     a.PolicyID,
@@ -527,7 +527,7 @@ func (h *AuthzHandler) ListAttachments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AttachmentListResponse{
+	_ = json.NewEncoder(w).Encode(AttachmentListResponse{
 		Kind:  "AttachmentList",
 		Items: items,
 		Total: len(items),
@@ -577,7 +577,7 @@ func (h *AuthzHandler) AddAdmin(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"kind":         "Admin",
 		"principalArn": req.PrincipalARN,
 	})
@@ -595,7 +595,7 @@ func (h *AuthzHandler) ListAdmins(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AdminListResponse{
+	_ = json.NewEncoder(w).Encode(AdminListResponse{
 		Kind:  "AdminList",
 		Items: admins,
 		Total: len(admins),
@@ -669,7 +669,7 @@ func (h *AuthzHandler) CheckAuthorization(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(CheckAuthorizationResponse{
+	_ = json.NewEncoder(w).Encode(CheckAuthorizationResponse{
 		Kind:     "AuthorizationDecision",
 		Decision: decision,
 	})
@@ -685,5 +685,5 @@ func (h *AuthzHandler) writeError(w http.ResponseWriter, status int, code, reaso
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }

@@ -24,7 +24,6 @@ type Server struct {
 	cfg           *config.Config
 	logger        *slog.Logger
 	apiServer     *http.Server
-	grpcServer    *http.Server
 	healthServer  *http.Server
 	metricsServer *http.Server
 	healthHandler *apphandlers.HealthHandler

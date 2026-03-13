@@ -77,7 +77,7 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Create a scheme and decoder for ManifestWork
 	scheme := runtime.NewScheme()
-	_ = workv1.AddToScheme(scheme)
+	_ = workv1.Install(scheme)
 	decoder := serializer.NewCodecFactory(scheme).UniversalDeserializer()
 
 	// Decode the ManifestWork from the data payload
@@ -128,7 +128,7 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func (h *WorkHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
@@ -141,5 +141,5 @@ func (h *WorkHandler) writeError(w http.ResponseWriter, status int, code, reason
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }

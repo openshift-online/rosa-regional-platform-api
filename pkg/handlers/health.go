@@ -28,7 +28,7 @@ func (h *HealthHandler) SetReady(ready bool) {
 // Liveness handles GET /live
 func (h *HealthHandler) Liveness(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // Readiness handles GET /ready
@@ -37,9 +37,9 @@ func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 
 	if !h.ready.Load() {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"status": "unavailable"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "unavailable"})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

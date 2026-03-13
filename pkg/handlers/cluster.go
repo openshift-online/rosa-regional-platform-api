@@ -216,7 +216,7 @@ func (h *ClusterHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 func (h *ClusterHandler) writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 func (h *ClusterHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
@@ -227,5 +227,5 @@ func (h *ClusterHandler) writeError(w http.ResponseWriter, status int, code, rea
 		"code":   code,
 		"reason": reason,
 	}
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }

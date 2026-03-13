@@ -94,7 +94,7 @@ func (p *Privileged) writeError(w http.ResponseWriter, status int, code, reason 
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // GetPrivileged retrieves the privileged status from context

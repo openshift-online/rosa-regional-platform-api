@@ -228,5 +228,5 @@ func (a *Authz) writeError(w http.ResponseWriter, status int, code, reason strin
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }

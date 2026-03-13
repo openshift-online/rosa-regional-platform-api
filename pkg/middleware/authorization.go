@@ -56,5 +56,5 @@ func (a *Authorization) writeError(w http.ResponseWriter, status int, code, reas
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }

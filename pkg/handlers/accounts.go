@@ -89,7 +89,7 @@ func (h *AccountsHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(AccountResponse{
+	_ = json.NewEncoder(w).Encode(AccountResponse{
 		Kind:          "Account",
 		AccountID:     account.AccountID,
 		PolicyStoreID: account.PolicyStoreID,
@@ -123,7 +123,7 @@ func (h *AccountsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AccountListResponse{
+	_ = json.NewEncoder(w).Encode(AccountListResponse{
 		Kind:  "AccountList",
 		Items: items,
 		Total: len(items),
@@ -149,7 +149,7 @@ func (h *AccountsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AccountResponse{
+	_ = json.NewEncoder(w).Encode(AccountResponse{
 		Kind:          "Account",
 		AccountID:     account.AccountID,
 		PolicyStoreID: account.PolicyStoreID,
@@ -190,5 +190,5 @@ func (h *AccountsHandler) writeError(w http.ResponseWriter, status int, code, re
 		"reason": reason,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }

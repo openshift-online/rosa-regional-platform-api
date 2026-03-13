@@ -18,6 +18,12 @@ AWS_REGION ?=
 FOCUS ?=
 SKIP ?= Authz
 
+# CI container settings - for reproducing Prow CI environment locally
+CI_IMAGE_REPO ?= quay.io/openshift-online/rosa-regional-platform-api-ci
+CI_IMAGE_TAG ?= latest
+REPO_URL ?= https://github.com/openshift-online/rosa-regional-platform-api
+GIT_REF ?= main
+
 # Detect host platform for native builds
 HOST_OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 HOST_ARCH := $(shell uname -m)
@@ -54,10 +60,12 @@ help:
 	@echo "  e2e-init-db    - Initialize DynamoDB tables"
 	@echo ""
 	@echo "Code Quality:"
-	@echo "  lint           - Run golangci-lint"
-	@echo "  fmt            - Format code with gofmt"
-	@echo "  vet            - Run go vet"
-	@echo "  verify         - Verify go.mod is tidy"
+	@echo "  lint                - Run golangci-lint"
+	@echo "  lint-ci-container   - Run linter in CI container with fresh clone"
+	@echo "                        Supports: REPO_URL=..., GIT_REF=..."
+	@echo "  fmt                 - Format code with gofmt"
+	@echo "  vet                 - Run go vet"
+	@echo "  verify              - Verify go.mod is tidy"
 	@echo ""
 	@echo "Docker:"
 	@echo "  image                    - Build Docker image"
@@ -146,6 +154,15 @@ vet:
 # Run linter
 lint:
 	golangci-lint run ./...
+
+# Run linter in CI container with fresh clone (reproduces Prow CI exactly)
+lint-ci-container:
+	@echo "Building CI container image..."
+	docker build -f ci/Containerfile -t $(CI_IMAGE_REPO):$(CI_IMAGE_TAG) .
+	@echo "Running linter in CI container with fresh clone from $(REPO_URL)@$(GIT_REF)..."
+	docker run --rm \
+		$(CI_IMAGE_REPO):$(CI_IMAGE_TAG) \
+		bash -c "git clone $(REPO_URL) /tmp/repo && cd /tmp/repo && git checkout $(GIT_REF) && ./ci/lint.sh"
 
 # Clean build artifacts
 clean:

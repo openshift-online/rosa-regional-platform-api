@@ -15,10 +15,10 @@ import (
 	"github.com/openshift-online/maestro/pkg/api/openapi"
 	"github.com/openshift-online/maestro/pkg/client/cloudevents/grpcsource"
 	"github.com/openshift/rosa-regional-platform-api/pkg/config"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"github.com/openshift/rosa-regional-platform-api/pkg/types"
-	workv1 "open-cluster-management.io/api/work/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	workv1client "open-cluster-management.io/api/client/work/clientset/versioned/typed/work/v1"
+	workv1 "open-cluster-management.io/api/work/v1"
 	grpcoptions "open-cluster-management.io/sdk-go/pkg/cloudevents/generic/options/grpc"
 )
 
@@ -136,8 +136,8 @@ func NewClient(cfg config.MaestroConfig, logger *slog.Logger) *Client {
 	}
 
 	return &Client{
-		baseURL:       cfg.BaseURL,
-		grpcBaseURL:   cfg.GRPCBaseURL,
+		baseURL:     cfg.BaseURL,
+		grpcBaseURL: cfg.GRPCBaseURL,
 		httpClient: &http.Client{
 			Timeout: cfg.Timeout,
 		},

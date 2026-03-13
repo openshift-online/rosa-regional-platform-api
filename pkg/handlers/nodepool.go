@@ -79,6 +79,7 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var req types.NodePoolCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("failed to decode request body", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-CREATE-001", "Invalid request body")
 		return
 	}
@@ -133,6 +134,7 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var req types.NodePoolUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("failed to decode request body", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-001", "Invalid request body")
 		return
 	}
@@ -213,7 +215,9 @@ func (h *NodePoolHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 func (h *NodePoolHandler) writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		h.logger.Error("failed to encode JSON response", "error", err)
+	}
 }
 
 func (h *NodePoolHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
@@ -224,5 +228,7 @@ func (h *NodePoolHandler) writeError(w http.ResponseWriter, status int, code, re
 		"code":   code,
 		"reason": reason,
 	}
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		h.logger.Error("failed to encode error response", "error", err)
+	}
 }

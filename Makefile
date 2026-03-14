@@ -86,7 +86,7 @@ build:
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o $(BINARY_NAME) ./cmd/$(BINARY_NAME)
 
 # Run all unit tests (excludes e2e), ci calls test, so disable mod check here
-test: deps
+test:
 	go test -v -race -count=1 $(shell go list ./... | grep -v '/test/e2e')
 
 # Run unit tests for a specific package (usage: make test-unit PKG=./pkg/authz/...)
@@ -240,7 +240,6 @@ run: build
 deps:
 	go mod download
 	go mod tidy
-	go mod vendor
 
 # Generate OpenAPI code (requires oapi-codegen)
 generate:

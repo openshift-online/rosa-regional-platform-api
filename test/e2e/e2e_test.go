@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -250,22 +251,95 @@ var _ = Describe("Platform API", Ordered, func() {
 
 	// get the /api/v0/resource_bundles, iterate and find items with status.resourceStatus (and optional statusFeedback / StatusFeedbackSynced)
 	// if there are statusfeedback then maestro-server is connected to maestro-client
-	It("should be have maestro-server connected to maestro-agent", func() {
-		By("having resource bundles records with statusfeedback and statusfeedbackSynced true", func() {
-			// Poll for status feedback with timeout to avoid race condition
-			// Status feedback is updated asynchronously when maestro-agent communicates with maestro-server
+	It("should have maestro-server connected to maestro-agent", func() {
+
+		var managementClusterName string
+		var testWorkName string = "test-work-" + uuid.New().String()[:8]
+
+		By("selecting the management cluster to test", func() {
+			response, err := apiClient.Get("/api/v0/management_clusters", accountID)
+			Expect(err).To(BeNil())
+			Expect(response.StatusCode).To(Equal(http.StatusOK))
+			var list struct {
+				Items []map[string]interface{} `json:"items"`
+			}
+			err = json.Unmarshal(response.Body, &list)
+			Expect(err).To(BeNil())
+
+			for _, item := range list.Items {
+				if !strings.HasPrefix(item["name"].(string), "test-") {
+					managementClusterName = item["name"].(string)
+					break
+				}
+			}
+			if managementClusterName == "" {
+				// There should be at least one management cluster that is created by testing
+				Fail("No management cluster found that is not named 'test-mgmt-*', cannot test maestro-server connected to maestro-agent")
+
+			}
+			GinkgoWriter.Printf("Using management cluster: %s\n", managementClusterName)
+		})
+
+		By("creating a manifestwork for the selected management cluster", func() {
+			// create a manifestwork with a configmap
+			work := map[string]interface{}{
+				"cluster_id": managementClusterName,
+				"data": map[string]interface{}{
+					"apiVersion": "work.open-cluster-management.io/v1",
+					"kind":       "ManifestWork",
+					"metadata": map[string]interface{}{
+						"name": testWorkName,
+					},
+					"spec": map[string]interface{}{
+						"workload": map[string]interface{}{
+							"manifests": []map[string]interface{}{
+								{
+									"apiVersion": "v1",
+									"kind":       "ConfigMap",
+									"metadata": map[string]interface{}{
+										"name":      testWorkName,
+										"namespace": "default",
+									},
+									"data": map[string]string{
+										"key": "value",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			GinkgoWriter.Printf("Creating manifestwork: %s on management cluster: %s\n", testWorkName, managementClusterName)
+			response, err := apiClient.Post("/api/v0/work", work, accountID)
+			Expect(err).To(BeNil())
+			Expect(response.StatusCode).To(Equal(http.StatusCreated))
+			GinkgoWriter.Printf("Manifestwork created: %s\n", string(response.Body))
+			var responseBody map[string]interface{}
+			err = json.Unmarshal(response.Body, &responseBody)
+			Expect(err).To(BeNil())
+			Expect(responseBody["kind"]).To(Equal("ManifestWork"))
+			Expect(responseBody["href"]).ToNot(BeEmpty())
+			Expect(responseBody["cluster_id"]).To(Equal(managementClusterName))
+			Expect(responseBody["name"]).To(Equal(testWorkName))
+
+		})
+
+		By("waiting for the resource bundles to be created and have conditions set correctly", func() {
+
 			Eventually(func() bool {
-				response, err := apiClient.Get("/api/v0/resource_bundles", accountID)
+
+				// Filter resource bundles by consumer_name to reduce the number of items to check
+				searchURL := fmt.Sprintf("/api/v0/resource_bundles?search=consumer_name='%s'", managementClusterName)
+				GinkgoWriter.Printf("Getting resource bundles for consumer_name=%s\n", managementClusterName)
+				response, err := apiClient.Get(searchURL, accountID)
 				if err != nil {
 					GinkgoWriter.Printf("Error getting resource bundles: %v\n", err)
 					return false
 				}
-
 				if response.StatusCode != http.StatusOK {
 					GinkgoWriter.Printf("Unexpected status code: %d\n", response.StatusCode)
 					return false
 				}
-
 				var list struct {
 					Items []map[string]interface{} `json:"items"`
 				}
@@ -274,46 +348,76 @@ var _ = Describe("Platform API", Ordered, func() {
 					GinkgoWriter.Printf("Error unmarshaling response: %v\n", err)
 					return false
 				}
-
 				if len(list.Items) == 0 {
 					GinkgoWriter.Printf("No resource bundles found yet\n")
 					return false
 				}
 
-				// Track whether we found at least one bundle showing connectivity
+				// Track whether we found at least one bundle with all three conditions true
 				foundOrSynced := false
 
-				// Structure: status.resourceStatus[] has statusFeedback and conditions (e.g. type StatusFeedbackSynced, status True)
+				// search the items in the resource bundles for the test work name
 				for _, item := range list.Items {
-					status, _ := item["status"].(map[string]interface{})
-					if status == nil {
+					metadata, hasMetadata := item["metadata"].(map[string]interface{})
+					if !hasMetadata || metadata == nil {
 						continue
 					}
-					resourceStatusList, _ := status["resourceStatus"].([]interface{})
+					name, _ := metadata["name"].(string)
+					consumerName, hasConsumerName := item["consumer_name"].(string)
+					if !hasConsumerName || name != testWorkName || consumerName != managementClusterName {
+						continue
+					}
+
+					GinkgoWriter.Printf("resource_bundle id=%v name=%v consumer_name=%v\n", item["id"], name, consumerName)
+
+					appliedOk, availableOk, statusFeedbackSyncedOk := false, false, false
+					status, statusOk := item["status"].(map[string]interface{})
+					if !statusOk || status == nil {
+						continue
+					}
+					resourceStatusList, resourceStatusOk := status["resourceStatus"].([]interface{})
+					if !resourceStatusOk {
+						continue
+					}
 					for _, rs := range resourceStatusList {
-						rsMap, _ := rs.(map[string]interface{})
-						if rsMap == nil {
+						rsMap, rsOk := rs.(map[string]interface{})
+						if !rsOk || rsMap == nil {
 							continue
 						}
-						statusFeedback, _ := rsMap["statusFeedback"].(map[string]interface{})
-						conditions, _ := rsMap["conditions"].([]interface{})
-						hasFeedbackSynced := false
-						for _, c := range conditions {
-							cond, _ := c.(map[string]interface{})
-							if cond != nil && cond["type"] == "StatusFeedbackSynced" && cond["status"] == "True" {
-								hasFeedbackSynced = true
-								break
+						conditions, conditionsOk := rsMap["conditions"].([]interface{})
+						if !conditionsOk {
+							continue
+						}
+						for _, condition := range conditions {
+							conditionMap, conditionOk := condition.(map[string]interface{})
+							if !conditionOk || conditionMap == nil {
+								continue
+							}
+							if conditionMap["type"] == "Applied" && conditionMap["status"] == "True" {
+								appliedOk = true
+							}
+							if conditionMap["type"] == "Available" && conditionMap["status"] == "True" {
+								availableOk = true
+							}
+							if conditionMap["type"] == "StatusFeedbackSynced" && conditionMap["status"] == "True" {
+								statusFeedbackSyncedOk = true
 							}
 						}
-						if hasFeedbackSynced || len(statusFeedback) > 0 {
-							foundOrSynced = true
-							GinkgoWriter.Printf("resource_bundle id=%v name=%v resourceStatus with statusFeedback / StatusFeedbackSynced: %v\n", item["id"], item["name"], statusFeedback)
-						}
+					}
+					if appliedOk && availableOk && statusFeedbackSyncedOk {
+						foundOrSynced = true
+						GinkgoWriter.Printf("resource_bundle id=%v name=%v consumer_name=%v applied=true available=true statusfeedbacksynced=true\n", item["id"], name, consumerName)
+						break
 					}
 				}
 
+				if !foundOrSynced {
+					GinkgoWriter.Printf("Test work %s for management cluster %s not found in resource bundles\n", testWorkName, managementClusterName)
+					return false
+				}
+
 				return foundOrSynced
-			}, "2m", "5s").Should(BeTrue(), "No resource bundles found with statusFeedback or StatusFeedbackSynced - maestro-server may not be connected to maestro-agent")
+			}, "2m", "5s").Should(BeTrue(), "No resource bundles found with Applied, Available, or StatusFeedbackSynced conditions - maestro-server may not be connected to maestro-agent")
 		})
 	})
 

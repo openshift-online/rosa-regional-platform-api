@@ -13,6 +13,7 @@ import (
 
 	"github.com/openshift/rosa-regional-platform-api/pkg/authz"
 	"github.com/openshift/rosa-regional-platform-api/pkg/authz/client"
+	"github.com/openshift/rosa-regional-platform-api/pkg/clients/hyperfleet"
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-platform-api/pkg/config"
 	apphandlers "github.com/openshift/rosa-regional-platform-api/pkg/handlers"
@@ -36,12 +37,15 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	// Create Maestro client
 	maestroClient := maestro.NewClient(cfg.Maestro, logger)
 
+	// Create Hyperfleet client
+	hyperfleetClient := hyperfleet.NewClient(cfg.Hyperfleet, logger)
+
 	// Create handlers
 	healthHandler := apphandlers.NewHealthHandler()
 	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(maestroClient, logger)
 	resourceBundleHandler := apphandlers.NewResourceBundleHandler(maestroClient, logger)
 	workHandler := apphandlers.NewWorkHandler(maestroClient, logger)
-	clusterHandler := apphandlers.NewClusterHandler(maestroClient, logger)
+	clusterHandler := apphandlers.NewClusterHandler(maestroClient, hyperfleetClient, logger)
 	nodePoolHandler := apphandlers.NewNodePoolHandler(maestroClient, logger)
 
 	// Create legacy authorization middleware (for non-authz routes)

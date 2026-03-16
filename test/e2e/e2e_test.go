@@ -254,7 +254,7 @@ var _ = Describe("Platform API", Ordered, func() {
 	It("should have maestro-server connected to maestro-agent", func() {
 
 		var managementClusterName string
-		var testWorkName string = "test-work-" + uuid.New().String()[:8]
+		var testWorkName = "test-work-" + uuid.New().String()[:8]
 
 		By("selecting the management cluster to test", func() {
 			response, err := apiClient.Get("/api/v0/management_clusters", accountID)

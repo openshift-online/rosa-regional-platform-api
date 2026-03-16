@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
 	workv1 "open-cluster-management.io/api/work/v1"
@@ -18,7 +19,8 @@ import (
 
 // mockMaestroClient is a mock implementation of the Maestro client
 type mockMaestroClient struct {
-	listResourceBundlesFunc func(ctx context.Context, page, size int, search, orderBy, fields string) (*maestro.ResourceBundleList, error)
+	listResourceBundlesFunc   func(ctx context.Context, page, size int, search, orderBy, fields string) (*maestro.ResourceBundleList, error)
+	deleteResourceBundleFunc  func(ctx context.Context, id string) error
 }
 
 func (m *mockMaestroClient) ListResourceBundles(ctx context.Context, page, size int, search, orderBy, fields string) (*maestro.ResourceBundleList, error) {
@@ -26,6 +28,13 @@ func (m *mockMaestroClient) ListResourceBundles(ctx context.Context, page, size 
 		return m.listResourceBundlesFunc(ctx, page, size, search, orderBy, fields)
 	}
 	return nil, errors.New("not implemented")
+}
+
+func (m *mockMaestroClient) DeleteResourceBundle(ctx context.Context, id string) error {
+	if m.deleteResourceBundleFunc != nil {
+		return m.deleteResourceBundleFunc(ctx, id)
+	}
+	return errors.New("not implemented")
 }
 
 // We need to embed this to satisfy the maestro.Client interface
@@ -444,5 +453,176 @@ func TestResourceBundleHandler_WriteError(t *testing.T) {
 				t.Errorf("expected reason=%s, got %v", tt.expectedReason, errorResp["reason"])
 			}
 		})
+	}
+}
+
+func TestResourceBundleHandler_Delete_Success(t *testing.T) {
+	mockClient := &mockMaestroClient{
+		deleteResourceBundleFunc: func(ctx context.Context, id string) error {
+			if id != "rb-123" {
+				t.Errorf("expected id=rb-123, got %s", id)
+			}
+			return nil
+		},
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewResourceBundleHandler(mockClient, logger)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v0/resource_bundles/rb-123", nil)
+	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
+	req = req.WithContext(ctx)
+
+	// Set up the mux vars to simulate the route parameter
+	req = mux.SetURLVars(req, map[string]string{"id": "rb-123"})
+
+	w := httptest.NewRecorder()
+	handler.Delete(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected status 204, got %d", w.Code)
+	}
+}
+
+func TestResourceBundleHandler_Delete_NotFound(t *testing.T) {
+	mockClient := &mockMaestroClient{
+		deleteResourceBundleFunc: func(ctx context.Context, id string) error {
+			return &maestro.Error{
+				Kind:   "Error",
+				Code:   "404",
+				Reason: "Resource bundle not found",
+			}
+		},
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewResourceBundleHandler(mockClient, logger)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v0/resource_bundles/rb-999", nil)
+	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
+	req = req.WithContext(ctx)
+
+	req = mux.SetURLVars(req, map[string]string{"id": "rb-999"})
+
+	w := httptest.NewRecorder()
+	handler.Delete(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", w.Code)
+	}
+
+	var errorResp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&errorResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+
+	if errorResp["kind"] != "Error" {
+		t.Errorf("expected kind=Error, got %v", errorResp["kind"])
+	}
+
+	if errorResp["code"] != "404" {
+		t.Errorf("expected code=404, got %v", errorResp["code"])
+	}
+}
+
+func TestResourceBundleHandler_Delete_MaestroError(t *testing.T) {
+	mockClient := &mockMaestroClient{
+		deleteResourceBundleFunc: func(ctx context.Context, id string) error {
+			return &maestro.Error{
+				Kind:   "Error",
+				Code:   "maestro-500",
+				Reason: "Internal Maestro error",
+			}
+		},
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewResourceBundleHandler(mockClient, logger)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v0/resource_bundles/rb-123", nil)
+	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
+	req = req.WithContext(ctx)
+
+	req = mux.SetURLVars(req, map[string]string{"id": "rb-123"})
+
+	w := httptest.NewRecorder()
+	handler.Delete(w, req)
+
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("expected status 502, got %d", w.Code)
+	}
+
+	var errorResp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&errorResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+
+	if errorResp["code"] != "maestro-500" {
+		t.Errorf("expected code=maestro-500, got %v", errorResp["code"])
+	}
+}
+
+func TestResourceBundleHandler_Delete_GenericError(t *testing.T) {
+	mockClient := &mockMaestroClient{
+		deleteResourceBundleFunc: func(ctx context.Context, id string) error {
+			return errors.New("network error")
+		},
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewResourceBundleHandler(mockClient, logger)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v0/resource_bundles/rb-123", nil)
+	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
+	req = req.WithContext(ctx)
+
+	req = mux.SetURLVars(req, map[string]string{"id": "rb-123"})
+
+	w := httptest.NewRecorder()
+	handler.Delete(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", w.Code)
+	}
+
+	var errorResp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&errorResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+
+	if errorResp["code"] != "maestro-error" {
+		t.Errorf("expected code=maestro-error, got %v", errorResp["code"])
+	}
+
+	if errorResp["reason"] != "Failed to delete resource bundle" {
+		t.Errorf("expected reason='Failed to delete resource bundle', got %v", errorResp["reason"])
+	}
+}
+
+func TestResourceBundleHandler_Delete_MissingID(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewResourceBundleHandler(nil, logger)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v0/resource_bundles/", nil)
+	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
+	req = req.WithContext(ctx)
+
+	// Empty ID
+	req = mux.SetURLVars(req, map[string]string{"id": ""})
+
+	w := httptest.NewRecorder()
+	handler.Delete(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
+	}
+
+	var errorResp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&errorResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+
+	if errorResp["code"] != "invalid-request" {
+		t.Errorf("expected code=invalid-request, got %v", errorResp["code"])
 	}
 }

@@ -247,7 +247,7 @@ func (c *Client) ListConsumers(ctx context.Context, page, size int) (*ConsumerLi
 
 // GetConsumer retrieves a consumer by ID from Maestro
 func (c *Client) GetConsumer(ctx context.Context, id string) (*Consumer, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+consumersPath+"/"+id, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+consumersPath+"/"+url.PathEscape(id), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -346,6 +346,58 @@ func (c *Client) ListResourceBundles(ctx context.Context, page, size int, search
 	c.logger.Debug("resource bundles listed", "total", list.Total)
 
 	return &list, nil
+}
+
+// DeleteResourceBundle deletes a resource bundle by ID from Maestro
+func (c *Client) DeleteResourceBundle(ctx context.Context, id string) error {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+resourceBundlesPath+"/"+url.PathEscape(id), nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	c.logger.Debug("deleting resource bundle from Maestro", "id", id)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		var apiErr Error
+		if json.Unmarshal(respBody, &apiErr) == nil {
+			if apiErr.Kind == "" {
+				apiErr.Kind = "Error"
+			}
+			apiErr.Code = "404"
+			if apiErr.Reason == "" {
+				apiErr.Reason = "Resource bundle not found"
+			}
+			return &apiErr
+		}
+		return &Error{
+			Kind:   "Error",
+			Code:   "404",
+			Reason: "Resource bundle not found",
+		}
+	}
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		var apiErr Error
+		if json.Unmarshal(respBody, &apiErr) == nil && apiErr.Reason != "" {
+			return &apiErr
+		}
+		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	c.logger.Debug("resource bundle deleted", "id", id)
+
+	return nil
 }
 
 // CreateManifestWork creates a ManifestWork resource in Maestro via gRPC

@@ -159,6 +159,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		rbRouter.Use(authMiddleware.RequireAllowedAccount)
 	}
 	rbRouter.HandleFunc("", resourceBundleHandler.List).Methods(http.MethodGet)
+	rbRouter.HandleFunc("/{id}", resourceBundleHandler.Delete).Methods(http.MethodDelete)
 
 	// Work routes (require allowed account)
 	workRouter := apiRouter.PathPrefix("/api/v0/work").Subrouter()

@@ -247,7 +247,7 @@ func (c *Client) ListConsumers(ctx context.Context, page, size int) (*ConsumerLi
 
 // GetConsumer retrieves a consumer by ID from Maestro
 func (c *Client) GetConsumer(ctx context.Context, id string) (*Consumer, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+consumersPath+"/"+id, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+consumersPath+"/"+url.PathEscape(id), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -350,7 +350,7 @@ func (c *Client) ListResourceBundles(ctx context.Context, page, size int, search
 
 // DeleteResourceBundle deletes a resource bundle by ID from Maestro
 func (c *Client) DeleteResourceBundle(ctx context.Context, id string) error {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+resourceBundlesPath+"/"+id, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+resourceBundlesPath+"/"+url.PathEscape(id), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

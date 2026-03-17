@@ -439,7 +439,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /clusters/{id}/status:
+  /clusters/{id}/statuses:
     parameters:
       - name: id
         in: path
@@ -449,9 +449,9 @@ paths:
         description: Cluster ID
 
     get:
-      summary: Get cluster status
-      description: Retrieve cluster status (user must own the cluster)
-      operationId: getUserClusterStatus
+      summary: Get cluster statuses
+      description: Retrieve cluster statuses (user must own the cluster)
+      operationId: getUserClusterStatuses
       tags:
         - Clusters
       responses:

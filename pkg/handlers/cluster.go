@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/hyperfleet"
@@ -77,7 +78,7 @@ func (h *ClusterHandler) proxyToHyperfleet(w http.ResponseWriter, r *http.Reques
 	h.logger.Info("proxying cluster request to hyperfleet", "method", r.Method, "path", path, "account_id", accountID)
 
 	// Proxy the request to Hyperfleet
-	resp, err := h.hyperfleetClient.ProxyRequest(ctx, r.Method, path, r.Body, r.URL.Query())
+	resp, err := h.hyperfleetClient.ProxyRequest(ctx, r.Method, path, r.Body, r.URL.Query(), r.Header)
 	if err != nil {
 		h.logger.Error("failed to proxy request to hyperfleet", "error", err, "path", path, "account_id", accountID)
 		h.writeError(w, http.StatusBadGateway, "HYPERFLEET-PROXY-001", "Failed to communicate with Hyperfleet API")
@@ -85,8 +86,30 @@ func (h *ClusterHandler) proxyToHyperfleet(w http.ResponseWriter, r *http.Reques
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Copy response headers
+	// Build skip set for hop-by-hop headers
+	hopByHopHeaders := map[string]bool{
+		"Connection":          true,
+		"Keep-Alive":          true,
+		"Proxy-Authenticate":  true,
+		"Proxy-Authorization": true,
+		"Te":                  true,
+		"Trailers":            true,
+		"Transfer-Encoding":   true,
+		"Upgrade":             true,
+	}
+
+	// Parse Connection header for additional hop-by-hop headers
+	if connHeader := resp.Header.Get("Connection"); connHeader != "" {
+		for _, token := range splitHeaderTokens(connHeader) {
+			hopByHopHeaders[http.CanonicalHeaderKey(token)] = true
+		}
+	}
+
+	// Copy response headers, skipping hop-by-hop headers
 	for key, values := range resp.Header {
+		if hopByHopHeaders[key] {
+			continue
+		}
 		for _, value := range values {
 			w.Header().Add(key, value)
 		}
@@ -101,12 +124,6 @@ func (h *ClusterHandler) proxyToHyperfleet(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-func (h *ClusterHandler) writeJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(data)
-}
-
 func (h *ClusterHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -116,4 +133,15 @@ func (h *ClusterHandler) writeError(w http.ResponseWriter, status int, code, rea
 		"reason": reason,
 	}
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// splitHeaderTokens parses a comma-separated header value into individual tokens
+func splitHeaderTokens(header string) []string {
+	var tokens []string
+	for _, token := range strings.Split(header, ",") {
+		if trimmed := strings.TrimSpace(token); trimmed != "" {
+			tokens = append(tokens, trimmed)
+		}
+	}
+	return tokens
 }

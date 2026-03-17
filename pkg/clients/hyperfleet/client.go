@@ -30,7 +30,7 @@ func NewClient(cfg config.HyperfleetConfig, logger *slog.Logger) *Client {
 }
 
 // ProxyRequest proxies an HTTP request to the Hyperfleet API
-func (c *Client) ProxyRequest(ctx context.Context, method, path string, body io.Reader, queryParams url.Values) (*http.Response, error) {
+func (c *Client) ProxyRequest(ctx context.Context, method, path string, body io.Reader, queryParams url.Values, headers http.Header) (*http.Response, error) {
 	// Build the full URL
 	fullURL := c.baseURL + path
 	if len(queryParams) > 0 {
@@ -45,8 +45,17 @@ func (c *Client) ProxyRequest(ctx context.Context, method, path string, body io.
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
+	// Copy headers from incoming request
+	for key, values := range headers {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
+
+	// Ensure Content-Type is set (override if needed for JSON API)
+	if req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	// Execute the request
 	resp, err := c.httpClient.Do(req)

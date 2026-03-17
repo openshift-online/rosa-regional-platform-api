@@ -61,7 +61,7 @@ func (h *ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	h.proxyToHyperfleet(w, r, fmt.Sprintf("/api/hyperfleet/v1/clusters/%s", clusterID))
 }
 
-// GetStatus handles GET /api/v0/clusters/{id}/status
+// GetStatus handles GET /api/v0/clusters/{id}/statuses
 func (h *ClusterHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	clusterID := vars["id"]

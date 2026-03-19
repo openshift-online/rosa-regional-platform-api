@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -329,8 +330,9 @@ var _ = Describe("Platform API", Ordered, func() {
 			Eventually(func() bool {
 
 				// Filter resource bundles by consumer_name to reduce the number of items to check
-				searchURL := fmt.Sprintf("/api/v0/resource_bundles?search=consumer_name='%s'", managementClusterName)
-				GinkgoWriter.Printf("Getting resource bundles for consumer_name=%s\n", managementClusterName)
+				searchQuery := fmt.Sprintf("consumer_name='%s'", managementClusterName)
+				searchURL := fmt.Sprintf("/api/v0/resource_bundles?search=%s", url.QueryEscape(searchQuery))
+				GinkgoWriter.Printf("Getting resource bundles for consumer_name=%s (search=%s)\n", managementClusterName, searchQuery)
 				response, err := apiClient.Get(searchURL, accountID)
 				if err != nil {
 					GinkgoWriter.Printf("Error getting resource bundles: %v\n", err)

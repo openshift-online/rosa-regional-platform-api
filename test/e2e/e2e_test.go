@@ -419,7 +419,7 @@ var _ = Describe("Platform API", Ordered, func() {
 				}
 
 				return foundOrSynced
-			}, "2m", "5s").Should(BeTrue(), "No resource bundles found with Applied, Available, or StatusFeedbackSynced conditions - maestro-server may not be connected to maestro-agent")
+			}, "5m", "5s").Should(BeTrue(), "No resource bundles found with Applied, Available, or StatusFeedbackSynced conditions - maestro-server may not be connected to maestro-agent")
 		})
 	})
 

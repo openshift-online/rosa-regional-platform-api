@@ -414,12 +414,19 @@ var _ = Describe("Platform API", Ordered, func() {
 				}
 
 				if !foundOrSynced {
-					GinkgoWriter.Printf("Test work %s for management cluster %s not found in resource bundles\n", testWorkName, managementClusterName)
+					GinkgoWriter.Printf("ResourceBundle for test work %s (consumer_name=%s) found but conditions not yet set (Applied/Available/StatusFeedbackSynced); maestro-agent may not be processing events\n", testWorkName, managementClusterName)
 					return false
 				}
 
 				return foundOrSynced
-			}, "5m", "5s").Should(BeTrue(), "No resource bundles found with Applied, Available, or StatusFeedbackSynced conditions - maestro-server may not be connected to maestro-agent")
+			}, "5m", "5s").Should(BeTrue(), fmt.Sprintf(
+				"maestro-agent on management cluster %q did not set Applied/Available/StatusFeedbackSynced conditions after 5 minutes. "+
+					"The ResourceBundle exists in maestro-server's DB but the agent is not processing it — the agent is likely disconnected from AWS IoT Core. "+
+					"To recover: (1) check pod status: kubectl -n maestro-agent get pods, "+
+					"(2) check logs: kubectl -n maestro-agent logs deploy/maestro-agent, "+
+					"(3) restart the agent: kubectl -n maestro-agent rollout restart deploy/maestro-agent, "+
+					"(4) if ASCP CSI errors appear, re-run the MC provision-infra pipeline to refresh Secrets Manager credentials.",
+				managementClusterName))
 		})
 	})
 

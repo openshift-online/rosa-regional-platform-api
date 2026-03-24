@@ -17,6 +17,7 @@ require (
 	github.com/openshift-online/maestro v0.0.0-20260203054609-18a68bb9f147
 	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/cobra v1.10.2
+	github.com/stretchr/testify v1.11.1
 	k8s.io/apimachinery v0.34.3
 	open-cluster-management.io/api v1.2.0
 	open-cluster-management.io/sdk-go v1.1.1-0.20260128013609-7a2e40f02c1d

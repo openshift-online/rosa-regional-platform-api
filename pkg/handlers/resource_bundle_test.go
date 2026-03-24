@@ -19,8 +19,8 @@ import (
 
 // mockMaestroClient is a mock implementation of the Maestro client
 type mockMaestroClient struct {
-	listResourceBundlesFunc   func(ctx context.Context, page, size int, search, orderBy, fields string) (*maestro.ResourceBundleList, error)
-	deleteResourceBundleFunc  func(ctx context.Context, id string) error
+	listResourceBundlesFunc  func(ctx context.Context, page, size int, search, orderBy, fields string) (*maestro.ResourceBundleList, error)
+	deleteResourceBundleFunc func(ctx context.Context, id string) error
 }
 
 func (m *mockMaestroClient) ListResourceBundles(ctx context.Context, page, size int, search, orderBy, fields string) (*maestro.ResourceBundleList, error) {

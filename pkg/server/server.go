@@ -13,6 +13,7 @@ import (
 
 	"github.com/openshift/rosa-regional-platform-api/pkg/authz"
 	"github.com/openshift/rosa-regional-platform-api/pkg/authz/client"
+	"github.com/openshift/rosa-regional-platform-api/pkg/clients/hyperfleet"
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-platform-api/pkg/config"
 	apphandlers "github.com/openshift/rosa-regional-platform-api/pkg/handlers"
@@ -36,12 +37,15 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	// Create Maestro client
 	maestroClient := maestro.NewClient(cfg.Maestro, logger)
 
+	// Create Hyperfleet client
+	hyperfleetClient := hyperfleet.NewClient(cfg.Hyperfleet, logger)
+
 	// Create handlers
 	healthHandler := apphandlers.NewHealthHandler()
 	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(maestroClient, logger)
 	resourceBundleHandler := apphandlers.NewResourceBundleHandler(maestroClient, logger)
 	workHandler := apphandlers.NewWorkHandler(maestroClient, logger)
-	clusterHandler := apphandlers.NewClusterHandler(maestroClient, logger)
+	clusterHandler := apphandlers.NewClusterHandler(hyperfleetClient, logger)
 	nodePoolHandler := apphandlers.NewNodePoolHandler(maestroClient, logger)
 
 	// Create legacy authorization middleware (for non-authz routes)
@@ -184,7 +188,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	clusterRouter.HandleFunc("/{id}", clusterHandler.Get).Methods(http.MethodGet)
 	clusterRouter.HandleFunc("/{id}", clusterHandler.Update).Methods(http.MethodPut)
 	clusterRouter.HandleFunc("/{id}", clusterHandler.Delete).Methods(http.MethodDelete)
-	clusterRouter.HandleFunc("/{id}/status", clusterHandler.GetStatus).Methods(http.MethodGet)
+	clusterRouter.HandleFunc("/{id}/statuses", clusterHandler.GetStatus).Methods(http.MethodGet)
 
 	// NodePool routes (user-facing, require authz)
 	nodePoolRouter := apiRouter.PathPrefix("/api/v0/nodepools").Subrouter()

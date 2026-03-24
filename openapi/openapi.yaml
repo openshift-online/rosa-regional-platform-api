@@ -439,7 +439,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /clusters/{id}/status:
+  /clusters/{id}/statuses:
     parameters:
       - name: id
         in: path
@@ -449,8 +449,8 @@ paths:
         description: Cluster ID
 
     get:
-      summary: Get cluster status
-      description: Retrieve cluster status (user must own the cluster)
+      summary: Get cluster statuses
+      description: Retrieve cluster status and controller statuses (user must own the cluster)
       operationId: getUserClusterStatus
       tags:
         - Clusters
@@ -2440,6 +2440,10 @@ components:
           type: object
           description: Controller-specific metadata
           additionalProperties: true
+        data:
+          type: object
+          description: Controller-specific data
+          additionalProperties: true
         last_updated:
           type: string
           format: date-time
@@ -2464,12 +2468,12 @@ components:
       type: object
       description: Paginated list of clusters
       required:
-        - clusters
+        - items
         - total
         - limit
         - offset
       properties:
-        clusters:
+        items:
           type: array
           items:
             $ref: '#/components/schemas/Cluster'
@@ -2634,6 +2638,10 @@ components:
           type: object
           description: Controller-specific metadata
           additionalProperties: true
+        data:
+          type: object
+          description: Controller-specific data
+          additionalProperties: true
         last_updated:
           type: string
           format: date-time
@@ -2658,12 +2666,12 @@ components:
       type: object
       description: Paginated list of nodepools
       required:
-        - nodepools
+        - items
         - total
         - limit
         - offset
       properties:
-        nodepools:
+        items:
           type: array
           items:
             $ref: '#/components/schemas/NodePool'

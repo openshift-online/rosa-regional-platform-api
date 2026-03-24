@@ -54,6 +54,7 @@ type ClusterControllerStatus struct {
 	ObservedGeneration int64                  `json:"observed_generation"`
 	Conditions         []Condition            `json:"conditions,omitempty"`
 	Metadata           map[string]interface{} `json:"metadata,omitempty"`
+	Data               map[string]interface{} `json:"data,omitempty"`
 	LastUpdated        time.Time              `json:"last_updated"`
 }
 

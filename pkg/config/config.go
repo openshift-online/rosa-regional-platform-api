@@ -9,6 +9,7 @@ import (
 type Config struct {
 	Server          ServerConfig
 	Maestro         MaestroConfig
+	Hyperfleet      HyperfleetConfig
 	Logging         LoggingConfig
 	Authz           *authz.Config
 	AllowedAccounts []string
@@ -30,6 +31,11 @@ type MaestroConfig struct {
 	BaseURL     string
 	GRPCBaseURL string
 	Timeout     time.Duration
+}
+
+type HyperfleetConfig struct {
+	BaseURL string
+	Timeout time.Duration
 }
 
 type LoggingConfig struct {
@@ -54,6 +60,10 @@ func NewConfig() *Config {
 			BaseURL:     "http://maestro:8000",
 			GRPCBaseURL: "maestro-grpc.maestro-server:8090",
 			Timeout:     30 * time.Second,
+		},
+		Hyperfleet: HyperfleetConfig{
+			BaseURL: "http://hyperfleet-api.hyperfleet-system:8000",
+			Timeout: 30 * time.Second,
 		},
 		Logging: LoggingConfig{
 			Level:  "info",

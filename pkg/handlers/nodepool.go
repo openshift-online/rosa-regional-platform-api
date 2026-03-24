@@ -62,10 +62,10 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"nodepools": nodepools,
-		"total":     total,
-		"limit":     limit,
-		"offset":    offset,
+		"items":  nodepools,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
 	}
 
 	h.writeJSON(w, http.StatusOK, response)

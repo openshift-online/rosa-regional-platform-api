@@ -32,7 +32,8 @@ func TestE2E(t *testing.T) {
 	RunSpecs(t, "ROSA Regional Platform API E2E Suite")
 }
 
-var _ = Describe("Platform API", func() {
+// Ordered for now, as our test size is small
+var _ = Describe("Platform API", Ordered, func() {
 	var (
 		baseURL   string
 		accountID string

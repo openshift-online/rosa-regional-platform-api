@@ -63,6 +63,8 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 			}
 			err = json.Unmarshal(response.Body, &listResp)
 			Expect(err).To(BeNil())
+
+			GinkgoWriter.Printf("listResp: %+v\n", listResp)
 			// Expect(listResp.Clusters).NotTo(BeNil())
 			// it can be empty
 			GinkgoWriter.Printf("Found %d clusters (total: %d)\n", len(listResp.Clusters), listResp.Total)

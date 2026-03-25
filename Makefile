@@ -108,11 +108,11 @@ test-coverage:
 test-e2e:
 	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo -vv \
 	--skip="Authz" --junit-report=junit.xml \
-	--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
+	--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e/...
 
 test-e2e-quiet:
 	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo --skip="Authz" \
-	--junit-report=junit.xml --output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
+	--junit-report=junit.xml --output-dir=$(TEST_OUTPUT_DIR) ./test/e2e/...
 
 # Run just the AWS credentials check test
 test-e2e-awscreds:
@@ -205,7 +205,7 @@ endif
 ifneq ($(SKIP),)
 	GINKGO_CMD += --skip="$(SKIP)"
 endif
-GINKGO_CMD += --junit-report=junit.xml --output-dir=/app/test-results ./test/e2e
+GINKGO_CMD += --junit-report=junit.xml --output-dir=/app/test-results ./test/e2e/...
 
 # Since we're using dynamic credentials in our aws config, we need to export the 
 # credentials to the container

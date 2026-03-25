@@ -274,7 +274,7 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 	})
 
 	Describe("PUT /api/v0/clusters/{id}", func() {
-		It("should update cluster spec", func() {
+		SIt("should update cluster spec", func() {
 			if clusterID == "" {
 				Skip("No cluster ID available from creation test")
 			}
@@ -298,7 +298,7 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 			GinkgoWriter.Printf("Updated cluster %s\n", clusterID)
 		})
 
-		It("should return 404 for updating non-existent cluster", func() {
+		SIt("should return 404 for updating non-existent cluster", func() {
 			fakeID := uuid.New().String()
 			updateReq := map[string]interface{}{
 				"spec": map[string]interface{}{
@@ -312,7 +312,7 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 			Expect(response.StatusCode).To(Equal(http.StatusNotFound))
 		})
 
-		It("should reject update with invalid spec", func() {
+		SIt("should reject update with invalid spec", func() {
 			if clusterID == "" {
 				Skip("No cluster ID available from creation test")
 			}

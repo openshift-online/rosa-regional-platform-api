@@ -100,6 +100,31 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 	})
 
 	Describe("POST /api/v0/clusters", func() {
+
+		// query the /api/v0/management_clusters endpoint,
+		// select the first management cluster that has labels.region set or not null
+		// get the management cluster id and name
+		// create a new cluster with the labels.placement-cluster set to managment cluster name
+		var managementClusterName string
+		It("should get the first management cluster id", func() {
+			response, err := apiClient.Get("/api/v0/management_clusters", accountID)
+			Expect(err).To(BeNil())
+			Expect(response.StatusCode).To(Equal(http.StatusOK))
+			var managementClusterList struct {
+				Items []map[string]interface{} `json:"items"`
+			}
+			err = json.Unmarshal(response.Body, &managementClusterList)
+			Expect(err).To(BeNil())
+			for _, managementCluster := range managementClusterList.Items {
+				if region, ok := managementCluster["labels"].(map[string]interface{})["region"].(string); ok && region != "" {
+					managementClusterName = managementCluster["name"].(string)
+					break
+				}
+			}
+			Expect(managementClusterName).NotTo(BeEmpty())
+			GinkgoWriter.Printf("Management cluster name: %s\n", managementClusterName)
+		})
+
 		It("should create a new cluster", func() {
 			clusterName := fmt.Sprintf("e2e-test-cluster-%s", uuid.New().String()[:8])
 			targetProjectID := fmt.Sprintf("test-project-%s", uuid.New().String()[:8])
@@ -112,6 +137,7 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 					"version":         "4.14.0",
 					"compute_nodes":   3,
 					"compute_machine": "m5.xlarge",
+					"placement":       managementClusterName,
 				},
 			}
 
@@ -404,6 +430,27 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 	// })
 
 	Describe("Complete workflow integration test", func() {
+
+		var managementClusterName string
+		It("should get the first management cluster id", func() {
+			response, err := apiClient.Get("/api/v0/management_clusters", accountID)
+			Expect(err).To(BeNil())
+			Expect(response.StatusCode).To(Equal(http.StatusOK))
+			var managementClusterList struct {
+				Items []map[string]interface{} `json:"items"`
+			}
+			err = json.Unmarshal(response.Body, &managementClusterList)
+			Expect(err).To(BeNil())
+			for _, managementCluster := range managementClusterList.Items {
+				if region, ok := managementCluster["labels"].(map[string]interface{})["region"].(string); ok && region != "" {
+					managementClusterName = managementCluster["name"].(string)
+					break
+				}
+			}
+			Expect(managementClusterName).NotTo(BeEmpty())
+			GinkgoWriter.Printf("Management cluster name: %s\n", managementClusterName)
+		})
+
 		It("should handle complete cluster lifecycle", func() {
 			// This test demonstrates a complete workflow from creation to deletion
 			clusterName := fmt.Sprintf("e2e-workflow-%s", uuid.New().String()[:8])
@@ -418,6 +465,7 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 					"version":         "4.14.0",
 					"compute_nodes":   2,
 					"compute_machine": "m5.large",
+					"placement":       managementClusterName,
 				},
 			}
 

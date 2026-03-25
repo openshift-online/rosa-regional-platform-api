@@ -191,13 +191,13 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 		})
 	})
 
-	Describe("GET /api/v0/clusters/{id}/status", func() {
+	Describe("GET /api/v0/clusters/{id}/statuses", func() {
 		It("should get cluster status", func() {
 			if clusterID == "" {
 				Skip("No cluster ID available from creation test")
 			}
 
-			path := fmt.Sprintf("/api/v0/clusters/%s/status", clusterID)
+			path := fmt.Sprintf("/api/v0/clusters/%s/statuses", clusterID)
 			response, err := apiClient.Get(path, accountID)
 			Expect(err).To(BeNil())
 			Expect(response.StatusCode).To(Equal(http.StatusOK))
@@ -225,7 +225,7 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 
 		It("should return 404 for status of non-existent cluster", func() {
 			fakeID := uuid.New().String()
-			path := fmt.Sprintf("/api/v0/clusters/%s/status", fakeID)
+			path := fmt.Sprintf("/api/v0/clusters/%s/statuses", fakeID)
 			response, err := apiClient.Get(path, accountID)
 			Expect(err).To(BeNil())
 			Expect(response.StatusCode).To(Equal(http.StatusNotFound))
@@ -236,7 +236,7 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 				Skip("No cluster ID available from creation test")
 			}
 
-			path := fmt.Sprintf("/api/v0/clusters/%s/status", clusterID)
+			path := fmt.Sprintf("/api/v0/clusters/%s/statuses", clusterID)
 			stableStates := []string{"ready", "error", "failed"}
 			foundStable := false
 
@@ -436,7 +436,7 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 			Expect(getResp.StatusCode).To(Equal(http.StatusOK))
 
 			By("checking cluster status")
-			statusResp, err := apiClient.Get(fmt.Sprintf("/api/v0/clusters/%s/status", workflowClusterID), accountID)
+			statusResp, err := apiClient.Get(fmt.Sprintf("/api/v0/clusters/%s/statuses", workflowClusterID), accountID)
 			Expect(err).To(BeNil())
 			Expect(statusResp.StatusCode).To(Equal(http.StatusOK))
 

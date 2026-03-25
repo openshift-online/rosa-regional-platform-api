@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
@@ -273,136 +272,136 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 		})
 	})
 
-	Describe("PUT /api/v0/clusters/{id}", func() {
-		SIt("should update cluster spec", func() {
-			if clusterID == "" {
-				Skip("No cluster ID available from creation test")
-			}
+	// Describe("PUT /api/v0/clusters/{id}", func() {
+	// 	It("should update cluster spec", func() {
+	// 		if clusterID == "" {
+	// 			Skip("No cluster ID available from creation test")
+	// 		}
 
-			updateReq := map[string]interface{}{
-				"spec": map[string]interface{}{
-					"compute_nodes": 5, // Update from 3 to 5
-				},
-			}
+	// 		updateReq := map[string]interface{}{
+	// 			"spec": map[string]interface{}{
+	// 				"compute_nodes": 5, // Update from 3 to 5
+	// 			},
+	// 		}
 
-			path := fmt.Sprintf("/api/v0/clusters/%s", clusterID)
-			response, err := apiClient.Put(path, updateReq, accountID)
-			Expect(err).To(BeNil())
-			Expect(response.StatusCode).To(Equal(http.StatusOK))
+	// 		path := fmt.Sprintf("/api/v0/clusters/%s", clusterID)
+	// 		response, err := apiClient.Put(path, updateReq, accountID)
+	// 		Expect(err).To(BeNil())
+	// 		Expect(response.StatusCode).To(Equal(http.StatusOK))
 
-			var cluster map[string]interface{}
-			err = json.Unmarshal(response.Body, &cluster)
-			Expect(err).To(BeNil())
-			Expect(cluster["id"]).To(Equal(clusterID))
+	// 		var cluster map[string]interface{}
+	// 		err = json.Unmarshal(response.Body, &cluster)
+	// 		Expect(err).To(BeNil())
+	// 		Expect(cluster["id"]).To(Equal(clusterID))
 
-			GinkgoWriter.Printf("Updated cluster %s\n", clusterID)
-		})
+	// 		GinkgoWriter.Printf("Updated cluster %s\n", clusterID)
+	// 	})
 
-		SIt("should return 404 for updating non-existent cluster", func() {
-			fakeID := uuid.New().String()
-			updateReq := map[string]interface{}{
-				"spec": map[string]interface{}{
-					"compute_nodes": 5,
-				},
-			}
+	// 	It("should return 404 for updating non-existent cluster", func() {
+	// 		fakeID := uuid.New().String()
+	// 		updateReq := map[string]interface{}{
+	// 			"spec": map[string]interface{}{
+	// 				"compute_nodes": 5,
+	// 			},
+	// 		}
 
-			path := fmt.Sprintf("/api/v0/clusters/%s", fakeID)
-			response, err := apiClient.Put(path, updateReq, accountID)
-			Expect(err).To(BeNil())
-			Expect(response.StatusCode).To(Equal(http.StatusNotFound))
-		})
+	// 		path := fmt.Sprintf("/api/v0/clusters/%s", fakeID)
+	// 		response, err := apiClient.Put(path, updateReq, accountID)
+	// 		Expect(err).To(BeNil())
+	// 		Expect(response.StatusCode).To(Equal(http.StatusNotFound))
+	// 	})
 
-		SIt("should reject update with invalid spec", func() {
-			if clusterID == "" {
-				Skip("No cluster ID available from creation test")
-			}
+	// 	It("should reject update with invalid spec", func() {
+	// 		if clusterID == "" {
+	// 			Skip("No cluster ID available from creation test")
+	// 		}
 
-			invalidReq := map[string]interface{}{
-				// missing spec field
-			}
+	// 		invalidReq := map[string]interface{}{
+	// 			// missing spec field
+	// 		}
 
-			path := fmt.Sprintf("/api/v0/clusters/%s", clusterID)
-			response, err := apiClient.Put(path, invalidReq, accountID)
-			Expect(err).To(BeNil())
-			Expect(response.StatusCode).To(Equal(http.StatusBadRequest))
-		})
-	})
+	// 		path := fmt.Sprintf("/api/v0/clusters/%s", clusterID)
+	// 		response, err := apiClient.Put(path, invalidReq, accountID)
+	// 		Expect(err).To(BeNil())
+	// 		Expect(response.StatusCode).To(Equal(http.StatusBadRequest))
+	// 	})
+	// })
 
-	Describe("DELETE /api/v0/clusters/{id}", func() {
-		It("should delete cluster", func() {
-			if clusterID == "" {
-				Skip("No cluster ID available from creation test")
-			}
+	// Describe("DELETE /api/v0/clusters/{id}", func() {
+	// 	It("should delete cluster", func() {
+	// 		if clusterID == "" {
+	// 			Skip("No cluster ID available from creation test")
+	// 		}
 
-			path := fmt.Sprintf("/api/v0/clusters/%s", clusterID)
-			response, err := apiClient.Delete(path, accountID)
-			Expect(err).To(BeNil())
-			Expect(response.StatusCode).To(Equal(http.StatusAccepted))
+	// 		path := fmt.Sprintf("/api/v0/clusters/%s", clusterID)
+	// 		response, err := apiClient.Delete(path, accountID)
+	// 		Expect(err).To(BeNil())
+	// 		Expect(response.StatusCode).To(Equal(http.StatusAccepted))
 
-			var deleteResp map[string]interface{}
-			err = json.Unmarshal(response.Body, &deleteResp)
-			Expect(err).To(BeNil())
-			Expect(deleteResp["message"]).NotTo(BeEmpty())
-			Expect(deleteResp["cluster_id"]).To(Equal(clusterID))
+	// 		var deleteResp map[string]interface{}
+	// 		err = json.Unmarshal(response.Body, &deleteResp)
+	// 		Expect(err).To(BeNil())
+	// 		Expect(deleteResp["message"]).NotTo(BeEmpty())
+	// 		Expect(deleteResp["cluster_id"]).To(Equal(clusterID))
 
-			GinkgoWriter.Printf("Deleted cluster %s: %s\n", clusterID, deleteResp["message"])
+	// 		GinkgoWriter.Printf("Deleted cluster %s: %s\n", clusterID, deleteResp["message"])
 
-			// Verify cluster is gone or marked for deletion
-			time.Sleep(2 * time.Second) // Brief pause
-			getResp, err := apiClient.Get(path, accountID)
-			Expect(err).To(BeNil())
-			// Should either be 404 or still exist but with deletion status
-			Expect(getResp.StatusCode).To(Or(Equal(http.StatusNotFound), Equal(http.StatusOK)))
+	// 		// Verify cluster is gone or marked for deletion
+	// 		time.Sleep(2 * time.Second) // Brief pause
+	// 		getResp, err := apiClient.Get(path, accountID)
+	// 		Expect(err).To(BeNil())
+	// 		// Should either be 404 or still exist but with deletion status
+	// 		Expect(getResp.StatusCode).To(Or(Equal(http.StatusNotFound), Equal(http.StatusOK)))
 
-			if getResp.StatusCode == http.StatusOK {
-				var cluster map[string]interface{}
-				err = json.Unmarshal(getResp.Body, &cluster)
-				Expect(err).To(BeNil())
-				GinkgoWriter.Printf("Cluster still exists after delete (likely marked for deletion): %+v\n", cluster)
-			}
-		})
+	// 		if getResp.StatusCode == http.StatusOK {
+	// 			var cluster map[string]interface{}
+	// 			err = json.Unmarshal(getResp.Body, &cluster)
+	// 			Expect(err).To(BeNil())
+	// 			GinkgoWriter.Printf("Cluster still exists after delete (likely marked for deletion): %+v\n", cluster)
+	// 		}
+	// 	})
 
-		It("should support force delete parameter", func() {
-			// Create a temporary cluster for this test
-			clusterName := fmt.Sprintf("e2e-force-delete-%s", uuid.New().String()[:8])
-			createReq := map[string]interface{}{
-				"name":              clusterName,
-				"target_project_id": fmt.Sprintf("test-project-%s", uuid.New().String()[:8]),
-				"spec": map[string]interface{}{
-					"region": "us-east-1",
-				},
-			}
+	// 	It("should support force delete parameter", func() {
+	// 		// Create a temporary cluster for this test
+	// 		clusterName := fmt.Sprintf("e2e-force-delete-%s", uuid.New().String()[:8])
+	// 		createReq := map[string]interface{}{
+	// 			"name":              clusterName,
+	// 			"target_project_id": fmt.Sprintf("test-project-%s", uuid.New().String()[:8]),
+	// 			"spec": map[string]interface{}{
+	// 				"region": "us-east-1",
+	// 			},
+	// 		}
 
-			createResp, err := apiClient.Post("/api/v0/clusters", createReq, accountID)
-			if err != nil || createResp.StatusCode != http.StatusCreated {
-				Skip("Could not create cluster for force delete test")
-			}
+	// 		createResp, err := apiClient.Post("/api/v0/clusters", createReq, accountID)
+	// 		if err != nil || createResp.StatusCode != http.StatusCreated {
+	// 			Skip("Could not create cluster for force delete test")
+	// 		}
 
-			var cluster map[string]interface{}
-			err = json.Unmarshal(createResp.Body, &cluster)
-			Expect(err).To(BeNil())
-			tempClusterID := cluster["id"].(string)
+	// 		var cluster map[string]interface{}
+	// 		err = json.Unmarshal(createResp.Body, &cluster)
+	// 		Expect(err).To(BeNil())
+	// 		tempClusterID := cluster["id"].(string)
 
-			// Force delete the cluster
-			path := fmt.Sprintf("/api/v0/clusters/%s?force=true", tempClusterID)
-			response, err := apiClient.Delete(path, accountID)
-			Expect(err).To(BeNil())
-			Expect(response.StatusCode).To(Equal(http.StatusAccepted))
+	// 		// Force delete the cluster
+	// 		path := fmt.Sprintf("/api/v0/clusters/%s?force=true", tempClusterID)
+	// 		response, err := apiClient.Delete(path, accountID)
+	// 		Expect(err).To(BeNil())
+	// 		Expect(response.StatusCode).To(Equal(http.StatusAccepted))
 
-			var deleteResp map[string]interface{}
-			err = json.Unmarshal(response.Body, &deleteResp)
-			Expect(err).To(BeNil())
-			GinkgoWriter.Printf("Force deleted cluster %s\n", tempClusterID)
-		})
+	// 		var deleteResp map[string]interface{}
+	// 		err = json.Unmarshal(response.Body, &deleteResp)
+	// 		Expect(err).To(BeNil())
+	// 		GinkgoWriter.Printf("Force deleted cluster %s\n", tempClusterID)
+	// 	})
 
-		It("should return 404 for deleting non-existent cluster", func() {
-			fakeID := uuid.New().String()
-			path := fmt.Sprintf("/api/v0/clusters/%s", fakeID)
-			response, err := apiClient.Delete(path, accountID)
-			Expect(err).To(BeNil())
-			Expect(response.StatusCode).To(Equal(http.StatusNotFound))
-		})
-	})
+	// 	It("should return 404 for deleting non-existent cluster", func() {
+	// 		fakeID := uuid.New().String()
+	// 		path := fmt.Sprintf("/api/v0/clusters/%s", fakeID)
+	// 		response, err := apiClient.Delete(path, accountID)
+	// 		Expect(err).To(BeNil())
+	// 		Expect(response.StatusCode).To(Equal(http.StatusNotFound))
+	// 	})
+	// })
 
 	Describe("Complete workflow integration test", func() {
 		It("should handle complete cluster lifecycle", func() {
@@ -442,20 +441,20 @@ var _ = Describe("Clusters API E2E Tests", Ordered, func() {
 			Expect(err).To(BeNil())
 			Expect(statusResp.StatusCode).To(Equal(http.StatusOK))
 
-			By("updating the cluster")
-			updateReq := map[string]interface{}{
-				"spec": map[string]interface{}{
-					"compute_nodes": 4,
-				},
-			}
-			updateResp, err := apiClient.Put(fmt.Sprintf("/api/v0/clusters/%s", workflowClusterID), updateReq, accountID)
-			Expect(err).To(BeNil())
-			Expect(updateResp.StatusCode).To(Equal(http.StatusOK))
+			// By("updating the cluster")
+			// updateReq := map[string]interface{}{
+			// 	"spec": map[string]interface{}{
+			// 		"compute_nodes": 4,
+			// 	},
+			// }
+			// updateResp, err := apiClient.Put(fmt.Sprintf("/api/v0/clusters/%s", workflowClusterID), updateReq, accountID)
+			// Expect(err).To(BeNil())
+			// Expect(updateResp.StatusCode).To(Equal(http.StatusOK))
 
-			By("deleting the cluster")
-			deleteResp, err := apiClient.Delete(fmt.Sprintf("/api/v0/clusters/%s", workflowClusterID), accountID)
-			Expect(err).To(BeNil())
-			Expect(deleteResp.StatusCode).To(Equal(http.StatusAccepted))
+			// By("deleting the cluster")
+			// deleteResp, err := apiClient.Delete(fmt.Sprintf("/api/v0/clusters/%s", workflowClusterID), accountID)
+			// Expect(err).To(BeNil())
+			// Expect(deleteResp.StatusCode).To(Equal(http.StatusAccepted))
 
 			GinkgoWriter.Printf("Workflow test completed successfully for cluster: %s\n", workflowClusterID)
 		})

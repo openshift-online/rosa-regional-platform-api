@@ -101,12 +101,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logger.Info("using DynamoDB table prefix", "prefix", dynamodbPrefix)
 	}
 
-	// Hyperfleet config from environment variables
-	if url := os.Getenv("HYPERFLEET_BASE_URL"); url != "" {
-		cfg.Hyperfleet.BaseURL = url
-		logger.Info("using Hyperfleet URL from environment", "url", url)
-	}
-
 	// Authz config from environment variables (for local development)
 	if endpoint := os.Getenv("DYNAMODB_ENDPOINT"); endpoint != "" {
 		cfg.Authz.DynamoDBEndpoint = endpoint

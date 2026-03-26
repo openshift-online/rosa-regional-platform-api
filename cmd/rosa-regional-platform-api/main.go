@@ -83,7 +83,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	cfg.Maestro.GRPCBaseURL = maestroGRPCURL
 
 	// Validate Hyperfleet URL
-	parsedURL, err := url.Parse(hyperfleetURL)
+	parsedURL, err := url.ParseRequestURI(hyperfleetURL)
 	if err != nil {
 		logger.Error("invalid hyperfleet URL", "url", hyperfleetURL, "error", err)
 		return fmt.Errorf("invalid hyperfleet URL: %w", err)
@@ -91,10 +91,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		logger.Error("hyperfleet URL must have http or https scheme", "url", hyperfleetURL, "scheme", parsedURL.Scheme)
 		return fmt.Errorf("hyperfleet URL must have http or https scheme, got: %s", parsedURL.Scheme)
-	}
-	if parsedURL.Host == "" {
-		logger.Error("hyperfleet URL must have a non-empty host", "url", hyperfleetURL)
-		return fmt.Errorf("hyperfleet URL must have a non-empty host")
 	}
 	cfg.Hyperfleet.BaseURL = hyperfleetURL
 

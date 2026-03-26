@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -80,7 +81,23 @@ func runServe(cmd *cobra.Command, args []string) error {
 	cfg.Logging.Format = logFormat
 	cfg.Maestro.BaseURL = maestroURL
 	cfg.Maestro.GRPCBaseURL = maestroGRPCURL
+
+	// Validate Hyperfleet URL
+	parsedURL, err := url.Parse(hyperfleetURL)
+	if err != nil {
+		logger.Error("invalid hyperfleet URL", "url", hyperfleetURL, "error", err)
+		return fmt.Errorf("invalid hyperfleet URL: %w", err)
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		logger.Error("hyperfleet URL must have http or https scheme", "url", hyperfleetURL, "scheme", parsedURL.Scheme)
+		return fmt.Errorf("hyperfleet URL must have http or https scheme, got: %s", parsedURL.Scheme)
+	}
+	if parsedURL.Host == "" {
+		logger.Error("hyperfleet URL must have a non-empty host", "url", hyperfleetURL)
+		return fmt.Errorf("hyperfleet URL must have a non-empty host")
+	}
 	cfg.Hyperfleet.BaseURL = hyperfleetURL
+
 	cfg.AllowedAccounts = parseAllowedAccounts(allowedAccounts)
 	cfg.Server.APIPort = apiPort
 	cfg.Server.HealthPort = healthPort

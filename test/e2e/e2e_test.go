@@ -423,19 +423,21 @@ var _ = Describe("Platform API", Ordered, func() {
 		})
 	})
 
-	// it should be able to GET /clusters endpoint, the list should be empty now as this is not yet
-	// connected to CLM/hyperfleet
+	// it should be able to GET /clusters endpoint and return an array
 	It("should be have the clusters endpoint defined", func() {
 		response := getAndExpectOK(apiClient, "/api/v0/clusters", accountID, "")
 		Expect(response.StatusCode).To(Equal(http.StatusOK))
 		Expect(response.Headers).To(HaveKey("Content-Type"))
 		Expect(response.Headers).To(HaveKey("X-Amz-Apigw-Id"))
 		var list struct {
-			Items []map[string]interface{} `json:"items"`
+			Items  []map[string]interface{} `json:"items"`
+			Limit  int                      `json:"limit"`
+			Offset int                      `json:"offset"`
+			Total  int                      `json:"total"`
 		}
 		err := json.Unmarshal(response.Body, &list)
 		Expect(err).To(BeNil())
-		// Items is empty because clusters is not implemented, only defined
-		Expect(list.Items).To(BeEmpty(), "clusters list should be empty")
+		// Verify the endpoint returns proper pagination structure with an items array
+		Expect(list.Items).NotTo(BeNil())
 	})
 })

@@ -13,25 +13,45 @@ flowchart LR
     subgraph PlatformAPI["Platform API"]
         AuthMW["Auth Middleware"] --> Handler["Handlers"]
         Handler -->|privileged only| MgmtCluster["management_cluster"]
-        Handler --> HCP["HCP Managament (TBD)"]
+        Handler --> Clusters["clusters / nodepools"]
     end
 
     AuthMW -->|lookup if privileged| DDB[("DynamoDB")]
     MgmtCluster -->|gRPC| Maestro["Maestro"]
+    Clusters -->|REST| Hyperfleet["Hyperfleet"]
 ```
 
 ## API Documentation
 
 [View the full API spec (Swagger UI)](https://petstore.swagger.io/?url=https://raw.githubusercontent.com/openshift-online/rosa-regional-platform-api/main/openapi/openapi.yaml)
 
+### Clusters API
+
+Cluster lifecycle operations (`/api/v0/clusters`) are backed by Hyperfleet. The Platform API translates between the public contract and the Hyperfleet API.
+
+Key endpoints:
+
+| Method   | Path                          | Description                                   |
+| -------- | ----------------------------- | --------------------------------------------- |
+| `GET`    | `/api/v0/clusters`            | List clusters (paginated via `limit`/`offset`) |
+| `POST`   | `/api/v0/clusters`            | Create a cluster                              |
+| `GET`    | `/api/v0/clusters/{id}`       | Get a cluster                                 |
+| `PUT`    | `/api/v0/clusters/{id}`       | Update a cluster                              |
+| `DELETE` | `/api/v0/clusters/{id}`       | Delete a cluster                              |
+| `GET`    | `/api/v0/clusters/{id}/statuses` | Get cluster status and per-controller statuses |
+
+List responses use an `items` array (not `clusters` or `nodepools`) with `total`, `limit`, and `offset` fields.
+
 ## Configuration
 
-| Flag                | Default                  | Description     |
-| ------------------- | ------------------------ | --------------- |
-| `--api-port`        | 8000                     | API server port |
-| `--maestro-url`     | `http://maestro:8000`    | Maestro API URL |
-| `--dynamodb-table`  | `rosa-customer-accounts` | DynamoDB table  |
-| `--dynamodb-region` | `us-east-1`              | AWS region      |
+| Flag                  | Default                                        | Description              |
+| --------------------- | ---------------------------------------------- | ------------------------ |
+| `--api-port`          | `8000`                                         | API server port          |
+| `--maestro-url`       | `http://maestro:8000`                          | Maestro REST API URL     |
+| `--maestro-grpc-url`  | `maestro-grpc.maestro-server:8090`             | Maestro gRPC URL         |
+| `--hyperfleet-url`    | `http://hyperfleet-api.hyperfleet-system:8000` | Hyperfleet REST API URL  |
+| `--dynamodb-table`    | `rosa-customer-accounts`                       | DynamoDB table           |
+| `--dynamodb-region`   | `us-east-1`                                    | AWS region               |
 
 ## Build
 

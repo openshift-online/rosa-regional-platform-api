@@ -30,6 +30,9 @@ spec:
             - --api-port={{ .Values.app.args.apiPort }}
             - --health-port={{ .Values.app.args.healthPort }}
             - --metrics-port={{ .Values.app.args.metricsPort }}
+          env:
+            - name: TARGET_GROUP_ARN
+              value: {{ .Values.targetGroup.arn | quote }}
           ports:
             - name: api
               containerPort: {{ .Values.app.args.apiPort }}

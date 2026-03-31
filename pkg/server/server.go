@@ -42,6 +42,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 
 	// Create handlers
 	healthHandler := apphandlers.NewHealthHandler()
+	infoHandler := apphandlers.NewInfoHandler()
 	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(maestroClient, logger)
 	resourceBundleHandler := apphandlers.NewResourceBundleHandler(maestroClient, logger)
 	workHandler := apphandlers.NewWorkHandler(maestroClient, logger)
@@ -205,9 +206,10 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Delete).Methods(http.MethodDelete)
 	nodePoolRouter.HandleFunc("/{id}/status", nodePoolHandler.GetStatus).Methods(http.MethodGet)
 
-	// Health routes on API server (no auth required)
+	// Health and info routes on API server (no auth required)
 	apiRouter.HandleFunc("/api/v0/live", healthHandler.Liveness).Methods(http.MethodGet)
 	apiRouter.HandleFunc("/api/v0/ready", healthHandler.Readiness).Methods(http.MethodGet)
+	apiRouter.HandleFunc("/api/v0/info", infoHandler.Info).Methods(http.MethodGet)
 
 	// Add CORS and logging
 	apiHandler := handlers.CORS(

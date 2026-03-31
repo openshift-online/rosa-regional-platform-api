@@ -424,20 +424,31 @@ var _ = Describe("Platform API", Ordered, func() {
 	})
 
 	// it should be able to GET /clusters endpoint and return an array
-	It("should be have the clusters endpoint defined", func() {
-		response := getAndExpectOK(apiClient, "/api/v0/clusters", accountID, "")
-		Expect(response.StatusCode).To(Equal(http.StatusOK))
-		Expect(response.Headers).To(HaveKey("Content-Type"))
-		Expect(response.Headers).To(HaveKey("X-Amz-Apigw-Id"))
-		var list struct {
-			Items  []map[string]interface{} `json:"items"`
-			Limit  int                      `json:"limit"`
-			Offset int                      `json:"offset"`
-			Total  int                      `json:"total"`
-		}
-		err := json.Unmarshal(response.Body, &list)
-		Expect(err).To(BeNil())
-		// Verify the endpoint returns proper pagination structure with an items array
-		Expect(list.Items).NotTo(BeNil())
+	// Uses Eventually because in CI the platform-api proxies to hyperfleet-api,
+	// which may not be fully routable until ArgoCD finishes all sync cycles.
+	It("should have the clusters endpoint defined", func() {
+		Eventually(func() bool {
+			response, err := apiClient.Get("/api/v0/clusters", accountID)
+			if err != nil {
+				GinkgoWriter.Printf("clusters request error: %v\n", err)
+				return false
+			}
+			if response.StatusCode != http.StatusOK {
+				GinkgoWriter.Printf("clusters returned status %d, waiting for 200\n", response.StatusCode)
+				return false
+			}
+			Expect(response.Headers).To(HaveKey("Content-Type"))
+			Expect(response.Headers).To(HaveKey("X-Amz-Apigw-Id"))
+			var list struct {
+				Items  []map[string]interface{} `json:"items"`
+				Limit  int                      `json:"limit"`
+				Offset int                      `json:"offset"`
+				Total  int                      `json:"total"`
+			}
+			err = json.Unmarshal(response.Body, &list)
+			Expect(err).To(BeNil())
+			Expect(list.Items).NotTo(BeNil())
+			return true
+		}, "2m", "5s").Should(BeTrue(), "clusters endpoint did not return 200 - hyperfleet-api may not be ready")
 	})
 })

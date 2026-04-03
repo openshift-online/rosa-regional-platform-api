@@ -314,7 +314,21 @@ paths:
 
     post:
       summary: Create cluster
-      description: Create a new cluster for the authenticated user
+      description: |
+        Create a new cluster for the authenticated user.
+
+        The API automatically enriches the cluster spec with:
+        - cloudUrl: Auto-populated from the management cluster's cloudfront_url label
+        - placement: Auto-populated from the management cluster's name (if not provided by client)
+
+        Possible error codes:
+        - CLUSTERS-MGMT-CREATE-001: Invalid request body
+        - CLUSTERS-MGMT-CREATE-002: Missing required fields (name or spec)
+        - CLUSTERS-MGMT-CREATE-003: Failed to create cluster in hyperfleet
+        - CLUSTERS-MGMT-CREATE-004: Failed to retrieve CloudFront URL
+        - CLUSTERS-MGMT-CREATE-005: No management clusters found
+        - CLUSTERS-MGMT-CREATE-006: CloudFront URL not configured
+        - CLUSTERS-MGMT-CREATE-007: Management cluster name not available for placement
       operationId: createUserCluster
       tags:
         - Clusters
@@ -2324,7 +2338,7 @@ components:
           type: object
           description: |
             Cluster specification. When a cluster is created, the response includes
-            a cloudUrl field containing the CloudFront URL with cluster ID appended.
+            auto-populated fields like cloudUrl and placement.
           properties:
             cloudUrl:
               type: string
@@ -2332,6 +2346,12 @@ components:
                 CloudFront URL with cluster ID appended (format: {cloudfront_url}/{cluster_id}).
                 This field is automatically added to the response when creating a cluster.
               example: https://doku78iof5s87.cloudfront.net/cluster-123
+            placement:
+              type: string
+              description: |
+                Management cluster name where the cluster is deployed.
+                Auto-populated from the first management cluster if not provided during creation.
+              example: management-cluster-us-east-1
           additionalProperties: true
         status:
           $ref: '#/components/schemas/ClusterStatusInfo'
@@ -2346,7 +2366,12 @@ components:
 
     ClusterCreateRequest:
       type: object
-      description: Request body for creating a cluster
+      description: |
+        Request body for creating a cluster.
+
+        The API automatically enriches the cluster spec with the following fields:
+        - cloudUrl: Auto-populated from the first management cluster's cloudfront_url label
+        - placement: Auto-populated from the first management cluster's name if not provided by the client
       required:
         - name
         - spec
@@ -2362,7 +2387,17 @@ components:
           description: Target project ID
         spec:
           type: object
-          description: Cluster specification
+          description: |
+            Cluster specification. The following fields are auto-populated if not provided:
+            - placement: Management cluster name where the cluster will be deployed (optional, auto-assigned if omitted)
+            - cloudUrl: CloudFront URL (always auto-populated from management cluster)
+          properties:
+            placement:
+              type: string
+              description: |
+                Management cluster name where the cluster will be deployed.
+                If not provided, will be auto-populated from the first available management cluster.
+              example: management-cluster-us-east-1
           additionalProperties: true
 
     ClusterUpdateRequest:

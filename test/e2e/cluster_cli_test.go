@@ -14,7 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Cluster CLI API", Label("cluster", "cli"), Ordered, func() {
+var _ = Describe("ROSACTL CLI E2E Tests", Label("cluster", "cli"), Ordered, func() {
 	var (
 		baseURL           string
 		accountID         string
@@ -23,15 +23,36 @@ var _ = Describe("Cluster CLI API", Label("cluster", "cli"), Ordered, func() {
 		clusterName       string
 		clusterID         string
 		cloudUrl          string
-		apiClient         *APIClient
 		region            string
-		// issuerURL         string
+		apiClient         *APIClient
 	)
 
 	BeforeAll(func() {
-		baseURL = os.Getenv("E2E_BASE_URL")
-		accountID = os.Getenv("E2E_ACCOUNT_ID") // this is the RC account id
 
+		//--------------------------------
+		// Required environment variables for e2e testing
+		//--------------------------------
+		baseURL = os.Getenv("E2E_BASE_URL")
+		if baseURL == "" {
+			Skip("E2E_BASE_URL is not set")
+		}
+		region = os.Getenv("AWS_REGION")
+		if region == "" {
+			Skip("AWS_REGION is not set")
+		}
+		ROSACTL_PATH = os.Getenv("ROSACTL_PATH")
+		if ROSACTL_PATH == "" {
+			Skip("ROSACTL_PATH is not set")
+		}
+		if os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID") == "" {
+			Skip("CUSTOMER_AWS_ACCESS_KEY_ID is not set")
+		}
+		if os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY") == "" {
+			Skip("CUSTOMER_AWS_SECRET_ACCESS_KEY is not set")
+		}
+
+		// this is the RC account id, a privileged account id to the baseURL orAPI_URL
+		accountID = os.Getenv("E2E_ACCOUNT_ID")
 		if accountID == "" {
 			GinkgoWriter.Printf("No E2E_ACCOUNT_ID set, using AWS STS caller identity\n")
 			cmd := exec.Command("aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text")
@@ -43,11 +64,6 @@ var _ = Describe("Cluster CLI API", Label("cluster", "cli"), Ordered, func() {
 		}
 		GinkgoWriter.Printf("E2E_ACCOUNT_ID: %s\n", accountID)
 
-		region = os.Getenv("AWS_REGION")
-		if region == "" {
-			Fail("AWS_REGION is not set")
-		}
-
 		customerAccountID = os.Getenv("E2E_CUSTOMER_ACCOUNT_ID")
 		if customerAccountID == "" {
 			GinkgoWriter.Printf("No E2E_CUSTOMER_ACCOUNT_ID set, using AWS STS caller identity\n")
@@ -56,7 +72,6 @@ var _ = Describe("Cluster CLI API", Label("cluster", "cli"), Ordered, func() {
 				"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
 				"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
 			)
-
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				Fail("Failed to get AWS customer account ID: " + err.Error())
@@ -65,18 +80,16 @@ var _ = Describe("Cluster CLI API", Label("cluster", "cli"), Ordered, func() {
 			GinkgoWriter.Printf("Customer account ID: %s\n", customerAccountID)
 		}
 
-		ROSACTL_PATH = os.Getenv("ROSACTL_PATH")
-		if ROSACTL_PATH == "" {
-			Fail("ROSACTL_PATH is not set")
-		}
-
+		//--------------------------------
+		// Optional: development overrides
+		//--------------------------------
 		if os.Getenv("HCP_CLUSTER_NAME") != "" {
 			clusterName = os.Getenv("HCP_CLUSTER_NAME")
 		} else {
-			// clusterName = fmt.Sprintf("hcp-%d", time.Now().Unix())
-			clusterName = fmt.Sprintf("cdoan-%d", time.Now().Unix())
+			// Default to e2e-<timestamp>
+			clusterName = fmt.Sprintf("e2e-%d", time.Now().Unix())
 		}
-		// clusterName = fmt.Sprintf("test-cluster-%d", time.Now().Unix())
+
 		apiClient = NewAPIClient(baseURL)
 	})
 
@@ -252,7 +265,12 @@ var _ = Describe("Cluster CLI API", Label("cluster", "cli"), Ordered, func() {
 		err = json.Unmarshal(output, &cluster)
 		Expect(err).To(BeNil())
 		clusterID = cluster["id"].(string)
-		cloudUrl = cluster["spec"].(map[string]interface{})["rosaIssuerUrl"].(string)
+
+		if spec, ok := cluster["spec"].(map[string]interface{}); ok {
+			if issuerUrl, ok := spec["cloudUrl"].(string); ok {
+				cloudUrl = issuerUrl
+			}
+		}
 		GinkgoWriter.Printf("HCP cluster ID: %s\n", clusterID)
 		GinkgoWriter.Printf("HCP cluster cloud url: %s\n", cloudUrl)
 		GinkgoWriter.Printf("HCP cluster creation submitted successfully: %s\n", clusterName)
@@ -395,7 +413,7 @@ var _ = Describe("Cluster CLI API", Label("cluster", "cli"), Ordered, func() {
 	})
 
 	// it should be able to delete the cluster-iam, cluster-vpc and the hcp cluster
-	XIt("should be able to delete the cluster-iam, cluster-vpc and the hcp cluster", Label("cluster-vpc-iam-delete"), func() {
+	It("should be able to delete the cluster-iam, cluster-vpc and the hcp cluster", Label("cluster-vpc-iam-delete"), func() {
 		GinkgoWriter.Printf("Deleting cluster-oidc: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_PATH, "cluster-oidc", "delete", clusterName, "--region", region)
 		cmd.Env = append(os.Environ(),
@@ -438,7 +456,7 @@ var _ = Describe("Cluster CLI API", Label("cluster", "cli"), Ordered, func() {
 	})
 
 	// todo: this is a workaround until hyperfleet supports deletion of the cluster
-	XIt("should be able to list the aws secrets for rds database", Label("rds"), func() {
+	It("should be able to list the aws secrets for rds database", Label("rds"), func() {
 		GinkgoWriter.Printf("Listing aws secrets for rds database\n")
 		var clusterPrefix string
 		if os.Getenv("CLUSTER_PREFIX") != "" {
@@ -466,7 +484,7 @@ var _ = Describe("Cluster CLI API", Label("cluster", "cli"), Ordered, func() {
 	})
 
 	// delete resource bundles
-	XIt("should be able to delete the resource bundles", Label("bundles-delete"), func() {
+	It("should be able to delete the resource bundles", Label("bundles-delete"), func() {
 		GinkgoWriter.Printf("Querying platform api for /resource_bundles\n")
 		response, err := apiClient.Get("/api/v0/resource_bundles", accountID)
 		Expect(err).ToNot(HaveOccurred())

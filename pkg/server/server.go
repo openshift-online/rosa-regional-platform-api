@@ -46,7 +46,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(maestroClient, logger)
 	resourceBundleHandler := apphandlers.NewResourceBundleHandler(maestroClient, logger)
 	workHandler := apphandlers.NewWorkHandler(maestroClient, logger)
-	clusterHandler := apphandlers.NewClusterHandler(hyperfleetClient, logger)
+	clusterHandler := apphandlers.NewClusterHandler(hyperfleetClient, maestroClient, logger)
 	nodePoolHandler := apphandlers.NewNodePoolHandler(maestroClient, logger)
 
 	// Create legacy authorization middleware (for non-authz routes)

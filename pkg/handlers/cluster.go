@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/hyperfleet"
+	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
 	"github.com/openshift/rosa-regional-platform-api/pkg/types"
 )
@@ -15,13 +17,15 @@ import (
 // ClusterHandler handles cluster-related HTTP requests
 type ClusterHandler struct {
 	hyperfleetClient *hyperfleet.Client
+	maestroClient    *maestro.Client
 	logger           *slog.Logger
 }
 
 // NewClusterHandler creates a new cluster handler
-func NewClusterHandler(hyperfleetClient *hyperfleet.Client, logger *slog.Logger) *ClusterHandler {
+func NewClusterHandler(hyperfleetClient *hyperfleet.Client, maestroClient *maestro.Client, logger *slog.Logger) *ClusterHandler {
 	return &ClusterHandler{
 		hyperfleetClient: hyperfleetClient,
+		maestroClient:    maestroClient,
 		logger:           logger,
 	}
 }
@@ -89,6 +93,30 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get CloudFront URL from the first management cluster before creating the cluster
+	managementClusters, err := h.maestroClient.ListConsumers(ctx, 1, 1)
+	if err != nil {
+		h.logger.Error("failed to list management clusters for cloudUrl", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-CREATE-004", "Failed to retrieve CloudFront URL for cluster issuer")
+		return
+	}
+
+	if len(managementClusters.Items) == 0 {
+		h.logger.Error("no management clusters found for cloudUrl")
+		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-CREATE-005", "No management clusters found to retrieve CloudFront URL")
+		return
+	}
+
+	cloudfrontURL := managementClusters.Items[0].Labels["cloudfront_url"]
+	if cloudfrontURL == "" {
+		h.logger.Error("cloudfront_url label not found or empty in management cluster", "cluster_id", managementClusters.Items[0].ID)
+		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-CREATE-006", "CloudFront URL not configured in management cluster")
+		return
+	}
+
+	// Add cloudUrl (CloudFront URL only) to the spec before creating the cluster
+	req.Spec["cloudUrl"] = cloudfrontURL
+
 	h.logger.Info("creating cluster", "account_id", accountID, "cluster_name", req.Name)
 
 	cluster, err := h.hyperfleetClient.CreateCluster(ctx, accountID, userEmail, &req)
@@ -97,6 +125,14 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-CREATE-003", "Failed to create cluster")
 		return
 	}
+
+	// Append cluster ID to cloudUrl in the response (but not in hyperfleet)
+	if cluster.Spec == nil {
+		cluster.Spec = make(map[string]interface{})
+	}
+	cluster.Spec["cloudUrl"] = fmt.Sprintf("%s/%s", cloudfrontURL, cluster.ID)
+
+	h.logger.Info("cluster created with cloudUrl", "cluster_id", cluster.ID, "cloudUrl", cluster.Spec["cloudUrl"])
 
 	h.writeJSON(w, http.StatusCreated, cluster)
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/hyperfleet"
+	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-platform-api/pkg/config"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
 )
@@ -62,7 +63,7 @@ func TestClusterHandler_List_Success(t *testing.T) {
 		BaseURL: server.URL,
 		Timeout: 30 * time.Second,
 	}, logger)
-	handler := NewClusterHandler(hfClient, logger)
+	handler := NewClusterHandler(hfClient, nil, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
 	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
@@ -141,7 +142,7 @@ func TestClusterHandler_List_WithPagination(t *testing.T) {
 				BaseURL: server.URL,
 				Timeout: 30 * time.Second,
 			}, logger)
-			handler := NewClusterHandler(hfClient, logger)
+			handler := NewClusterHandler(hfClient, nil, logger)
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters"+tt.queryParams, nil)
 			ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
@@ -175,7 +176,7 @@ func TestClusterHandler_List_Error(t *testing.T) {
 		BaseURL: server.URL,
 		Timeout: 30 * time.Second,
 	}, logger)
-	handler := NewClusterHandler(hfClient, logger)
+	handler := NewClusterHandler(hfClient, nil, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
 	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
@@ -208,7 +209,8 @@ func TestClusterHandler_List_Error(t *testing.T) {
 func TestClusterHandler_Create_Success(t *testing.T) {
 	now := time.Now()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Mock hyperfleet server
+	hfServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && r.URL.Path == "/api/hyperfleet/v1/clusters" {
 			var req hyperfleet.HFClusterCreateRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -219,11 +221,16 @@ func TestClusterHandler_Create_Success(t *testing.T) {
 				t.Errorf("expected name=new-cluster, got %s", req.Name)
 			}
 
+			// Verify cloudUrl was added to the create request (CloudFront URL only, no cluster ID)
+			if req.Spec["cloudUrl"] != "https://doku78iof5s87.cloudfront.net" {
+				t.Errorf("expected cloudUrl=https://doku78iof5s87.cloudfront.net in create spec, got %v", req.Spec["cloudUrl"])
+			}
+
 			resp := hyperfleet.HFCluster{
 				ID:         "cluster-123",
 				Name:       "new-cluster",
 				Labels:     map[string]string{"target_project_id": "project-1"},
-				Spec:       map[string]interface{}{"provider": "aws"},
+				Spec:       req.Spec, // Return the spec as provided (with CloudFront URL only)
 				Generation: 1,
 				CreatedBy:  "user@example.com",
 				CreatedAt:  now,
@@ -233,14 +240,42 @@ func TestClusterHandler_Create_Success(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(resp)
 		}
 	}))
-	defer server.Close()
+	defer hfServer.Close()
+
+	// Mock maestro server
+	maestroServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/maestro/v1/consumers" {
+			resp := map[string]interface{}{
+				"kind":  "ConsumerList",
+				"page":  1,
+				"size":  1,
+				"total": 1,
+				"items": []map[string]interface{}{
+					{
+						"id":   "mgmt-cluster-1",
+						"name": "management-cluster",
+						"labels": map[string]string{
+							"cloudfront_url": "https://doku78iof5s87.cloudfront.net",
+						},
+					},
+				},
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+		}
+	}))
+	defer maestroServer.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	hfClient := hyperfleet.NewClient(config.HyperfleetConfig{
-		BaseURL: server.URL,
+		BaseURL: hfServer.URL,
 		Timeout: 30 * time.Second,
 	}, logger)
-	handler := NewClusterHandler(hfClient, logger)
+	maestroClient := maestro.NewClient(config.MaestroConfig{
+		BaseURL: maestroServer.URL,
+		Timeout: 30 * time.Second,
+	}, logger)
+	handler := NewClusterHandler(hfClient, maestroClient, logger)
 
 	reqBody := map[string]interface{}{
 		"name": "new-cluster",
@@ -273,6 +308,17 @@ func TestClusterHandler_Create_Success(t *testing.T) {
 	if result["name"] != "new-cluster" {
 		t.Errorf("expected name=new-cluster, got %v", result["name"])
 	}
+
+	// Check that cloudUrl was added to spec
+	spec, ok := result["spec"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected spec to be a map, got %T", result["spec"])
+	}
+
+	expectedIssuerURL := "https://doku78iof5s87.cloudfront.net/cluster-123"
+	if spec["cloudUrl"] != expectedIssuerURL {
+		t.Errorf("expected cloudUrl=%s, got %v", expectedIssuerURL, spec["cloudUrl"])
+	}
 }
 
 // TestClusterHandler_Create_InvalidJSON tests invalid JSON in request body
@@ -282,7 +328,7 @@ func TestClusterHandler_Create_InvalidJSON(t *testing.T) {
 		BaseURL: "http://localhost:8080",
 		Timeout: 30 * time.Second,
 	}, logger)
-	handler := NewClusterHandler(hfClient, logger)
+	handler := NewClusterHandler(hfClient, nil, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader([]byte("invalid json")))
 	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
@@ -332,7 +378,7 @@ func TestClusterHandler_Create_MissingFields(t *testing.T) {
 				BaseURL: "http://localhost:8080",
 				Timeout: 30 * time.Second,
 			}, logger)
-			handler := NewClusterHandler(hfClient, logger)
+			handler := NewClusterHandler(hfClient, nil, logger)
 
 			body, _ := json.Marshal(tt.reqBody)
 			req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
@@ -385,7 +431,7 @@ func TestClusterHandler_Get_Success(t *testing.T) {
 		BaseURL: server.URL,
 		Timeout: 30 * time.Second,
 	}, logger)
-	handler := NewClusterHandler(hfClient, logger)
+	handler := NewClusterHandler(hfClient, nil, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/cluster-123", nil)
 	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
@@ -429,7 +475,7 @@ func TestClusterHandler_Get_NotFound(t *testing.T) {
 		BaseURL: server.URL,
 		Timeout: 30 * time.Second,
 	}, logger)
-	handler := NewClusterHandler(hfClient, logger)
+	handler := NewClusterHandler(hfClient, nil, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/cluster-999", nil)
 	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
@@ -469,7 +515,7 @@ func TestClusterHandler_Delete_Success(t *testing.T) {
 		BaseURL: server.URL,
 		Timeout: 30 * time.Second,
 	}, logger)
-	handler := NewClusterHandler(hfClient, logger)
+	handler := NewClusterHandler(hfClient, nil, logger)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v0/clusters/cluster-123", nil)
 	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
@@ -513,7 +559,7 @@ func TestClusterHandler_Delete_NotFound(t *testing.T) {
 		BaseURL: server.URL,
 		Timeout: 30 * time.Second,
 	}, logger)
-	handler := NewClusterHandler(hfClient, logger)
+	handler := NewClusterHandler(hfClient, nil, logger)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v0/clusters/cluster-999", nil)
 	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
@@ -589,7 +635,7 @@ func TestClusterHandler_GetStatus_Success(t *testing.T) {
 		BaseURL: server.URL,
 		Timeout: 30 * time.Second,
 	}, logger)
-	handler := NewClusterHandler(hfClient, logger)
+	handler := NewClusterHandler(hfClient, nil, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/cluster-123/statuses", nil)
 	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
@@ -661,7 +707,7 @@ func TestClusterHandler_GetStatus_NotFound(t *testing.T) {
 		BaseURL: server.URL,
 		Timeout: 30 * time.Second,
 	}, logger)
-	handler := NewClusterHandler(hfClient, logger)
+	handler := NewClusterHandler(hfClient, nil, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/cluster-999/statuses", nil)
 	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")

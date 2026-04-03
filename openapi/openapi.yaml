@@ -2322,7 +2322,16 @@ components:
           description: Resource version for optimistic concurrency control
         spec:
           type: object
-          description: Cluster specification
+          description: |
+            Cluster specification. When a cluster is created, the response includes
+            a cloudUrl field containing the CloudFront URL with cluster ID appended.
+          properties:
+            cloudUrl:
+              type: string
+              description: |
+                CloudFront URL with cluster ID appended (format: {cloudfront_url}/{cluster_id}).
+                This field is automatically added to the response when creating a cluster.
+              example: https://doku78iof5s87.cloudfront.net/cluster-123
           additionalProperties: true
         status:
           $ref: '#/components/schemas/ClusterStatusInfo'

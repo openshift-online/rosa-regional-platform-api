@@ -123,12 +123,11 @@ var _ = Describe("ROSACTL CLI E2E Tests", Label("cluster", "cli"), Ordered, func
 	It("should be able to create a new cluster-vpc", Label("vpc-create"), func() {
 		// wait for the command to complete, it will take a few minutes.
 		GinkgoWriter.Printf("Creating new cluster-vpc: %s\n", clusterName)
-		cmd := exec.Command(ROSACTL_PATH, "cluster-vpc", "create", clusterName, "--region", region, "--availability-zones", "us-east-1a,us-east-1b,us-east-1c")
+		cmd := exec.Command(ROSACTL_PATH, "cluster-vpc", "create", clusterName, "--region", region, "--availability-zones", "us-east-1a")
 		cmd.Env = append(os.Environ(),
 			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
 			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
 		)
-
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()
@@ -147,7 +146,6 @@ var _ = Describe("ROSACTL CLI E2E Tests", Label("cluster", "cli"), Ordered, func
 			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
 			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
 		)
-
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			Fail("Failed to list the cluster-vpc: " + err.Error())
@@ -158,22 +156,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Label("cluster", "cli"), Ordered, func
 
 	// create a new cluster-iam
 	It("should be able to create the cluster-iam", Label("iam-create"), func() {
-		// GinkgoWriter.Printf("Fetching issuer url from the /management_clusters endpoint\n")
-		// response := getAndExpectOK(apiClient, "/api/v0/management_clusters", accountID, "")
-		// Expect(response.StatusCode).To(Equal(http.StatusOK))
-		// var list struct {
-		// 	Items []map[string]interface{} `json:"items"`
-		// }
-		// err := json.Unmarshal(response.Body, &list)
-		// Expect(err).To(BeNil())
-		// Expect(list.Items).ToNot(BeEmpty())
-		// fmt.Println(list.Items[0])
-		// issuerURL = list.Items[0]["labels"].(map[string]interface{})["cloudfront_url"].(string)
-		// GinkgoWriter.Printf("Issuer url: %s\n", issuerURL)
-		// Expect(issuerURL).ToNot(BeEmpty())
-
 		GinkgoWriter.Printf("Creating new cluster-iam: %s\n", clusterName)
-		// cmd := exec.Command(ROSACTL_PATH, "cluster-iam", "create", clusterName, "--region", region, "--oidc-issuer-url", issuerURL)
 		cmd := exec.Command(ROSACTL_PATH, "cluster-iam", "create", clusterName, "--region", region)
 		cmd.Env = append(os.Environ(),
 			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
@@ -201,10 +184,9 @@ var _ = Describe("ROSACTL CLI E2E Tests", Label("cluster", "cli"), Ordered, func
 			Fail("Failed to list the cluster-iam: " + err.Error())
 		}
 		fmt.Println(string(output))
-		// Expect(string(output)).To(ContainSubstring(clusterName))
+		Expect(string(output)).To(ContainSubstring(clusterName))
 	})
 
-	// POST /api/v0/accounts expects JSON { "accountId", "privileged" } (see authz_e2e_test and APIClient.CreateAccount)
 	It("should be able to add the customer account to the platform api accounts", Label("account-add"), func() {
 		GinkgoWriter.Printf("Adding customer account to the platform api accounts: %s %s\n", accountID, customerAccountID)
 		body := map[string]interface{}{
@@ -229,21 +211,8 @@ var _ = Describe("ROSACTL CLI E2E Tests", Label("cluster", "cli"), Ordered, func
 
 	It("should be able to create the hcp cluster", Label("hcp-create"), func() {
 		GinkgoWriter.Printf("Creating new hcp cluster: %s\n", clusterName)
-		// todo: get the management cluster name until we have placement adapter
-		response := getAndExpectOK(apiClient, "/api/v0/management_clusters", accountID, "")
-		Expect(response.StatusCode).To(Equal(http.StatusOK))
-		// response is ConsumerList: { "kind", "page", "size", "total", "items": [...] }
-		var list struct {
-			Items []map[string]interface{} `json:"items"`
-		}
-		err := json.Unmarshal(response.Body, &list)
-		Expect(err).To(BeNil())
-		Expect(list.Items).ToNot(BeEmpty())
 
-		// set the managmentClusterName to the first item in the list, this should be the 1st management cluster that got registered
-		managementClusterName := list.Items[0]["name"].(string)
-		GinkgoWriter.Printf("Using management cluster for placement: %s\n", managementClusterName)
-		cmd := exec.Command(ROSACTL_PATH, "cluster", "create", clusterName, "--region", region, "--placement", managementClusterName)
+		cmd := exec.Command(ROSACTL_PATH, "cluster", "create", clusterName, "--region", region)
 		cmd.Env = append(os.Environ(),
 			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
 			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
@@ -251,7 +220,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Label("cluster", "cli"), Ordered, func
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
-		err = cmd.Run()
+		err := cmd.Run()
 		if err != nil {
 			Fail("Failed to create the HCP cluster: " + err.Error() + "\nstderr: " + stderr.String())
 		}
@@ -265,7 +234,6 @@ var _ = Describe("ROSACTL CLI E2E Tests", Label("cluster", "cli"), Ordered, func
 		err = json.Unmarshal(output, &cluster)
 		Expect(err).To(BeNil())
 		clusterID = cluster["id"].(string)
-
 		if spec, ok := cluster["spec"].(map[string]interface{}); ok {
 			if issuerUrl, ok := spec["cloudUrl"].(string); ok {
 				cloudUrl = issuerUrl
@@ -277,25 +245,10 @@ var _ = Describe("ROSACTL CLI E2E Tests", Label("cluster", "cli"), Ordered, func
 	})
 
 	It("should be able to create the cluster-oidc", Label("oidc-create"), func() {
-		GinkgoWriter.Printf("Fetching issuer url from the /management_clusters endpoint\n")
-		// response := getAndExpectOK(apiClient, "/api/v0/management_clusters", accountID, "")
-		// Expect(response.StatusCode).To(Equal(http.StatusOK))
-		// var list struct {
-		// 	Items []map[string]interface{} `json:"items"`
-		// }
-		// err := json.Unmarshal(response.Body, &list)
-		// Expect(err).To(BeNil())
-		// Expect(list.Items).ToNot(BeEmpty())
-		// fmt.Println(list.Items[0])
-		// issuerURL = list.Items[0]["labels"].(map[string]interface{})["cloudfront_url"].(string)
-		// GinkgoWriter.Printf("Issuer url: %s\n", issuerURL)
-		// Expect(issuerURL).ToNot(BeEmpty())
 
 		if cloudUrl == "" {
 			cloudUrl = os.Getenv("HCP_ROSA_ISSUER_URL")
-
 		}
-
 		GinkgoWriter.Printf("Cluster cloud url: %s\n", cloudUrl)
 		GinkgoWriter.Printf("Creating new cluster-oidc: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_PATH, "cluster-oidc", "create", clusterName, "--region", region, "--oidc-issuer-url", cloudUrl)

@@ -1,0 +1,36 @@
+{
+  "kind": "Cluster",
+  "labels": {
+    "environment": "dev",
+    "region": "us-east-1",
+    "team": "platform"
+  },
+  "name": "e2e-1775239883",
+  "spec": {
+    "availabilityZones": "us-east-1a,us-east-1b,us-east-1c",
+    "cloudControllerManagerRoleArn": "arn:aws:iam::114594328247:role/e2e-1775239883-cloud-controller-manager",
+    "compute_machine_type": "m5.xlarge",
+    "compute_replicas": 3,
+    "controlPlaneOperatorRoleArn": "arn:aws:iam::114594328247:role/e2e-1775239883-control-plane-operator",
+    "ebscsiRoleArn": "arn:aws:iam::114594328247:role/e2e-1775239883-ebs-csi",
+    "hypershiftLocalZoneId": "Z02002028KOR9RA47NFJ",
+    "imageRegistryRoleArn": "arn:aws:iam::114594328247:role/e2e-1775239883-image-registry",
+    "ingressRoleArn": "arn:aws:iam::114594328247:role/e2e-1775239883-ingress",
+    "multi_az": true,
+    "natGatewayIds": "nat-096cfdb22763ddf6d",
+    "networkConfigRoleArn": "arn:aws:iam::114594328247:role/e2e-1775239883-network-config",
+    "nodePoolManagementRoleArn": "arn:aws:iam::114594328247:role/e2e-1775239883-node-pool-management",
+    "placement": "ci-cfe18b-mc01",
+    "privateSubnetIds": "subnet-03cbb9087a38da606",
+    "provider": "aws",
+    "publicSubnetIds": "subnet-00ae141f52e28085a,subnet-01cca4ec7a5467ca1,subnet-01b63658a766de27e",
+    "region": "us-east-1",
+    "version": "4.14",
+    "vpcCidr": "10.0.0.0/16",
+    "vpcId": "vpc-07d0774ddc9b46b58",
+    "workerInstanceProfileName": "e2e-1775239883-ROSA-Worker-Role",
+    "workerRoleArn": "arn:aws:iam::114594328247:role/e2e-1775239883-ROSA-Worker-Role",
+    "workerSecurityGroupId": "sg-0b77f03f9ab023289"
+  },
+  "target_project_id": ""
+}

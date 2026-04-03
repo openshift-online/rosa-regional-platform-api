@@ -117,6 +117,18 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Add cloudUrl (CloudFront URL only) to the spec before creating the cluster
 	req.Spec["cloudUrl"] = cloudfrontURL
 
+	// Auto-populate placement from management cluster if not provided by the client
+	if req.Spec["placement"] == nil || req.Spec["placement"] == "" {
+		placementName := managementClusters.Items[0].Name
+		if placementName == "" {
+			h.logger.Error("management cluster has no name for placement", "cluster_id", managementClusters.Items[0].ID)
+			h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-CREATE-007", "Management cluster name not available for placement")
+			return
+		}
+		req.Spec["placement"] = placementName
+		h.logger.Info("auto-assigned placement", "placement", placementName)
+	}
+
 	h.logger.Info("creating cluster", "account_id", accountID, "cluster_name", req.Name)
 
 	cluster, err := h.hyperfleetClient.CreateCluster(ctx, accountID, userEmail, &req)

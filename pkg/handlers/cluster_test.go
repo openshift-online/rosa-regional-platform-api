@@ -226,6 +226,11 @@ func TestClusterHandler_Create_Success(t *testing.T) {
 				t.Errorf("expected cloudUrl=https://doku78iof5s87.cloudfront.net in create spec, got %v", req.Spec["cloudUrl"])
 			}
 
+			// Verify placement was auto-populated from management cluster name
+			if req.Spec["placement"] != "management-cluster" {
+				t.Errorf("expected placement=management-cluster in create spec, got %v", req.Spec["placement"])
+			}
+
 			resp := hyperfleet.HFCluster{
 				ID:         "cluster-123",
 				Name:       "new-cluster",
@@ -401,6 +406,184 @@ func TestClusterHandler_Create_MissingFields(t *testing.T) {
 				t.Errorf("expected code=CLUSTERS-MGMT-CREATE-002, got %v", errorResp["code"])
 			}
 		})
+	}
+}
+
+// TestClusterHandler_Create_WithExistingPlacement tests that existing placement is not overridden
+func TestClusterHandler_Create_WithExistingPlacement(t *testing.T) {
+	now := time.Now()
+
+	// Mock hyperfleet server
+	hfServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/api/hyperfleet/v1/clusters" {
+			var req hyperfleet.HFClusterCreateRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("failed to decode request: %v", err)
+			}
+
+			// Verify placement was NOT overridden
+			if req.Spec["placement"] != "custom-placement" {
+				t.Errorf("expected placement=custom-placement (client-provided), got %v", req.Spec["placement"])
+			}
+
+			resp := hyperfleet.HFCluster{
+				ID:         "cluster-123",
+				Name:       "new-cluster",
+				Labels:     map[string]string{"target_project_id": "project-1"},
+				Spec:       req.Spec,
+				Generation: 1,
+				CreatedBy:  "user@example.com",
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			}
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(resp)
+		}
+	}))
+	defer hfServer.Close()
+
+	// Mock maestro server
+	maestroServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/maestro/v1/consumers" {
+			resp := map[string]interface{}{
+				"kind":  "ConsumerList",
+				"page":  1,
+				"size":  1,
+				"total": 1,
+				"items": []map[string]interface{}{
+					{
+						"id":   "mgmt-cluster-1",
+						"name": "management-cluster",
+						"labels": map[string]string{
+							"cloudfront_url": "https://doku78iof5s87.cloudfront.net",
+						},
+					},
+				},
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+		}
+	}))
+	defer maestroServer.Close()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	hfClient := hyperfleet.NewClient(config.HyperfleetConfig{
+		BaseURL: hfServer.URL,
+		Timeout: 30 * time.Second,
+	}, logger)
+	maestroClient := maestro.NewClient(config.MaestroConfig{
+		BaseURL: maestroServer.URL,
+		Timeout: 30 * time.Second,
+	}, logger)
+	handler := NewClusterHandler(hfClient, maestroClient, logger)
+
+	reqBody := map[string]interface{}{
+		"name": "new-cluster",
+		"spec": map[string]interface{}{
+			"provider":  "aws",
+			"placement": "custom-placement", // Client-provided placement
+		},
+	}
+	body, _ := json.Marshal(reqBody)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
+	ctx = context.WithValue(ctx, middleware.ContextKeyCallerARN, "arn:aws:iam::test-account-123:user/test")
+	ctx = context.WithValue(ctx, middleware.ContextKeyUserID, "user@example.com")
+	req = req.WithContext(ctx)
+
+	w := httptest.NewRecorder()
+	handler.Create(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected status 201, got %d", w.Code)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	spec, ok := result["spec"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected spec to be a map, got %T", result["spec"])
+	}
+
+	if spec["placement"] != "custom-placement" {
+		t.Errorf("expected placement=custom-placement in response, got %v", spec["placement"])
+	}
+}
+
+// TestClusterHandler_Create_NoManagementClusterName tests error when management cluster has no name
+func TestClusterHandler_Create_NoManagementClusterName(t *testing.T) {
+	// Mock maestro server returning management cluster without name
+	maestroServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/maestro/v1/consumers" {
+			resp := map[string]interface{}{
+				"kind":  "ConsumerList",
+				"page":  1,
+				"size":  1,
+				"total": 1,
+				"items": []map[string]interface{}{
+					{
+						"id":   "mgmt-cluster-1",
+						"name": "", // Empty name
+						"labels": map[string]string{
+							"cloudfront_url": "https://doku78iof5s87.cloudfront.net",
+						},
+					},
+				},
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+		}
+	}))
+	defer maestroServer.Close()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	hfClient := hyperfleet.NewClient(config.HyperfleetConfig{
+		BaseURL: "http://localhost:8080",
+		Timeout: 30 * time.Second,
+	}, logger)
+	maestroClient := maestro.NewClient(config.MaestroConfig{
+		BaseURL: maestroServer.URL,
+		Timeout: 30 * time.Second,
+	}, logger)
+	handler := NewClusterHandler(hfClient, maestroClient, logger)
+
+	reqBody := map[string]interface{}{
+		"name": "new-cluster",
+		"spec": map[string]interface{}{
+			"provider": "aws",
+			// No placement provided
+		},
+	}
+	body, _ := json.Marshal(reqBody)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
+	ctx = context.WithValue(ctx, middleware.ContextKeyCallerARN, "arn:aws:iam::test-account-123:user/test")
+	ctx = context.WithValue(ctx, middleware.ContextKeyUserID, "user@example.com")
+	req = req.WithContext(ctx)
+
+	w := httptest.NewRecorder()
+	handler.Create(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", w.Code)
+	}
+
+	var errorResp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&errorResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+
+	if errorResp["code"] != "CLUSTERS-MGMT-CREATE-007" {
+		t.Errorf("expected code=CLUSTERS-MGMT-CREATE-007, got %v", errorResp["code"])
+	}
+
+	if errorResp["reason"] != "Management cluster name not available for placement" {
+		t.Errorf("expected reason about management cluster name, got %v", errorResp["reason"])
 	}
 }
 

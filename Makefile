@@ -112,6 +112,17 @@ test-e2e:
 		--junit-report=junit.xml \
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
 
+test-cli-e2e:
+	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" \
+		AWS_REGION="${AWS_REGION}" \
+		ROSACTL_BIN="${ROSACTL_BIN}" \
+		CUSTOMER_AWS_ACCESS_KEY_ID="${CUSTOMER_AWS_ACCESS_KEY_ID}" \
+		CUSTOMER_AWS_SECRET_ACCESS_KEY="${CUSTOMER_AWS_SECRET_ACCESS_KEY}" \
+		ginkgo -vv \
+		--focus='ROSACTL CLI' \
+		--junit-report=junit.xml \
+		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
+
 test-e2e-quiet:
 	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo --skip="Authz" \
 	--junit-report=junit.xml --output-dir=$(TEST_OUTPUT_DIR) ./test/e2e

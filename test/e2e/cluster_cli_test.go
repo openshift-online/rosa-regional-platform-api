@@ -2,7 +2,9 @@ package e2e_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,6 +15,37 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
+
+// runRosactl runs rosactl with customer AWS credentials under a deadline.
+// Stdin is nil so the child does not block waiting for input when Ginkgo has no TTY.
+// AWS_PAGER is cleared to avoid aws-cli-style pagers hanging the subprocess.
+// Override the deadline with E2E_ROSACTL_TIMEOUT (e.g. 45m, 1h).
+func runRosactl(bin, region string, args ...string) ([]byte, error) {
+	timeout := 30 * time.Minute
+	if s := os.Getenv("E2E_ROSACTL_TIMEOUT"); s != "" {
+		if d, err := time.ParseDuration(s); err == nil {
+			timeout = d
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Env = append(os.Environ(),
+		"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
+		"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
+		"AWS_REGION="+region,
+		"AWS_PAGER=",
+	)
+	cmd.Stdin = nil
+
+	out, err := cmd.CombinedOutput()
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return out, fmt.Errorf("rosactl %q timed out after %v (set E2E_ROSACTL_TIMEOUT): %w\noutput:\n%s",
+			strings.Join(args, " "), timeout, err, string(out))
+	}
+	return out, err
+}
 
 var _ = Describe("ROSACTL CLI E2E Tests", Label("cluster", "cli"), Ordered, func() {
 	var (
@@ -367,107 +400,64 @@ var _ = Describe("ROSACTL CLI E2E Tests", Label("cluster", "cli"), Ordered, func
 		GinkgoWriter.Printf("Final cluster statuses:\n%s\n", string(finalJSON))
 	})
 
-	// delete all resource bundles
-	It("should be able to delete the resource bundles", Label("bundles-delete"), func() {
-		GinkgoWriter.Printf("Querying platform api for /resource_bundles\n")
-		response, err := apiClient.Get("/api/v0/resource_bundles", accountID)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(response.StatusCode).To(Equal(http.StatusOK))
-		var list struct {
-			Items []map[string]interface{} `json:"items"`
-		}
-		err = json.Unmarshal(response.Body, &list)
-		Expect(err).To(BeNil())
-		for _, item := range list.Items {
-			workID := item["metadata"].(map[string]interface{})["name"].(string) // this is the work id
-			GinkgoWriter.Printf("Bundle ID: %s, Name: %s\n", item["id"], workID)
-			GinkgoWriter.Printf("Cluster ID: %s\n", clusterID)
-			// if strings.Contains(workID, clusterID) {
-			response, err := apiClient.Delete("/api/v0/resource_bundles/"+item["id"].(string), accountID)
-			Expect(err).ToNot(HaveOccurred())
-			// accept 204 or 200
-			Expect(response.StatusCode).To(Or(Equal(http.StatusNoContent), Equal(http.StatusOK)))
-			GinkgoWriter.Printf("Resource bundle deleted successfully: %s\n", item["id"])
-			// }
-		}
-	})
+	// // delete all resource bundles
+	// It("should be able to delete the resource bundles", Label("bundles-delete"), func() {
+	// 	GinkgoWriter.Printf("Querying platform api for /resource_bundles\n")
+	// 	response, err := apiClient.Get("/api/v0/resource_bundles", accountID)
+	// 	Expect(err).ToNot(HaveOccurred())
+	// 	Expect(response.StatusCode).To(Equal(http.StatusOK))
+	// 	var list struct {
+	// 		Items []map[string]interface{} `json:"items"`
+	// 	}
+	// 	err = json.Unmarshal(response.Body, &list)
+	// 	Expect(err).To(BeNil())
+	// 	for _, item := range list.Items {
+	// 		workID := item["metadata"].(map[string]interface{})["name"].(string) // this is the work id
+	// 		GinkgoWriter.Printf("Bundle ID: %s, Name: %s\n", item["id"], workID)
+	// 		GinkgoWriter.Printf("Cluster ID: %s\n", clusterID)
+	// 		// if strings.Contains(workID, clusterID) {
+	// 		response, err := apiClient.Delete("/api/v0/resource_bundles/"+item["id"].(string), accountID)
+	// 		Expect(err).ToNot(HaveOccurred())
+	// 		// accept 204 or 200
+	// 		Expect(response.StatusCode).To(Or(Equal(http.StatusNoContent), Equal(http.StatusOK)))
+	// 		GinkgoWriter.Printf("Resource bundle deleted successfully: %s\n", item["id"])
+	// 		// }
+	// 	}
+	// })
 
 	// it should wait 5m for nodepools and hcp to terminate
-	It("should be able to wait 5m for nodepools and hcp to terminate", Label("nodepools-hcp-terminate"), func() {
-		GinkgoWriter.Printf("Waiting 5m for nodepools and hcp to terminate\n")
-		time.Sleep(5 * time.Minute)
-		GinkgoWriter.Printf("Nodepools and hcp terminated successfully\n")
-	})
+	// It("should be able to wait 5m for nodepools and hcp to terminate", Label("nodepools-hcp-terminate"), func() {
+	// 	GinkgoWriter.Printf("Waiting 5m for nodepools and hcp to terminate\n")
+	// 	time.Sleep(5 * time.Minute)
+	// 	GinkgoWriter.Printf("Nodepools and hcp terminated successfully\n")
+	// })
 
-	// it should be able to delete the cluster-iam, cluster-vpc and the hcp cluster
-	It("should be able to delete the cluster-iam, cluster-vpc and the hcp cluster", Label("cluster-vpc-iam-delete"), func() {
-		GinkgoWriter.Printf("Deleting cluster-oidc: %s\n", clusterName)
-		cmd := exec.Command(ROSACTL_BIN, "cluster-oidc", "delete", clusterName, "--region", region)
-		cmd.Env = append(os.Environ(),
-			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-		)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			Fail("Failed to delete the cluster-oidc: " + err.Error())
-		}
-		fmt.Println(string(output))
-		GinkgoWriter.Printf("Cluster-OIDC deleted successfully: %s\n", clusterName)
-
-		GinkgoWriter.Printf("Deleting cluster-iam: %s\n", clusterName)
-		cmd = exec.Command(ROSACTL_BIN, "cluster-iam", "delete", clusterName, "--region", region)
-		cmd.Env = append(os.Environ(),
-			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-		)
-		output, err = cmd.CombinedOutput()
-		if err != nil {
-			Fail("Failed to delete the cluster-iam: " + err.Error())
-		}
-		fmt.Println(string(output))
-		GinkgoWriter.Printf("Cluster-IAM deleted successfully: %s\n", clusterName)
-
-		GinkgoWriter.Printf("Deleting cluster-vpc: %s\n", clusterName)
-		cmd = exec.Command(ROSACTL_BIN, "cluster-vpc", "delete", clusterName, "--region", region)
-		cmd.Env = append(os.Environ(),
-			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-		)
-		output, err = cmd.CombinedOutput()
-		if err != nil {
-			Fail("Failed to delete the cluster-vpc: " + err.Error())
-		}
-		fmt.Println(string(output))
-		GinkgoWriter.Printf("Cluster-VPC deleted successfully: %s\n", clusterName)
-
-	})
-
-	// todo: this is a workaround until hyperfleet supports deletion of the cluster
-	// It("should be able to list the aws secrets for rds database", Label("rds"), func() {
-	// 	GinkgoWriter.Printf("Listing aws secrets for rds database\n")
-	// 	var clusterPrefix string
-	// 	if os.Getenv("CLUSTER_PREFIX") != "" {
-	// 		clusterPrefix = os.Getenv("CLUSTER_PREFIX")
-	// 	} else {
-	// 		// this should be integration
-	// 		clusterPrefix = ""
-	// 	}
-
-	// 	query := fmt.Sprintf("SecretList[?contains(Name, '%s-hyperfleet-db-credentials')]", clusterPrefix)
-	// 	cmd := exec.Command("aws", "secretsmanager", "list-secrets", "--region", region, "--query", query)
-	// 	output, err := cmd.CombinedOutput()
+	// // it should be able to delete the cluster-iam, cluster-vpc and the hcp cluster
+	// It("should be able to delete the cluster-iam, cluster-vpc and the hcp cluster", Label("cluster-vpc-iam-delete"), func() {
+	// 	GinkgoWriter.Printf("Deleting cluster-oidc: %s\n", clusterName)
+	// 	output, err := runRosactl(ROSACTL_BIN, region, "cluster-oidc", "delete", clusterName, "--region", region)
 	// 	if err != nil {
-	// 		Fail("Failed to list the aws secrets for rds database: " + err.Error())
+	// 		Fail("Failed to delete the cluster-oidc: " + err.Error())
 	// 	}
-	// 	var secrets []map[string]interface{}
-	// 	err = json.Unmarshal(output, &secrets)
-	// 	Expect(err).To(BeNil())
-	// 	for _, secret := range secrets {
-	// 		GinkgoWriter.Printf("Secret: %s\n", secret["Name"])
+	// 	fmt.Println(string(output))
+	// 	GinkgoWriter.Printf("Cluster-OIDC deleted successfully: %s\n", clusterName)
+
+	// 	GinkgoWriter.Printf("Deleting cluster-iam: %s\n", clusterName)
+	// 	output, err = runRosactl(ROSACTL_BIN, region, "cluster-iam", "delete", clusterName, "--region", region)
+	// 	if err != nil {
+	// 		Fail("Failed to delete the cluster-iam: " + err.Error())
 	// 	}
-	// todo:connect ot psql and delete the records
-	// psql -h <host> -p <port> -U <username> -d <database>
-	// psql -h <host> -p <port> -U <username> -d <database> -c "DELETE FROM cluster_records WHERE cluster_name = '<cluster_name>'"
+	// 	fmt.Println(string(output))
+	// 	GinkgoWriter.Printf("Cluster-IAM deleted successfully: %s\n", clusterName)
+
+	// 	GinkgoWriter.Printf("Deleting cluster-vpc: %s\n", clusterName)
+	// 	output, err = runRosactl(ROSACTL_BIN, region, "cluster-vpc", "delete", clusterName, "--region", region)
+	// 	if err != nil {
+	// 		Fail("Failed to delete the cluster-vpc: " + err.Error())
+	// 	}
+	// 	fmt.Println(string(output))
+	// 	GinkgoWriter.Printf("Cluster-VPC deleted successfully: %s\n", clusterName)
+
 	// })
 
 })

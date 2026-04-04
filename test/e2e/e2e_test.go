@@ -105,6 +105,7 @@ var _ = Describe("Platform API", Ordered, func() {
 		err := json.Unmarshal(response.Body, &list)
 		Expect(err).To(BeNil())
 		Expect(list.Items).ToNot(BeEmpty())
+
 		// display list.Items as a table using standard go library
 		for _, item := range list.Items {
 			labels, _ := item["labels"].(map[string]interface{})

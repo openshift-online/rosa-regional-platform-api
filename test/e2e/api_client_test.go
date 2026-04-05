@@ -20,11 +20,11 @@ func TestPatchMethodHeaders(t *testing.T) {
 		capturedAccountID = r.Header.Get("X-Amz-Account-Id")
 
 		// Decode body
-		json.NewDecoder(r.Body).Decode(&capturedBody)
+		_ = json.NewDecoder(r.Body).Decode(&capturedBody)
 
 		// Return success
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status": "ok"}`))
+		_, _ = w.Write([]byte(`{"status": "ok"}`))
 	}))
 	defer server.Close()
 

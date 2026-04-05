@@ -130,6 +130,11 @@ func (c *APIClient) Put(path string, body interface{}, accountID string) (*APIRe
 	return c.Do(http.MethodPut, path, body, accountID)
 }
 
+// Patch performs a PATCH request
+func (c *APIClient) Patch(path string, body interface{}, accountID string) (*APIResponse, error) {
+	return c.Do(http.MethodPatch, path, body, accountID)
+}
+
 // Delete performs a DELETE request
 func (c *APIClient) Delete(path, accountID string) (*APIResponse, error) {
 	return c.Do(http.MethodDelete, path, nil, accountID)

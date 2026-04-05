@@ -187,7 +187,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	clusterRouter.HandleFunc("", clusterHandler.List).Methods(http.MethodGet)
 	clusterRouter.HandleFunc("", clusterHandler.Create).Methods(http.MethodPost)
 	clusterRouter.HandleFunc("/{id}", clusterHandler.Get).Methods(http.MethodGet)
-	clusterRouter.HandleFunc("/{id}", clusterHandler.Update).Methods(http.MethodPut)
+	clusterRouter.HandleFunc("/{id}", clusterHandler.Update).Methods(http.MethodPatch, http.MethodPut)
 	clusterRouter.HandleFunc("/{id}", clusterHandler.Delete).Methods(http.MethodDelete)
 	clusterRouter.HandleFunc("/{id}/statuses", clusterHandler.GetStatus).Methods(http.MethodGet)
 

@@ -224,7 +224,7 @@ func (c *Client) UpdateCluster(ctx context.Context, accountID, clusterID string,
 	}
 
 	path := fmt.Sprintf("%s/%s", clustersPath, url.PathEscape(clusterID))
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, c.baseURL+path, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -232,7 +232,10 @@ func (c *Client) UpdateCluster(ctx context.Context, accountID, clusterID string,
 
 	c.setAWSHeaders(httpReq, ctx)
 
-	c.logger.Debug("updating cluster in Hyperfleet", "account_id", accountID, "cluster_id", clusterID)
+	c.logger.Debug("updating cluster in Hyperfleet",
+		"account_id", accountID,
+		"cluster_id", clusterID,
+		"request_body", string(body))
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -246,6 +249,11 @@ func (c *Client) UpdateCluster(ctx context.Context, accountID, clusterID string,
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		c.logger.Error("hyperfleet returned error on cluster update",
+			"status_code", resp.StatusCode,
+			"response_body", string(respBody),
+			"cluster_id", clusterID,
+			"account_id", accountID)
 		return nil, c.parseError(resp.StatusCode, respBody)
 	}
 

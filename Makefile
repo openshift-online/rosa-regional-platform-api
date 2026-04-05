@@ -105,10 +105,21 @@ test-coverage:
 	@echo "Coverage report: coverage.html"
 
 # Run e2e tests (native - works on Linux, macOS, Windows)
+# --skip is a regex against the full spec description (case-sensitive). "cli" does not match "CLI" in "ROSACTL CLI E2E Tests".
 test-e2e:
 	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo -vv \
-	--skip="Authz" --junit-report=junit.xml \
-	--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
+		--skip='Authz|ROSACTL CLI' \
+		--junit-report=junit.xml \
+		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
+
+test-cli-e2e:
+	@E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" \
+		AWS_REGION="${AWS_REGION}" \
+		ROSACTL_BIN="${ROSACTL_BIN}" \
+		ginkgo -v \
+		--focus='ROSACTL CLI' \
+		--junit-report=junit.xml \
+		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
 
 test-e2e-quiet:
 	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo --skip="Authz" \

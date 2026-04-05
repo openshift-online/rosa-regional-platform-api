@@ -116,7 +116,7 @@ test-cli-e2e:
 	@E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" \
 		AWS_REGION="${AWS_REGION}" \
 		ROSACTL_BIN="${ROSACTL_BIN}" \
-		ginkgo -vv \
+		ginkgo -v \
 		--focus='ROSACTL CLI' \
 		--junit-report=junit.xml \
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e

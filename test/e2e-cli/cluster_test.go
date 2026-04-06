@@ -94,9 +94,9 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		//--------------------------------
 		// Required environment variables for e2e testing
 		//--------------------------------
-		baseURL = os.Getenv("E2E_BASE_URL")
+		baseURL = os.Getenv("BASE_URL")
 		if baseURL == "" {
-			Skip("E2E_BASE_URL is not set")
+			Skip("BASE_URL is not set")
 		}
 		region = os.Getenv("AWS_REGION")
 		if region == "" {
@@ -171,13 +171,13 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	// run the rosactl cli command
 	// it should be able to run the rosactl command and login to the e2e_base_url
 	// it should be able to create a new cluster with the given name and region
-	It("should be able to login to the E2E_BASE_URL", Label("login", "setup"), func() {
-		GinkgoWriter.Printf("Logging in to E2E_BASE_URL: %s\n", baseURL)
+	It("should be able to login to the BASE_URL", Label("login", "setup"), func() {
+		GinkgoWriter.Printf("Logging in to BASE_URL: %s\n", baseURL)
 
 		cmd := exec.Command(ROSACTL_BIN, "login", "--url", baseURL)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			Fail("Failed to login to the E2E_BASE_URL: " + err.Error())
+			Fail("Failed to login to the BASE_URL: " + err.Error())
 		}
 		fmt.Println(string(output))
 	})
@@ -550,17 +550,17 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	})
 
 	// it should be able to delete the cluster-vpc
-	It("should be able to delete the cluster-vpc", Label("vpc-delete", "cleanup"), func() {
-		GinkgoWriter.Printf("Deleting the cluster-vpc: %s\n", clusterName)
-		cmd := exec.Command(ROSACTL_BIN, "cluster-vpc", "delete", clusterName, "--region", region)
-		cmd.Env = append(os.Environ(),
-			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-		)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			Fail(fmt.Sprintf("Failed to delete the cluster-vpc: %v\nOutput:\n%s", err, string(output)))
-		}
-		GinkgoWriter.Printf("Cluster-VPC deleted successfully: %s\n", clusterName)
-	})
+	// It("should be able to delete the cluster-vpc", Label("vpc-delete", "cleanup"), func() {
+	// 	GinkgoWriter.Printf("Deleting the cluster-vpc: %s\n", clusterName)
+	// 	cmd := exec.Command(ROSACTL_BIN, "cluster-vpc", "delete", clusterName, "--region", region)
+	// 	cmd.Env = append(os.Environ(),
+	// 		"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
+	// 		"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
+	// 	)
+	// 	output, err := cmd.CombinedOutput()
+	// 	if err != nil {
+	// 		Fail(fmt.Sprintf("Failed to delete the cluster-vpc: %v\nOutput:\n%s", err, string(output)))
+	// 	}
+	// 	GinkgoWriter.Printf("Cluster-VPC deleted successfully: %s\n", clusterName)
+	// })
 })

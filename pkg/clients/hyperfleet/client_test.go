@@ -227,7 +227,7 @@ func TestGetCluster_NotFound(t *testing.T) {
 func TestUpdateCluster(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request method and path
-		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Equal(t, http.MethodPatch, r.Method)
 		assert.Equal(t, "/api/hyperfleet/v1/clusters/cluster-1", r.URL.Path)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 

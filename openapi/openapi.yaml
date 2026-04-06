@@ -387,10 +387,41 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-    put:
+    patch:
       summary: Update cluster
-      description: Update cluster (user must own the cluster)
+      description: Partially update cluster (user must own the cluster)
+      operationId: patchUserCluster
+      tags:
+        - Clusters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterUpdateRequest'
+      responses:
+        '200':
+          description: Cluster updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      summary: Update cluster (deprecated)
+      description: Update cluster (user must own the cluster). Deprecated - use PATCH instead for partial updates.
       operationId: updateUserCluster
+      deprecated: true
       tags:
         - Clusters
       requestBody:

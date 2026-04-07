@@ -752,26 +752,18 @@ paths:
                 $ref: '#/components/schemas/HealthStatus'
 
   # Authorization - Account Management
-  /accounts/{accountId}/enable:
+  /accounts:
     post:
-      summary: Enable account for authorization
+      summary: Enable an account
       description: |
         Enables an AWS account for Cedar/AVP-based authorization.
         Creates a policy store in Amazon Verified Permissions.
         Requires privileged access.
-      operationId: enableAccount
+      operationId: createAccount
       tags:
         - Authorization
-      parameters:
-        - name: accountId
-          in: path
-          required: true
-          description: AWS account ID to enable
-          schema:
-            type: string
-            pattern: '^\d{12}$'
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
@@ -807,25 +799,91 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    get:
+      summary: List accounts
+      description: |
+        Returns a list of all enabled accounts.
+        Requires privileged access.
+      operationId: listAccounts
+      tags:
+        - Authorization
+      responses:
+        '200':
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountList'
+        '403':
+          description: Forbidden - caller is not privileged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
-  /accounts/{accountId}/disable:
-    post:
-      summary: Disable account authorization
+  /accounts/{id}:
+    get:
+      summary: Get an account
+      description: |
+        Returns details of a specific enabled account.
+        Requires privileged access.
+      operationId: getAccount
+      tags:
+        - Authorization
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: AWS account ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Account details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '403':
+          description: Forbidden - caller is not privileged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Disable an account
       description: |
         Disables an AWS account from authorization.
         Deletes the policy store and all associated policies, groups, and attachments.
         Requires privileged access.
-      operationId: disableAccount
+      operationId: deleteAccount
       tags:
         - Authorization
       parameters:
-        - name: accountId
+        - name: id
           in: path
           required: true
-          description: AWS account ID to disable
+          description: AWS account ID
           schema:
             type: string
-            pattern: '^\d{12}$'
       responses:
         '204':
           description: Account disabled successfully
@@ -835,8 +893,44 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '404':
-          description: Account not found
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Authorization - Check
+  /authz/check:
+    post:
+      summary: Check authorization
+      description: |
+        Evaluates an authorization request against the account's policies
+        and returns an ALLOW or DENY decision. Requires a provisioned account.
+      operationId: checkAuthorization
+      tags:
+        - Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckAuthorizationRequest'
+      responses:
+        '200':
+          description: Authorization decision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckAuthorizationResponse'
+        '400':
+          description: Bad request - missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - account not provisioned
           content:
             application/json:
               schema:
@@ -1872,7 +1966,12 @@ components:
     EnableAccountRequest:
       type: object
       description: Request body for enabling an account
+      required:
+        - accountId
       properties:
+        accountId:
+          type: string
+          description: AWS account ID to enable
         privileged:
           type: boolean
           description: If true, account bypasses all authorization checks
@@ -1903,6 +2002,70 @@ components:
         createdBy:
           type: string
           description: ARN of who enabled the account
+
+    AccountList:
+      type: object
+      description: List of accounts
+      required:
+        - kind
+        - items
+        - total
+      properties:
+        kind:
+          type: string
+          example: AccountList
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Account'
+        total:
+          type: integer
+          description: Total number of accounts
+
+    CheckAuthorizationRequest:
+      type: object
+      description: Request body for checking authorization
+      required:
+        - principal
+        - action
+        - resource
+      properties:
+        principal:
+          type: string
+          description: Principal ARN making the request
+        action:
+          type: string
+          description: Action being performed (e.g., rosa:CreateCluster)
+        resource:
+          type: string
+          description: Resource ARN (e.g., arn:aws:rosa:us-west-2:123456789012:cluster/*)
+        context:
+          type: object
+          description: Additional context for the authorization decision
+          additionalProperties: true
+        resourceTags:
+          type: object
+          description: Tags on the resource
+          additionalProperties:
+            type: string
+
+    CheckAuthorizationResponse:
+      type: object
+      description: Authorization decision response
+      required:
+        - kind
+        - decision
+      properties:
+        kind:
+          type: string
+          example: AuthorizationDecision
+        decision:
+          type: string
+          description: Authorization decision
+          enum: [ALLOW, DENY]
+        reason:
+          type: string
+          description: Reason for the decision
 
     CreatePolicyRequest:
       type: object

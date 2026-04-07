@@ -130,9 +130,9 @@ func NewClient(cfg config.MaestroConfig, logger *slog.Logger) *Client {
 		"rosa-regional-platform-api", // Source ID
 	)
 	if err != nil {
-		// Log the error but don't fail - the client can still be used for non-gRPC operations
+		// Log the error but don't fail — the client can still be used for HTTP operations.
+		// CreateManifestWork will attempt a lazy re-initialization on the first call.
 		logger.Error("failed to create gRPC work client during initialization", "error", err)
-		// workClient will be nil, and CreateManifestWork will handle this gracefully
 	}
 
 	return &Client{
@@ -404,9 +404,25 @@ func (c *Client) DeleteResourceBundle(ctx context.Context, id string) error {
 func (c *Client) CreateManifestWork(ctx context.Context, clusterName string, manifestWork *workv1.ManifestWork) (*workv1.ManifestWork, error) {
 	c.logger.Debug("creating manifestwork via gRPC", "cluster", clusterName, "work_name", manifestWork.Name)
 
-	// Check if workClient was initialized successfully
+	// If the gRPC work client failed to initialize at startup (e.g. maestro-server was not
+	// yet ready), attempt a lazy re-initialization now.  By the time the first request arrives
+	// maestro is typically healthy, so this recovers from startup-ordering races without
+	// requiring a pod restart.
 	if c.workClient == nil {
-		return nil, fmt.Errorf("gRPC work client not initialized")
+		c.logger.Info("gRPC work client not initialized at startup, attempting lazy initialization",
+			"cluster", clusterName)
+		adaptedLogger := &loggerAdapter{logger: c.logger}
+		wc, err := grpcsource.NewMaestroGRPCSourceWorkClient(
+			ctx,
+			adaptedLogger,
+			c.openapiClient,
+			c.grpcOpts,
+			c.sourceID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("gRPC work client initialization failed: %w", err)
+		}
+		c.workClient = wc
 	}
 
 	// Create the ManifestWork using the reusable client interface

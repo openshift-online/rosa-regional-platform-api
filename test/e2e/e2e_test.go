@@ -180,9 +180,20 @@ var _ = Describe("Platform API", Ordered, func() {
 		err := json.Unmarshal(listResp.Body, &list)
 		Expect(err).To(BeNil())
 		Expect(list.Items).ToNot(BeEmpty(), "No management clusters registered - cannot test work creation")
+		// Only test against real management clusters, not ephemeral test consumers created
+		// by other tests (e.g. "test-mgmt-*"). Test consumers have no real maestro agent
+		// and creating ManifestWork for them via gRPC may fail intermittently if the
+		// consumer is not yet fully propagated in maestro. This mirrors the filter already
+		// used by the "should have maestro-server connected to maestro-agent" test.
+		testedClusters := 0
 		for _, item := range list.Items {
 			managementClusterID := item["id"].(string)
 			managementClusterName := item["name"].(string)
+			if strings.HasPrefix(managementClusterName, "test-") {
+				GinkgoWriter.Printf("skipping test consumer %s (no real maestro agent)\n", managementClusterName)
+				continue
+			}
+			testedClusters++
 			GinkgoWriter.Printf("management cluster id=%s name=%s\n", managementClusterID, managementClusterName)
 			work := map[string]interface{}{
 				"cluster_id": managementClusterName,
@@ -226,6 +237,7 @@ var _ = Describe("Platform API", Ordered, func() {
 			Expect(responseBody["status"]).ToNot(BeEmpty())
 
 		}
+		Expect(testedClusters).To(BeNumerically(">", 0), "No real management clusters found to test manifestwork creation against")
 
 	})
 

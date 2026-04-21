@@ -2,6 +2,15 @@
 
 Stateless gateway API for ROSA HCP regional cluster management.
 
+## Quick Start
+
+```bash
+make build       # Build the API binary
+make test        # Run unit tests
+make lint        # Run linters
+make generate    # Regenerate code
+```
+
 ## Architecture
 
 ```mermaid

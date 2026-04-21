@@ -211,12 +211,16 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	apiRouter.HandleFunc("/api/v0/ready", healthHandler.Readiness).Methods(http.MethodGet)
 	apiRouter.HandleFunc("/api/v0/info", infoHandler.Info).Methods(http.MethodGet)
 
-	// Add CORS and logging
-	apiHandler := handlers.CORS(
-		handlers.AllowedOrigins([]string{"*"}),
+	// Add CORS — restrict origins to explicitly configured allow-list.
+	// Never use "*" as that permits any origin to read API responses.
+	corsOptions := []handlers.CORSOption{
 		handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodPut}),
 		handlers.AllowedHeaders([]string{"Content-Type", "Authorization"}),
-	)(apiRouter)
+	}
+	if len(cfg.Server.CORSAllowedOrigins) > 0 {
+		corsOptions = append(corsOptions, handlers.AllowedOrigins(cfg.Server.CORSAllowedOrigins))
+	}
+	apiHandler := handlers.CORS(corsOptions...)(apiRouter)
 
 	// Create health router
 	healthRouter := mux.NewRouter()
@@ -231,22 +235,28 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		cfg:    cfg,
 		logger: logger,
 		apiServer: &http.Server{
-			Addr:         fmt.Sprintf("%s:%d", cfg.Server.APIBindAddress, cfg.Server.APIPort),
-			Handler:      apiHandler,
-			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 30 * time.Second,
+			Addr:           fmt.Sprintf("%s:%d", cfg.Server.APIBindAddress, cfg.Server.APIPort),
+			Handler:        apiHandler,
+			ReadTimeout:    30 * time.Second,
+			WriteTimeout:   30 * time.Second,
+			IdleTimeout:    60 * time.Second,
+			MaxHeaderBytes: 1 << 20, // 1 MB
 		},
 		healthServer: &http.Server{
-			Addr:         fmt.Sprintf("%s:%d", cfg.Server.HealthBindAddress, cfg.Server.HealthPort),
-			Handler:      healthRouter,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
+			Addr:           fmt.Sprintf("%s:%d", cfg.Server.HealthBindAddress, cfg.Server.HealthPort),
+			Handler:        healthRouter,
+			ReadTimeout:    10 * time.Second,
+			WriteTimeout:   10 * time.Second,
+			IdleTimeout:    30 * time.Second,
+			MaxHeaderBytes: 1 << 14, // 16 KB
 		},
 		metricsServer: &http.Server{
-			Addr:         fmt.Sprintf("%s:%d", cfg.Server.MetricsBindAddress, cfg.Server.MetricsPort),
-			Handler:      metricsRouter,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
+			Addr:           fmt.Sprintf("%s:%d", cfg.Server.MetricsBindAddress, cfg.Server.MetricsPort),
+			Handler:        metricsRouter,
+			ReadTimeout:    10 * time.Second,
+			WriteTimeout:   10 * time.Second,
+			IdleTimeout:    30 * time.Second,
+			MaxHeaderBytes: 1 << 14, // 16 KB
 		},
 		healthHandler: healthHandler,
 	}, nil

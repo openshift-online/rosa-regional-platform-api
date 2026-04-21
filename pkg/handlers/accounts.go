@@ -4,12 +4,16 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"regexp"
 
 	"github.com/gorilla/mux"
 
 	"github.com/openshift/rosa-regional-platform-api/pkg/authz"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
 )
+
+// awsAccountIDPattern matches exactly 12 decimal digits (AWS account ID format).
+var awsAccountIDPattern = regexp.MustCompile(`^\d{12}$`)
 
 // AccountsHandler handles account management endpoints
 type AccountsHandler struct {
@@ -63,6 +67,12 @@ func (h *AccountsHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if req.AccountID == "" {
 		h.writeError(w, http.StatusBadRequest, "missing-account-id", "accountId is required")
+		return
+	}
+
+	// Validate AWS account ID format — must be exactly 12 decimal digits
+	if !awsAccountIDPattern.MatchString(req.AccountID) {
+		h.writeError(w, http.StatusBadRequest, "invalid-account-id", "accountId must be a 12-digit AWS account ID")
 		return
 	}
 

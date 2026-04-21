@@ -25,6 +25,9 @@ type ServerConfig struct {
 	MetricsBindAddress string
 	MetricsPort        int
 	ShutdownTimeout    time.Duration
+	// CORSAllowedOrigins lists the origins permitted to make cross-origin requests.
+	// Defaults to empty (deny all cross-origin requests). Do not use "*".
+	CORSAllowedOrigins []string
 }
 
 type MaestroConfig struct {

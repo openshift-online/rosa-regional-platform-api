@@ -54,14 +54,19 @@ func (c *Client) setAWSHeaders(req *http.Request, ctx context.Context) {
 // parseError parses an error response from Hyperfleet API
 func (c *Client) parseError(statusCode int, body []byte) error {
 	var hfErr Error
-	if json.Unmarshal(body, &hfErr) == nil && (hfErr.Message != "" || hfErr.Reason != "") {
+	if json.Unmarshal(body, &hfErr) == nil && (hfErr.Message != "" || hfErr.Reason != "" || hfErr.Detail != "") {
 		if hfErr.Code == "" {
 			hfErr.Code = strconv.Itoa(statusCode)
+		}
+		// Preserve HTTP status code if not already set by Hyperfleet
+		if hfErr.Status == 0 {
+			hfErr.Status = statusCode
 		}
 		return &hfErr
 	}
 	return &Error{
 		Code:    strconv.Itoa(statusCode),
+		Status:  statusCode,
 		Message: string(body),
 	}
 }

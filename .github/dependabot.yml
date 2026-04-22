@@ -1,0 +1,34 @@
+# FedRAMP RA-05 — Dependabot automated dependency updates
+#
+# Keeps Go module dependencies and GitHub Actions pinned versions
+# up to date, satisfying the automated patch management requirement
+# of FedRAMP Moderate RA-05 (Vulnerability Monitoring and Scanning).
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "America/New_York"
+    labels:
+      - fedramp
+      - compliance
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "America/New_York"
+    labels:
+      - fedramp
+      - compliance
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"

@@ -288,7 +288,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 			if strings.Contains(stderrStr, "409") || strings.Contains(stderrStr, "already exists") || strings.Contains(stderrStr, "Conflict") {
 				GinkgoWriter.Printf("Cluster %s already exists (409 Conflict), retrieving existing cluster\n", clusterName)
 				// List clusters to find the existing one
-				response, listErr := apiClient.Get(fmt.Sprintf("/api/v0/clusters?limit=100"), accountID)
+				response, listErr := apiClient.Get("/api/v0/clusters?limit=100", accountID)
 				Expect(listErr).ToNot(HaveOccurred())
 				Expect(response.StatusCode).To(Equal(http.StatusOK))
 

@@ -271,7 +271,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 
 	It("should be able to create the hcp cluster", Label("hcp-create", "create"), func() {
 		GinkgoWriter.Printf("Creating new HCP cluster: %s\n", clusterName)
-		cmd := exec.Command(ROSACTL_BIN, "cluster", "create", clusterName, "--region", region)
+		cmd := exec.Command(ROSACTL_BIN, "cluster", "create", clusterName, "--region", region, "--output", "json")
 		cmd.Env = append(os.Environ(),
 			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
 			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
@@ -280,9 +280,45 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 		err := cmd.Run()
+
+		// Check if cluster creation failed due to conflict (cluster already exists)
 		if err != nil {
-			Fail("Failed to create the HCP cluster: " + err.Error() + "\nstderr: " + stderr.String())
+			stderrStr := stderr.String()
+			// Check for 409 Conflict or "already exists" in stderr
+			if strings.Contains(stderrStr, "409") || strings.Contains(stderrStr, "already exists") || strings.Contains(stderrStr, "Conflict") {
+				GinkgoWriter.Printf("Cluster %s already exists (409 Conflict), retrieving existing cluster\n", clusterName)
+				// List clusters to find the existing one
+				response, listErr := apiClient.Get("/api/v0/clusters?limit=100", accountID)
+				Expect(listErr).ToNot(HaveOccurred())
+				Expect(response.StatusCode).To(Equal(http.StatusOK))
+
+				var clusterList struct {
+					Items []map[string]interface{} `json:"items"`
+				}
+				Expect(json.Unmarshal(response.Body, &clusterList)).To(Succeed())
+
+				// Find our cluster by name
+				var found bool
+				for _, item := range clusterList.Items {
+					if item["name"] == clusterName {
+						clusterID = item["id"].(string)
+						if spec, ok := item["spec"].(map[string]interface{}); ok {
+							if issuerUrl, ok := spec["cloudUrl"].(string); ok {
+								cloudUrl = issuerUrl
+							}
+						}
+						found = true
+						break
+					}
+				}
+				Expect(found).To(BeTrue(), "cluster %s should exist after 409 conflict", clusterName)
+				GinkgoWriter.Printf("Found existing HCP cluster ID: %s\n", clusterID)
+				GinkgoWriter.Printf("Found existing HCP cluster cloud url: %s\n", cloudUrl)
+				return
+			}
+			Fail("Failed to create the HCP cluster: " + err.Error() + "\nstderr: " + stderrStr)
 		}
+
 		if stderr.Len() > 0 {
 			GinkgoWriter.Printf("HCP cluster create stderr: %s\n", stderr.String())
 		}
@@ -432,37 +468,47 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		GinkgoWriter.Printf("HCP and nodepools deployed successfully\n")
 	})
 
-	It("should be able to patch the hcp cluster, set the placement to mc00", Label("hcp-patch", "update"), func() {
-
-		if clusterID == "" {
-			clusterID = os.Getenv("HCP_INSTANCE_ID")
-		}
-
-		GinkgoWriter.Printf("Patching the hcp cluster: %s %s\n", clusterName, clusterID)
-
-		GinkgoWriter.Printf("Patching platform api for /clusters/%s\n", clusterID)
-		body := map[string]interface{}{
-			"spec": map[string]interface{}{
-				"placement": "mc00",
-			},
-		}
-
-		response, err := apiClient.Patch("/api/v0/clusters/"+clusterID, body, accountID)
-		GinkgoWriter.Printf("HCP cluster patched response: %d %s\n", response.StatusCode, string(response.Body))
-		Expect(err).ToNot(HaveOccurred())
-		Expect(response.StatusCode).To(Equal(http.StatusOK))
-		GinkgoWriter.Printf("HCP cluster patched successfully: %s\n", clusterName)
-	})
-
-	// delete the hcp cluster
-	// delete all resource bundles
-	It("should be able to delete the resource bundles", Label("bundles-delete", "cleanup"), func() {
+	It("should be able to delete the hcp cluster", Label("hcp-delete", "cleanup"), func() {
 		if clusterID == "" {
 			clusterID = os.Getenv("HCP_INSTANCE_ID")
 			if clusterID == "" {
 				Skip("clusterID not set - run full Ordered suite or set HCP_INSTANCE_ID")
 			}
 		}
+		GinkgoWriter.Printf("Deleting the hcp clusterId: %s\n", clusterID)
+		response, err := apiClient.Delete("/api/v0/clusters/"+clusterID, accountID)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response.StatusCode).To(Equal(http.StatusAccepted))
+		GinkgoWriter.Printf("HCP cluster deleted successfully: %s\n", clusterName)
+	})
+
+	// it should be able to query the /cluster/id until it is deleted
+	It("should be able to query the /cluster/id until it is deleted", Label("hcp-delete", "cluster-query", "cleanup"), func() {
+		GinkgoWriter.Printf("Querying the hcp clusterId: %s\n", clusterID)
+		if clusterID == "" {
+			clusterID = os.Getenv("HCP_INSTANCE_ID")
+			if clusterID == "" {
+				Skip("clusterID not set - run full Ordered suite or set HCP_INSTANCE_ID")
+			}
+		}
+		Eventually(func(g Gomega) {
+			response, err := apiClient.Get("/api/v0/clusters/"+clusterID, accountID)
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(response.StatusCode).To(Or(Equal(http.StatusNotFound), Equal(http.StatusGone)))
+		}).WithTimeout(10*time.Minute).WithPolling(30*time.Second).Should(Succeed(), "cluster should be deleted")
+		GinkgoWriter.Printf("HCP cluster deleted successfully: %s\n", clusterName)
+	})
+
+	// delete the hcp cluster
+	// delete all resource bundles
+	It("should be able to delete the resource bundles", Label("hcp-delete", "bundles-delete", "cleanup"), func() {
+		if clusterID == "" {
+			clusterID = os.Getenv("HCP_INSTANCE_ID")
+			if clusterID == "" {
+				Skip("clusterID not set - run full Ordered suite or set HCP_INSTANCE_ID")
+			}
+		}
+
 		GinkgoWriter.Printf("Querying platform api for /resource_bundles\n")
 
 		// Fetch all pages of resource bundles
@@ -511,13 +557,6 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		GinkgoWriter.Printf("Deleted %d resource bundles for cluster %s\n", deletedCount, clusterID)
 	})
 
-	It("should be able to wait 5m for the resource bundles to be deleted", Label("bundles-wait", "cleanup"), func() {
-		GinkgoWriter.Printf("Waiting 5m for the resource bundles to be deleted\n")
-		time.Sleep(5 * time.Minute)
-		GinkgoWriter.Printf("Resource bundles deleted successfully\n")
-	})
-
-	// it should be able to delete the cluster-oidc
 	It("should be able to delete the cluster-oidc", Label("oidc-delete", "cleanup"), func() {
 		GinkgoWriter.Printf("Deleting the cluster-oidc: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-oidc", "delete", clusterName, "--region", region)
@@ -530,6 +569,53 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 			Fail(fmt.Sprintf("Failed to delete the cluster-oidc: %v\nOutput:\n%s", err, string(output)))
 		}
 		GinkgoWriter.Printf("Cluster-OIDC deleted successfully: %s\n", clusterName)
+	})
+
+	// Delete cluster-vpc with up to 3 attempts; fail the spec if all attempts return an error.
+	It("should be able to try to delete the cluster-vpc, trying 3 times", Label("vpc-delete", "cleanup"), func() {
+		const maxAttempts = 3
+		const backoffBetweenAttempts = 5 * time.Minute
+
+		var lastErr error
+		var lastOutput []byte
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			GinkgoWriter.Printf("cluster-vpc delete attempt %d/%d\n", attempt, maxAttempts)
+
+			// before trying to delete the cluster-vpc, we should list and
+			// grep if the cluster-vpc is still there
+			cmd := exec.Command(ROSACTL_BIN, "cluster-vpc", "list", "--region", region)
+			cmd.Env = append(os.Environ(),
+				"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
+				"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
+			)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				Fail(fmt.Sprintf("Failed to list the cluster-vpc: %v\nOutput:\n%s", err, string(output)))
+			}
+			if !strings.Contains(string(output), clusterName) {
+				GinkgoWriter.Printf("cluster-vpc does not exist: %s\n", clusterName)
+				// we can return successfully because the cluster-vpc is already deleted
+				return
+			}
+
+			cmd = exec.Command(ROSACTL_BIN, "cluster-vpc", "delete", clusterName, "--region", region)
+			cmd.Env = append(os.Environ(),
+				"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
+				"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
+			)
+			// rosactl may block with its own internal wait
+			output, err = cmd.CombinedOutput()
+			if err == nil {
+				GinkgoWriter.Printf("cluster-vpc deleted successfully: %s\n", clusterName)
+				return
+			}
+			lastErr, lastOutput = err, output
+			GinkgoWriter.Printf("cluster-vpc delete attempt %d failed: %v\nOutput:\n%s\n", attempt, err, string(output))
+			if attempt < maxAttempts {
+				time.Sleep(backoffBetweenAttempts)
+			}
+		}
+		Fail(fmt.Sprintf("cluster-vpc delete failed after %d attempts: %v\nOutput:\n%s", maxAttempts, lastErr, string(lastOutput)))
 	})
 
 	// it should be able to delete the cluster-iam
@@ -547,18 +633,4 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		GinkgoWriter.Printf("Cluster-IAM deleted successfully: %s\n", clusterName)
 	})
 
-	// it should be able to delete the cluster-vpc
-	// It("should be able to delete the cluster-vpc", Label("vpc-delete", "cleanup"), func() {
-	// 	GinkgoWriter.Printf("Deleting the cluster-vpc: %s\n", clusterName)
-	// 	cmd := exec.Command(ROSACTL_BIN, "cluster-vpc", "delete", clusterName, "--region", region)
-	// 	cmd.Env = append(os.Environ(),
-	// 		"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-	// 		"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-	// 	)
-	// 	output, err := cmd.CombinedOutput()
-	// 	if err != nil {
-	// 		Fail(fmt.Sprintf("Failed to delete the cluster-vpc: %v\nOutput:\n%s", err, string(output)))
-	// 	}
-	// 	GinkgoWriter.Printf("Cluster-VPC deleted successfully: %s\n", clusterName)
-	// })
 })

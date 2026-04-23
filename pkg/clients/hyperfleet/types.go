@@ -81,8 +81,10 @@ type HFAdapterStatusList struct {
 type Error struct {
 	Kind    string `json:"kind,omitempty"`
 	Code    string `json:"code"`
+	Status  int    `json:"status,omitempty"`
 	Message string `json:"message"`
 	Reason  string `json:"reason,omitempty"`
+	Detail  string `json:"detail,omitempty"`
 }
 
 // Error implements the error interface
@@ -99,5 +101,14 @@ func IsNotFound(err error) bool {
 		return false
 	}
 	hfErr, ok := err.(*Error)
-	return ok && hfErr.Code == "404"
+	return ok && (hfErr.Code == "404" || hfErr.Status == 404)
+}
+
+// IsConflict checks if an error represents a 409 Conflict response
+func IsConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	hfErr, ok := err.(*Error)
+	return ok && (hfErr.Code == "409" || hfErr.Status == 409)
 }

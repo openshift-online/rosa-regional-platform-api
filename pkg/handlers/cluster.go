@@ -134,6 +134,23 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	cluster, err := h.hyperfleetClient.CreateCluster(ctx, accountID, userEmail, &req)
 	if err != nil {
 		h.logger.Error("failed to create cluster", "error", err, "account_id", accountID)
+		// Check if it's a conflict error (cluster already exists)
+		if hyperfleet.IsConflict(err) {
+			// Extract the actual error details from Hyperfleet
+			if hfErr, ok := err.(*hyperfleet.Error); ok {
+				reason := hfErr.Detail
+				if reason == "" {
+					reason = hfErr.Reason
+				}
+				if reason == "" {
+					reason = "Cluster already exists"
+				}
+				h.writeError(w, http.StatusConflict, hfErr.Code, reason)
+				return
+			}
+			h.writeError(w, http.StatusConflict, "CLUSTERS-MGMT-CREATE-003", "Cluster already exists")
+			return
+		}
 		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-CREATE-003", "Failed to create cluster")
 		return
 	}

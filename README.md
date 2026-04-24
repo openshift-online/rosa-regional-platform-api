@@ -16,18 +16,18 @@ make generate    # Regenerate code
 ```mermaid
 flowchart LR
     CLI["AWS CLI"] --> APIGW["API Gateway"]
-    APIGW --> ALB["Internal ALB"]
-    ALB --> PlatformAPI
+    APIGW --> AuthMW
 
     subgraph PlatformAPI["Platform API"]
         AuthMW["Auth Middleware"] --> Handler["Handlers"]
-        Handler -->|privileged only| MgmtCluster["management_cluster"]
-        Handler --> Clusters["clusters / nodepools"]
+        Handler --> HCP["HCP Management"]
+        Handler --> AuthzMgmt["Authz Management\n(Policies, Groups,\nAttachments, Admins)"]
     end
 
-    AuthMW -->|lookup if privileged| DDB[("DynamoDB")]
-    MgmtCluster -->|gRPC| Maestro["Maestro"]
-    Clusters -->|REST| Hyperfleet["Hyperfleet API"]
+    AuthMW -->|"account & group\nlookup"| DDB[("DynamoDB")]
+    AuthMW -->|policy evaluation| AVP["Amazon Verified\nPermissions (Cedar)"]
+    AuthzMgmt --> DDB
+    AuthzMgmt --> AVP
 ```
 
 ## API Documentation

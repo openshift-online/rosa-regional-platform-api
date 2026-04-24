@@ -20,15 +20,6 @@ flowchart LR
 
     subgraph PlatformAPI["Platform API"]
         AuthMW["Auth Middleware"] --> Handler["Handlers"]
-<<<<<<< Updated upstream
-        Handler -->|privileged only| MgmtCluster["management_cluster"]
-        Handler --> Clusters["clusters / nodepools"]
-    end
-
-    AuthMW -->|lookup if privileged| DDB[("DynamoDB")]
-    MgmtCluster -->|gRPC| Maestro["Maestro"]
-    Clusters -->|REST| Hyperfleet["Hyperfleet API"]
-=======
         Handler --> HCP["HCP Management"]
         Handler --> AuthzMgmt["Authz Management\n(Policies, Groups,\nAttachments, Admins)"]
     end
@@ -37,7 +28,6 @@ flowchart LR
     AuthMW -->|policy evaluation| AVP["Amazon Verified\nPermissions (Cedar)"]
     AuthzMgmt --> DDB
     AuthzMgmt --> AVP
->>>>>>> Stashed changes
 ```
 
 ## API Documentation

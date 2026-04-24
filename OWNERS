@@ -1,13 +1,5 @@
 # See the OWNERS docs at https://www.kubernetes.dev/docs/guide/owners/
-reviewers:
-  - cdoan1
-  - iamkirkbater
-  - typeid
-  - theautoroboto
-  - jmelis
-  - syncrou
-  - psav
-  - slopezz
+reviewers: []
 approvers:
   - cdoan1
   - iamkirkbater

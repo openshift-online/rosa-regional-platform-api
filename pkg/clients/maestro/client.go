@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 
 	"github.com/openshift-online/maestro/pkg/api/openapi"
 	"github.com/openshift-online/maestro/pkg/client/cloudevents/grpcsource"
@@ -81,6 +82,7 @@ type Client struct {
 	sourceID      string
 	openapiClient *openapi.APIClient
 	workClient    workv1client.WorkV1Interface
+	workClientMu  sync.Mutex
 }
 
 // NewClient creates a new Maestro client
@@ -405,24 +407,28 @@ func (c *Client) CreateManifestWork(ctx context.Context, clusterName string, man
 	c.logger.Debug("creating manifestwork via gRPC", "cluster", clusterName, "work_name", manifestWork.Name)
 
 	// If the gRPC work client failed to initialize at startup (e.g. maestro-server was not
-	// yet ready), attempt a lazy re-initialization now.  By the time the first request arrives
-	// maestro is typically healthy, so this recovers from startup-ordering races without
-	// requiring a pod restart.
+	// yet ready), attempt a lazy re-initialization now. The double-checked lock ensures only
+	// one goroutine creates the client even under concurrent requests.
 	if c.workClient == nil {
-		c.logger.Info("gRPC work client not initialized at startup, attempting lazy initialization",
-			"cluster", clusterName)
-		adaptedLogger := &loggerAdapter{logger: c.logger}
-		wc, err := grpcsource.NewMaestroGRPCSourceWorkClient(
-			ctx,
-			adaptedLogger,
-			c.openapiClient,
-			c.grpcOpts,
-			c.sourceID,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("gRPC work client initialization failed: %w", err)
+		c.workClientMu.Lock()
+		if c.workClient == nil {
+			c.logger.Info("gRPC work client not initialized at startup, attempting lazy initialization",
+				"cluster", clusterName)
+			adaptedLogger := &loggerAdapter{logger: c.logger}
+			wc, err := grpcsource.NewMaestroGRPCSourceWorkClient(
+				ctx,
+				adaptedLogger,
+				c.openapiClient,
+				c.grpcOpts,
+				c.sourceID,
+			)
+			if err != nil {
+				c.workClientMu.Unlock()
+				return nil, fmt.Errorf("gRPC work client initialization failed: %w", err)
+			}
+			c.workClient = wc
 		}
-		c.workClient = wc
+		c.workClientMu.Unlock()
 	}
 
 	// Create the ManifestWork using the reusable client interface

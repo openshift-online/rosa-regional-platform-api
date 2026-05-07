@@ -329,86 +329,93 @@ var _ = Describe("Platform API", Ordered, func() {
 
 			Eventually(func() bool {
 
-				// Filter resource bundles by consumer_name to reduce the number of items to check
+				// Filter resource bundles by consumer_name, paginating through all results
 				searchQuery := fmt.Sprintf("consumer_name='%s'", managementClusterName)
-				searchURL := fmt.Sprintf("/api/v0/resource_bundles?search=%s", url.QueryEscape(searchQuery))
 				GinkgoWriter.Printf("Getting resource bundles for consumer_name=%s (search=%s)\n", managementClusterName, searchQuery)
-				response, err := apiClient.Get(searchURL, accountID)
-				if err != nil {
-					GinkgoWriter.Printf("Error getting resource bundles: %v\n", err)
-					return false
-				}
-				if response.StatusCode != http.StatusOK {
-					GinkgoWriter.Printf("Unexpected status code: %d\n", response.StatusCode)
-					return false
-				}
-				var list struct {
-					Items []map[string]interface{} `json:"items"`
-				}
-				err = json.Unmarshal(response.Body, &list)
-				if err != nil {
-					GinkgoWriter.Printf("Error unmarshaling response: %v\n", err)
-					return false
-				}
-				if len(list.Items) == 0 {
-					GinkgoWriter.Printf("No resource bundles found yet\n")
-					return false
-				}
 
-				// Track whether we found at least one bundle with all three conditions true
 				foundOrSynced := false
 
-				// search the items in the resource bundles for the test work name
-				for _, item := range list.Items {
-					metadata, hasMetadata := item["metadata"].(map[string]interface{})
-					if !hasMetadata || metadata == nil {
-						continue
+				for page := 1; ; page++ {
+					searchURL := fmt.Sprintf("/api/v0/resource_bundles?search=%s&page=%d&size=100", url.QueryEscape(searchQuery), page)
+					response, err := apiClient.Get(searchURL, accountID)
+					if err != nil {
+						GinkgoWriter.Printf("Error getting resource bundles: %v\n", err)
+						return false
 					}
-					name, _ := metadata["name"].(string)
-					consumerName, hasConsumerName := item["consumer_name"].(string)
-					if !hasConsumerName || name != testWorkName || consumerName != managementClusterName {
-						continue
+					if response.StatusCode != http.StatusOK {
+						GinkgoWriter.Printf("Unexpected status code: %d\n", response.StatusCode)
+						return false
+					}
+					var list struct {
+						Page  int                      `json:"page"`
+						Size  int                      `json:"size"`
+						Total int                      `json:"total"`
+						Items []map[string]interface{} `json:"items"`
+					}
+					err = json.Unmarshal(response.Body, &list)
+					if err != nil {
+						GinkgoWriter.Printf("Error unmarshaling response: %v\n", err)
+						return false
+					}
+					if len(list.Items) == 0 {
+						break
 					}
 
-					GinkgoWriter.Printf("resource_bundle id=%v name=%v consumer_name=%v\n", item["id"], name, consumerName)
+					for _, item := range list.Items {
+						metadata, hasMetadata := item["metadata"].(map[string]interface{})
+						if !hasMetadata || metadata == nil {
+							continue
+						}
+						name, _ := metadata["name"].(string)
+						consumerName, hasConsumerName := item["consumer_name"].(string)
+						if !hasConsumerName || name != testWorkName || consumerName != managementClusterName {
+							continue
+						}
 
-					appliedOk, availableOk, statusFeedbackSyncedOk := false, false, false
-					status, statusOk := item["status"].(map[string]interface{})
-					if !statusOk || status == nil {
-						continue
-					}
-					resourceStatusList, resourceStatusOk := status["resourceStatus"].([]interface{})
-					if !resourceStatusOk {
-						continue
-					}
-					for _, rs := range resourceStatusList {
-						rsMap, rsOk := rs.(map[string]interface{})
-						if !rsOk || rsMap == nil {
+						GinkgoWriter.Printf("resource_bundle id=%v name=%v consumer_name=%v\n", item["id"], name, consumerName)
+
+						appliedOk, availableOk, statusFeedbackSyncedOk := false, false, false
+						status, statusOk := item["status"].(map[string]interface{})
+						if !statusOk || status == nil {
 							continue
 						}
-						conditions, conditionsOk := rsMap["conditions"].([]interface{})
-						if !conditionsOk {
+						resourceStatusList, resourceStatusOk := status["resourceStatus"].([]interface{})
+						if !resourceStatusOk {
 							continue
 						}
-						for _, condition := range conditions {
-							conditionMap, conditionOk := condition.(map[string]interface{})
-							if !conditionOk || conditionMap == nil {
+						for _, rs := range resourceStatusList {
+							rsMap, rsOk := rs.(map[string]interface{})
+							if !rsOk || rsMap == nil {
 								continue
 							}
-							if conditionMap["type"] == "Applied" && conditionMap["status"] == "True" {
-								appliedOk = true
+							conditions, conditionsOk := rsMap["conditions"].([]interface{})
+							if !conditionsOk {
+								continue
 							}
-							if conditionMap["type"] == "Available" && conditionMap["status"] == "True" {
-								availableOk = true
-							}
-							if conditionMap["type"] == "StatusFeedbackSynced" && conditionMap["status"] == "True" {
-								statusFeedbackSyncedOk = true
+							for _, condition := range conditions {
+								conditionMap, conditionOk := condition.(map[string]interface{})
+								if !conditionOk || conditionMap == nil {
+									continue
+								}
+								if conditionMap["type"] == "Applied" && conditionMap["status"] == "True" {
+									appliedOk = true
+								}
+								if conditionMap["type"] == "Available" && conditionMap["status"] == "True" {
+									availableOk = true
+								}
+								if conditionMap["type"] == "StatusFeedbackSynced" && conditionMap["status"] == "True" {
+									statusFeedbackSyncedOk = true
+								}
 							}
 						}
+						if appliedOk && availableOk && statusFeedbackSyncedOk {
+							foundOrSynced = true
+							GinkgoWriter.Printf("resource_bundle id=%v name=%v consumer_name=%v applied=true available=true statusfeedbacksynced=true\n", item["id"], name, consumerName)
+							break
+						}
 					}
-					if appliedOk && availableOk && statusFeedbackSyncedOk {
-						foundOrSynced = true
-						GinkgoWriter.Printf("resource_bundle id=%v name=%v consumer_name=%v applied=true available=true statusfeedbacksynced=true\n", item["id"], name, consumerName)
+
+					if foundOrSynced || page*list.Size >= list.Total {
 						break
 					}
 				}

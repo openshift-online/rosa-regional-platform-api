@@ -287,6 +287,43 @@ func (c *Client) GetConsumer(ctx context.Context, id string) (*Consumer, error) 
 	return &consumer, nil
 }
 
+// DeleteConsumer deletes a consumer by ID from Maestro
+func (c *Client) DeleteConsumer(ctx context.Context, id string) error {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+consumersPath+"/"+url.PathEscape(id), nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	c.logger.Debug("deleting consumer from Maestro", "id", id)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return &Error{Kind: "Error", Code: "404", Reason: "Consumer not found"}
+	}
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		var apiErr Error
+		if json.Unmarshal(respBody, &apiErr) == nil && apiErr.Reason != "" {
+			return &apiErr
+		}
+		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	c.logger.Debug("consumer deleted", "id", id)
+
+	return nil
+}
+
 // ListResourceBundles lists resource bundles from Maestro with pagination and optional filters
 func (c *Client) ListResourceBundles(ctx context.Context, page, size int, search, orderBy, fields string) (*ResourceBundleList, error) {
 	u, err := url.Parse(c.baseURL + resourceBundlesPath)

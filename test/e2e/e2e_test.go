@@ -35,9 +35,10 @@ func TestE2E(t *testing.T) {
 // Ordered for now, as our test size is small
 var _ = Describe("Platform API", Ordered, func() {
 	var (
-		baseURL   string
-		accountID string
-		apiClient *APIClient
+		baseURL              string
+		accountID            string
+		apiClient            *APIClient
+		createdMgmtClusterID string
 	)
 
 	BeforeAll(func() {
@@ -53,6 +54,20 @@ var _ = Describe("Platform API", Ordered, func() {
 			accountID = strings.TrimSpace(string(output))
 		}
 		apiClient = NewAPIClient(baseURL)
+	})
+
+	AfterAll(func() {
+		if createdMgmtClusterID != "" {
+			GinkgoWriter.Printf("Cleaning up test management cluster: %s\n", createdMgmtClusterID)
+			response, err := apiClient.Delete("/api/v0/management_clusters/"+createdMgmtClusterID, accountID)
+			if err != nil {
+				GinkgoWriter.Printf("Warning: failed to delete test management cluster %s: %v\n", createdMgmtClusterID, err)
+			} else if response.StatusCode != http.StatusNoContent {
+				GinkgoWriter.Printf("Warning: delete management cluster %s returned status %d: %s\n", createdMgmtClusterID, response.StatusCode, string(response.Body))
+			} else {
+				GinkgoWriter.Printf("Cleaned up test management cluster: %s\n", createdMgmtClusterID)
+			}
+		}
 	})
 
 	It("should basic passing test", func() {
@@ -148,6 +163,9 @@ var _ = Describe("Platform API", Ordered, func() {
 		Expect(managementCluster["created_at"]).ToNot(BeEmpty())
 		Expect(managementCluster["updated_at"]).ToNot(BeEmpty())
 
+		// Capture ID so AfterAll can delete this cluster (prevents test-mgmt-* accumulation)
+		createdMgmtClusterID = managementCluster["id"].(string)
+
 		// it should be able to get the management cluster by ID
 		response, err = apiClient.Get("/api/v0/management_clusters/"+managementCluster["id"].(string), accountID)
 		Expect(err).To(BeNil())
@@ -165,7 +183,6 @@ var _ = Describe("Platform API", Ordered, func() {
 		Expect(managementCluster2["created_at"]).ToNot(BeEmpty())
 		Expect(managementCluster2["updated_at"]).ToNot(BeEmpty())
 
-		// DELETE is not defined for management_clusters in the API (OpenAPI has no delete operation for /management_clusters/{id})
 	})
 
 	// it should be able to post to the work endpoint

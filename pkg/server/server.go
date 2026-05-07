@@ -154,6 +154,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	mgmtRouter.HandleFunc("", mgmtClusterHandler.Create).Methods(http.MethodPost)
 	mgmtRouter.HandleFunc("", mgmtClusterHandler.List).Methods(http.MethodGet)
 	mgmtRouter.HandleFunc("/{id}", mgmtClusterHandler.Get).Methods(http.MethodGet)
+	mgmtRouter.HandleFunc("/{id}", mgmtClusterHandler.Delete).Methods(http.MethodDelete)
 
 	// Resource bundle routes (require allowed account)
 	rbRouter := apiRouter.PathPrefix("/api/v0/resource_bundles").Subrouter()

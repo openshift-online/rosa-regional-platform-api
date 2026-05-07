@@ -129,6 +129,34 @@ func (h *ManagementClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(consumer)
 }
 
+// Delete handles DELETE /api/v0/management_clusters/{id}
+func (h *ManagementClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	accountID := middleware.GetAccountID(ctx)
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	h.logger.Info("deleting management cluster", "id", id, "account_id", accountID)
+
+	if err := h.maestroClient.DeleteConsumer(ctx, id); err != nil {
+		h.logger.Error("failed to delete consumer in Maestro", "error", err, "id", id, "account_id", accountID)
+		if maestroErr, ok := err.(*maestro.Error); ok {
+			if maestroErr.Code == "404" {
+				h.writeError(w, http.StatusNotFound, maestroErr.Code, maestroErr.Reason)
+				return
+			}
+			h.writeError(w, http.StatusBadGateway, maestroErr.Code, maestroErr.Reason)
+			return
+		}
+		h.writeError(w, http.StatusInternalServerError, "maestro-error", "Failed to delete management cluster")
+		return
+	}
+
+	h.logger.Info("management cluster deleted", "id", id, "account_id", accountID)
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *ManagementClusterHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

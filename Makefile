@@ -108,12 +108,16 @@ test-coverage:
 # Run e2e tests (native - works on Linux, macOS, Windows)
 # Excludes CLI tests (use test-e2e-cli for those) and Authz tests (use test-e2e-authz)
 test-e2e:
-	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo -vv \
+	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" \
+	E2E_RHOBS_API_URL="${RHOBS_API_URL}" \
+	ginkgo -vv \
 	--skip="Authz" --junit-report=junit.xml \
 	--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
 
 test-e2e-quiet:
-	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" ginkgo --skip="Authz" \
+	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" \
+	E2E_RHOBS_API_URL="${RHOBS_API_URL}" \
+	ginkgo --skip="Authz" \
 	--junit-report=junit.xml \
 	--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
 

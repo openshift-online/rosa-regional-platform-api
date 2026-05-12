@@ -43,36 +43,13 @@ import (
 	e2e "github.com/openshift/rosa-regional-platform-api/test/e2e"
 )
 
-// runRosactl runs rosactl with customer AWS credentials under a deadline.
-// Stdin is nil so the child does not block waiting for input when Ginkgo has no TTY.
-// AWS_PAGER is cleared to avoid aws-cli-style pagers hanging the subprocess.
-// Override the deadline with E2E_ROSACTL_TIMEOUT (e.g. 45m, 1h).
-// func runRosactl(bin, region string, args ...string) ([]byte, error) {
-// 	timeout := 30 * time.Minute
-// 	if s := os.Getenv("E2E_ROSACTL_TIMEOUT"); s != "" {
-// 		if d, err := time.ParseDuration(s); err == nil {
-// 			timeout = d
-// 		}
-// 	}
-// 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-// 	defer cancel()
-
-// 	cmd := exec.CommandContext(ctx, bin, args...)
-// 	cmd.Env = append(os.Environ(),
-// 		"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-// 		"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-// 		"AWS_REGION="+region,
-// 		"AWS_PAGER=",
-// 	)
-// 	cmd.Stdin = nil
-
-// 	out, err := cmd.CombinedOutput()
-// 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-// 		return out, fmt.Errorf("rosactl %q timed out after %v (set E2E_ROSACTL_TIMEOUT): %w\noutput:\n%s",
-// 			strings.Join(args, " "), timeout, err, string(out))
-// 	}
-// 	return out, err
-// }
+func customerEnv() []string {
+	return []string{
+		"AWS_ACCESS_KEY_ID=" + os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
+		"AWS_SECRET_ACCESS_KEY=" + os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
+		"AWS_SESSION_TOKEN=" + os.Getenv("CUSTOMER_AWS_SESSION_TOKEN"),
+	}
+}
 
 var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	var (
@@ -129,10 +106,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		if customerAccountID == "" {
 			GinkgoWriter.Printf("No E2E_CUSTOMER_ACCOUNT_ID set, using AWS STS caller identity\n")
 			cmd := exec.Command("aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text")
-			cmd.Env = append(os.Environ(),
-				"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-				"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-			)
+			cmd.Env = append(os.Environ(), customerEnv()...)
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				Fail("Failed to get AWS customer account ID: " + err.Error())
@@ -186,10 +160,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		GinkgoWriter.Printf("Creating new cluster-vpc: %s\n", clusterName)
 		// GinkgoWriter.Printf("Command: %s %s %s %s %s\n", ROSACTL_BIN, "cluster-vpc", "create", clusterName, "--region", region, "--availability-zones", "us-east-1a")
 		cmd := exec.Command(ROSACTL_BIN, "cluster-vpc", "create", clusterName, "--region", region, "--availability-zones", "us-east-1a")
-		cmd.Env = append(os.Environ(),
-			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-		)
+		cmd.Env = append(os.Environ(), customerEnv()...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()
@@ -203,10 +174,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	It("should be able to list the cluster-vpc and find that cluster in the list", Label("vpc-list", "setup"), func() {
 		GinkgoWriter.Printf("Listing cluster-vpc: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-vpc", "list", "--region", region)
-		cmd.Env = append(os.Environ(),
-			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-		)
+		cmd.Env = append(os.Environ(), customerEnv()...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			Fail("Failed to list the cluster-vpc: " + err.Error())
@@ -219,10 +187,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	It("should be able to create the cluster-iam", Label("iam-create", "setup"), func() {
 		GinkgoWriter.Printf("Creating new cluster-iam: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-iam", "create", clusterName, "--region", region)
-		cmd.Env = append(os.Environ(),
-			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-		)
+		cmd.Env = append(os.Environ(), customerEnv()...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()
@@ -235,10 +200,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	It("should be able to list the cluster-iam and find that cluster in the list", Label("iam-list", "setup"), func() {
 		GinkgoWriter.Printf("Listing cluster-iam: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-iam", "list", "--region", region)
-		cmd.Env = append(os.Environ(),
-			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-		)
+		cmd.Env = append(os.Environ(), customerEnv()...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			Fail("Failed to list the cluster-iam: " + err.Error())
@@ -272,10 +234,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	It("should be able to create the hcp cluster", Label("hcp-create", "create"), func() {
 		GinkgoWriter.Printf("Creating new HCP cluster: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster", "create", clusterName, "--region", region, "--output", "json")
-		cmd.Env = append(os.Environ(),
-			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-		)
+		cmd.Env = append(os.Environ(), customerEnv()...)
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
@@ -350,10 +309,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		}
 		GinkgoWriter.Printf("HCP cluster cloud url: %s\n", cloudUrl)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-oidc", "create", clusterName, "--region", region, "--oidc-issuer-url", cloudUrl)
-		cmd.Env = append(os.Environ(),
-			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-		)
+		cmd.Env = append(os.Environ(), customerEnv()...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()
@@ -367,10 +323,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	It("should be able to list the cluster-oidc and find that cluster in the list", Label("oidc-list", "setup"), func() {
 		GinkgoWriter.Printf("Listing cluster-oidc: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-oidc", "list", "--region", region)
-		cmd.Env = append(os.Environ(),
-			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-		)
+		cmd.Env = append(os.Environ(), customerEnv()...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			Fail("Failed to list the cluster-oidc: " + err.Error())
@@ -560,10 +513,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	It("should be able to delete the cluster-oidc", Label("oidc-delete", "cleanup"), func() {
 		GinkgoWriter.Printf("Deleting the cluster-oidc: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-oidc", "delete", clusterName, "--region", region)
-		cmd.Env = append(os.Environ(),
-			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-		)
+		cmd.Env = append(os.Environ(), customerEnv()...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			Fail(fmt.Sprintf("Failed to delete the cluster-oidc: %v\nOutput:\n%s", err, string(output)))
@@ -584,25 +534,18 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 			// before trying to delete the cluster-vpc, we should list and
 			// grep if the cluster-vpc is still there
 			cmd := exec.Command(ROSACTL_BIN, "cluster-vpc", "list", "--region", region)
-			cmd.Env = append(os.Environ(),
-				"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-				"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-			)
+			cmd.Env = append(os.Environ(), customerEnv()...)
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				Fail(fmt.Sprintf("Failed to list the cluster-vpc: %v\nOutput:\n%s", err, string(output)))
 			}
 			if !strings.Contains(string(output), clusterName) {
 				GinkgoWriter.Printf("cluster-vpc does not exist: %s\n", clusterName)
-				// we can return successfully because the cluster-vpc is already deleted
 				return
 			}
 
 			cmd = exec.Command(ROSACTL_BIN, "cluster-vpc", "delete", clusterName, "--region", region)
-			cmd.Env = append(os.Environ(),
-				"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-				"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-			)
+			cmd.Env = append(os.Environ(), customerEnv()...)
 			// rosactl may block with its own internal wait
 			output, err = cmd.CombinedOutput()
 			if err == nil {
@@ -622,10 +565,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	It("should be able to delete the cluster-iam", Label("iam-delete", "cleanup"), func() {
 		GinkgoWriter.Printf("Deleting the cluster-iam: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-iam", "delete", clusterName, "--region", region)
-		cmd.Env = append(os.Environ(),
-			"AWS_ACCESS_KEY_ID="+os.Getenv("CUSTOMER_AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY="+os.Getenv("CUSTOMER_AWS_SECRET_ACCESS_KEY"),
-		)
+		cmd.Env = append(os.Environ(), customerEnv()...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			Fail(fmt.Sprintf("Failed to delete the cluster-iam: %v\nOutput:\n%s", err, string(output)))

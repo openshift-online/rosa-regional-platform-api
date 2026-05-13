@@ -24,6 +24,7 @@ go test -v
 
 - `E2E_BASE_URL`: Base URL of the API server (default: `http://localhost:8000`)
 - `E2E_TOKEN`: Authentication token for API requests
+- `E2E_RHOBS_API_URL`: RHOBS API Gateway URL for observability tests (optional — tests are skipped if unset)
 
 ## Note
 

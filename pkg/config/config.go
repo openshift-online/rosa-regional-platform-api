@@ -25,6 +25,10 @@ type ServerConfig struct {
 	MetricsBindAddress string
 	MetricsPort        int
 	ShutdownTimeout    time.Duration
+	// AllowedOrigins is the list of origins permitted for CORS preflight
+	// requests. FedRAMP SC-08 prohibits wildcard ("*") CORS origins on
+	// production API endpoints; set this to the exact frontend origin(s).
+	AllowedOrigins []string
 }
 
 type MaestroConfig struct {
@@ -55,6 +59,9 @@ func NewConfig() *Config {
 			MetricsBindAddress: "0.0.0.0",
 			MetricsPort:        9090,
 			ShutdownTimeout:    30 * time.Second,
+			// AllowedOrigins must be set to the actual console/UI origin before
+			// deployment; an empty slice disables CORS preflight responses.
+			AllowedOrigins: []string{},
 		},
 		Maestro: MaestroConfig{
 			BaseURL:     "http://maestro:8000",

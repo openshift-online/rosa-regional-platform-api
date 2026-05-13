@@ -1,0 +1,82 @@
+# FedRAMP SI-02 / RA-05 / IA-05(7) / SA-11 — Security Scanning Pipeline
+#
+# This workflow satisfies the following FedRAMP Moderate controls:
+#   SI-02  Flaw Remediation         — govulncheck detects known Go CVEs
+#   RA-05  Vulnerability Scanning   — govulncheck + Dependabot (see dependabot.yml)
+#   IA-05(7) No Embedded Secrets    — gitleaks detects committed credentials
+#   SA-11(1) Static Code Analysis   — gosec SAST on all Go packages
+#
+# Runs on every push and pull-request targeting main.
+name: FedRAMP Security Scan
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  govulncheck:
+    name: "SI-02 / RA-05 — Go Vulnerability Check"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        # Exit non-zero if any vulnerability affects the build graph.
+        # govulncheck only reports vulnerabilities that are actually reachable
+        # in the compiled binary, minimising false positives.
+        run: govulncheck ./...
+
+  secret-scan:
+    name: "IA-05(7) — Secret Scanning (gitleaks)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history required for gitleaks)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  gosec:
+    name: "SA-11(1) — SAST (gosec)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec
+        # -fmt sarif writes a SARIF report for GitHub Code Scanning upload.
+        # -out gosec-results.sarif prevents terminal output truncation.
+        # -exclude-generated skips generated protobuf/mock files.
+        run: gosec -fmt sarif -out gosec-results.sarif -exclude-generated ./...
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: gosec-results.sarif
+          category: gosec

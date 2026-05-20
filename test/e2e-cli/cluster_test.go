@@ -23,16 +23,19 @@ package e2e_cli_test
 //
 // Available labels:
 //   help, login, vpc-create, vpc-list, iam-create, iam-list, account-add,
-//   hcp-create, oidc-create, oidc-list, cluster-status, nodepools-wait,
+//   hcp-create, oidc-create, oidc-list, cluster-status, dns-verify, nodepools-wait,
 //   hcp-patch, bundles-delete, bundles-wait, oidc-delete, iam-delete, vpc-delete
 //
 // Group labels: setup, create, monitor, update, cleanup
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -47,7 +50,7 @@ func customerEnv() []string {
 	return []string{"AWS_PROFILE=" + os.Getenv("CUSTOMER_AWS_PROFILE")}
 }
 
-var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
+var _ = Describe("ROSACTL CLI E2E Tests", Ordered, ContinueOnFailure, func() {
 	var (
 		baseURL           string
 		accountID         string
@@ -405,6 +408,63 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		finalJSON, err := json.MarshalIndent(finalStatus, "", "  ")
 		Expect(err).ToNot(HaveOccurred())
 		GinkgoWriter.Printf("HCP final cluster statuses:\n%s\n", string(finalJSON))
+	})
+
+	It("should have valid DNS and TLS for the KAS endpoint", Label("dns-verify", "monitor"), func() {
+		id := clusterID
+		if id == "" {
+			id = os.Getenv("HCP_INSTANCE_ID")
+		}
+		Expect(id).ToNot(BeEmpty(), "set clusterID from hcp-create (Ordered) or HCP_INSTANCE_ID when running dns-verify alone")
+
+		resp, err := apiClient.Get("/api/v0/clusters/"+id+"/statuses", accountID)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+		var statusEnvelope struct {
+			ControllerStatuses []struct {
+				Data map[string]interface{} `json:"data"`
+			} `json:"controller_statuses"`
+		}
+		Expect(json.Unmarshal(resp.Body, &statusEnvelope)).To(Succeed())
+
+		var apiEndpoint string
+		for _, cs := range statusEnvelope.ControllerStatuses {
+			if hc, ok := cs.Data["hostedCluster"].(map[string]interface{}); ok {
+				if ep, ok := hc["apiEndpoint"].(string); ok && ep != "" {
+					apiEndpoint = ep
+					break
+				}
+			}
+		}
+		Expect(apiEndpoint).ToNot(BeEmpty(), "apiEndpoint should be present in controller_statuses after cluster is Ready")
+		GinkgoWriter.Printf("KAS apiEndpoint: %s\n", apiEndpoint)
+
+		parsedURL, err := url.Parse(apiEndpoint)
+		Expect(err).ToNot(HaveOccurred())
+		hostname := parsedURL.Hostname()
+		port := parsedURL.Port()
+		if port == "" {
+			port = "443"
+		}
+
+		hostPort := net.JoinHostPort(hostname, port)
+
+		Eventually(func(g Gomega) {
+			addrs, err := net.LookupHost(hostname)
+			g.Expect(err).ToNot(HaveOccurred(), "DNS should resolve for %s", hostname)
+			g.Expect(addrs).ToNot(BeEmpty())
+			GinkgoWriter.Printf("DNS resolved %s to %v\n", hostname, addrs)
+
+			conn, err := tls.DialWithDialer(
+				&net.Dialer{Timeout: 10 * time.Second},
+				"tcp", hostPort,
+				&tls.Config{},
+			)
+			g.Expect(err).ToNot(HaveOccurred(), "TLS handshake should succeed for %s", hostPort)
+			g.Expect(conn.Close()).To(Succeed())
+			GinkgoWriter.Printf("TLS handshake succeeded for %s\n", hostPort)
+		}).WithTimeout(2 * time.Minute).WithPolling(10 * time.Second).Should(Succeed())
 	})
 
 	// it should wait 5m for the hcp and nodepools to be deployed

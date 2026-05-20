@@ -186,6 +186,16 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Server-owned: set api_url from adapter status feedback, or remove stale values
+	if apiURL, err := h.hyperfleetClient.GetClusterAPIURL(ctx, clusterID); err == nil && apiURL != "" {
+		if cluster.Spec == nil {
+			cluster.Spec = make(map[string]interface{})
+		}
+		cluster.Spec["api_url"] = apiURL
+	} else {
+		delete(cluster.Spec, "api_url")
+	}
+
 	h.writeJSON(w, http.StatusOK, cluster)
 }
 

@@ -2546,6 +2546,13 @@ components:
                 Management cluster name where the cluster is deployed.
                 Auto-populated from the first management cluster if not provided during creation.
               example: management-cluster-us-east-1
+            api_url:
+              type: string
+              description: |
+                Kube-apiserver URL for the hosted cluster. Populated from
+                HostedCluster status feedback once the cluster reaches Ready
+                state. Omitted from the response until then.
+              example: https://api.mycluster.1fb9.0.us-east-1.rosa.openshiftapps.com:6443
           additionalProperties: true
         status:
           $ref: '#/components/schemas/ClusterStatusInfo'

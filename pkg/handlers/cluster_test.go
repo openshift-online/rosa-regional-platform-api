@@ -640,6 +640,155 @@ func TestClusterHandler_Get_Success(t *testing.T) {
 	}
 }
 
+// TestClusterHandler_Get_WithAPIURL tests that api_url is enriched from adapter status feedback
+func TestClusterHandler_Get_WithAPIURL(t *testing.T) {
+	now := time.Now()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/hyperfleet/v1/clusters/cluster-123":
+			resp := hyperfleet.HFCluster{
+				ID:         "cluster-123",
+				Name:       "test-cluster",
+				Labels:     map[string]string{"target_project_id": "project-1"},
+				Spec:       map[string]interface{}{"provider": "aws"},
+				Generation: 1,
+				CreatedBy:  "user@example.com",
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+
+		case r.Method == http.MethodGet && r.URL.Path == "/api/hyperfleet/v1/clusters/cluster-123/statuses":
+			resp := hyperfleet.HFAdapterStatusList{
+				Items: []hyperfleet.HFAdapterStatus{
+					{
+						ClusterID:   "cluster-123",
+						AdapterName: "adapter1",
+						Data: map[string]interface{}{
+							"hostedCluster": map[string]interface{}{
+								"apiEndpoint": "https://api.test-cluster.clus.0.us-east-1.rosa.openshiftapps.com:6443",
+								"name":        "test-cluster",
+							},
+						},
+						LastUpdated: now,
+					},
+				},
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+		}
+	}))
+	defer server.Close()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	hfClient := hyperfleet.NewClient(config.HyperfleetConfig{
+		BaseURL: server.URL,
+		Timeout: 30 * time.Second,
+	}, logger)
+	handler := NewClusterHandler(hfClient, nil, logger)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/cluster-123", nil)
+	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
+	ctx = context.WithValue(ctx, middleware.ContextKeyCallerARN, "arn:aws:iam::test-account-123:user/test")
+	ctx = context.WithValue(ctx, middleware.ContextKeyUserID, "user@example.com")
+	req = req.WithContext(ctx)
+	req = mux.SetURLVars(req, map[string]string{"id": "cluster-123"})
+
+	w := httptest.NewRecorder()
+	handler.Get(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	spec, ok := result["spec"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected spec to be a map")
+	}
+	apiURL, ok := spec["api_url"].(string)
+	if !ok || apiURL == "" {
+		t.Fatalf("expected spec.api_url to be a non-empty string, got %v", spec["api_url"])
+	}
+	if apiURL != "https://api.test-cluster.clus.0.us-east-1.rosa.openshiftapps.com:6443" {
+		t.Errorf("unexpected api_url: %s", apiURL)
+	}
+}
+
+// TestClusterHandler_Get_WithoutAPIURL tests that a stale api_url is stripped when statuses are absent
+func TestClusterHandler_Get_WithoutAPIURL(t *testing.T) {
+	now := time.Now()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/hyperfleet/v1/clusters/cluster-123":
+			resp := hyperfleet.HFCluster{
+				ID:     "cluster-123",
+				Name:   "test-cluster",
+				Labels: map[string]string{"target_project_id": "project-1"},
+				Spec: map[string]interface{}{
+					"provider": "aws",
+					"api_url":  "https://stale.example.com",
+				},
+				Generation: 1,
+				CreatedBy:  "user@example.com",
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+
+		case r.Method == http.MethodGet && r.URL.Path == "/api/hyperfleet/v1/clusters/cluster-123/statuses":
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"code":    "404",
+				"message": "no statuses found",
+			})
+		}
+	}))
+	defer server.Close()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	hfClient := hyperfleet.NewClient(config.HyperfleetConfig{
+		BaseURL: server.URL,
+		Timeout: 30 * time.Second,
+	}, logger)
+	handler := NewClusterHandler(hfClient, nil, logger)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/cluster-123", nil)
+	ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, "test-account-123")
+	ctx = context.WithValue(ctx, middleware.ContextKeyCallerARN, "arn:aws:iam::test-account-123:user/test")
+	ctx = context.WithValue(ctx, middleware.ContextKeyUserID, "user@example.com")
+	req = req.WithContext(ctx)
+	req = mux.SetURLVars(req, map[string]string{"id": "cluster-123"})
+
+	w := httptest.NewRecorder()
+	handler.Get(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	spec, ok := result["spec"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected spec to be a map")
+	}
+	if _, exists := spec["api_url"]; exists {
+		t.Errorf("expected no api_url in spec when statuses are absent, got %v", spec["api_url"])
+	}
+}
+
 // TestClusterHandler_Get_NotFound tests cluster not found
 func TestClusterHandler_Get_NotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

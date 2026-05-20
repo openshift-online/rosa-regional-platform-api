@@ -369,6 +369,58 @@ func (c *Client) GetClusterStatus(ctx context.Context, accountID, clusterID stri
 	}, nil
 }
 
+// GetClusterAPIURL extracts the kube-apiserver URL from adapter status feedback.
+// Returns empty string if no adapter has reported an apiEndpoint yet.
+func (c *Client) GetClusterAPIURL(ctx context.Context, clusterID string) (string, error) {
+	statusPath := fmt.Sprintf("%s/%s/statuses", clustersPath, url.PathEscape(clusterID))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+statusPath, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	c.setAWSHeaders(httpReq, ctx)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return "", nil
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status %d fetching adapter statuses", resp.StatusCode)
+	}
+
+	var hfStatusList HFAdapterStatusList
+	if err := json.Unmarshal(respBody, &hfStatusList); err != nil {
+		return "", fmt.Errorf("failed to unmarshal adapter statuses: %w", err)
+	}
+
+	return extractAPIEndpoint(hfStatusList.Items), nil
+}
+
+// extractAPIEndpoint walks adapter statuses looking for data.hostedCluster.apiEndpoint.
+func extractAPIEndpoint(statuses []HFAdapterStatus) string {
+	for _, s := range statuses {
+		hc, ok := s.Data["hostedCluster"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if ep, ok := hc["apiEndpoint"].(string); ok && ep != "" {
+			return ep
+		}
+	}
+	return ""
+}
+
 // Transformation functions
 
 // platformToHyperfleetCreate transforms platform ClusterCreateRequest to Hyperfleet format

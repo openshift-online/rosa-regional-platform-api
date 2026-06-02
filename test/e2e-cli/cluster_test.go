@@ -112,6 +112,8 @@ func fireAndForgetInfraDelete(rosactlBin, clusterName, region string, resources 
 		cmd.Env = append(os.Environ(), customerEnv()...)
 		if err := cmd.Start(); err != nil {
 			GinkgoWriter.Printf("Cleanup WARNING: failed to start %s delete: %v\n", subCmd, err)
+		} else if cmd.Process != nil {
+			_ = cmd.Process.Release()
 		}
 	}
 }
@@ -222,7 +224,11 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 					for time.Now().Before(deadline) {
 						time.Sleep(15 * time.Second)
 						r, e := apiClient.Get("/api/v0/clusters/"+clusterID, accountID)
-						if e != nil || r.StatusCode == http.StatusNotFound || r.StatusCode == http.StatusGone {
+						if e != nil {
+							GinkgoWriter.Printf("Cleanup: transient error polling cluster status: %v\n", e)
+							continue
+						}
+						if r.StatusCode == http.StatusNotFound || r.StatusCode == http.StatusGone {
 							GinkgoWriter.Printf("Cleanup: HCP cluster confirmed deleted\n")
 							break
 						}

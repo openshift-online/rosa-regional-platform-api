@@ -50,7 +50,7 @@ func customerEnv() []string {
 	return []string{"AWS_PROFILE=" + os.Getenv("CUSTOMER_AWS_PROFILE")}
 }
 
-var _ = Describe("ROSACTL CLI E2E Tests", Ordered, ContinueOnFailure, func() {
+var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	var (
 		baseURL           string
 		accountID         string

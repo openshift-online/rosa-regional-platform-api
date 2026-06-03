@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"time"
@@ -20,12 +22,19 @@ import (
 // SHA256 of empty string (for GET/empty body). Used for SigV4 payload hash.
 const emptyPayloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
-// apiGatewayRegionFromURL extracts the AWS region from an API Gateway URL or ROSA int URL.
-// e.g. https://id.execute-api.us-east-2.amazonaws.com/prod -> "us-east-2"
-// e.g. https://api.us-east-1.int0.rosa.devshift.net -> "us-east-1"
-// Returns empty string if the URL does not match a known pattern.
-func apiGatewayRegionFromURL(baseURL string) string {
-	return "us-east-1"
+// isLocalBaseURL reports whether baseURL targets a local/loopback host (localhost, 127.0.0.1, ::1).
+// Used to skip SigV4 signing when running against a local server.
+func isLocalBaseURL(baseURL string) bool {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // APIClient provides methods for making requests to the ROSA API
@@ -76,8 +85,8 @@ func (c *APIClient) Do(method, path string, body interface{}, accountID string) 
 		req.Header.Set("X-Amz-Caller-Arn", c.CallerARN)
 	}
 
-	// Sign with SigV4 when targeting API Gateway (avoids 403 Missing Authentication Token)
-	if region := apiGatewayRegionFromURL(c.baseURL); region != "" {
+	// Skip SigV4 signing when running against a local server.
+	if !isLocalBaseURL(c.baseURL) {
 		cfg, err := config.LoadDefaultConfig(context.Background())
 		if err != nil {
 			return nil, fmt.Errorf("loading AWS config for SigV4: %w", err)
@@ -91,6 +100,12 @@ func (c *APIClient) Do(method, path string, body interface{}, accountID string) 
 			sum := sha256.Sum256(bodyBytes)
 			payloadHash = hex.EncodeToString(sum[:])
 		}
+
+		region := cfg.Region
+		if region == "" {
+			region = "us-east-1"
+		}
+
 		signer := v4.NewSigner()
 		if err := signer.SignHTTP(context.Background(), creds, req, payloadHash, "execute-api", region, time.Now()); err != nil {
 			return nil, fmt.Errorf("signing request with SigV4: %w", err)

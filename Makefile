@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-authz test-coverage test-e2e test-e2e-cli lint clean image image-push run generate generate-swagger help fmt vet
+.PHONY: build test test-unit test-authz test-coverage test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring lint clean image image-push run generate generate-swagger help fmt vet
 
 BINARY_NAME := rosa-regional-platform-api
 IMAGE_REPO ?= quay.io/openshift-online/rosa-regional-platform-api
@@ -105,35 +105,45 @@ test-coverage:
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
 
+# Kept for backwards compatibility. Not sure if this is used elsewhere, but feel free to delete
+# if this isn't necessary
+test-e2e: test-e2e-api
+
 # Run e2e tests (native - works on Linux, macOS, Windows)
 # Excludes CLI tests (use test-e2e-cli for those) and Authz tests (use test-e2e-authz)
-test-e2e:
+test-e2e-api:
 	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" \
 	E2E_RHOBS_API_URL="${RHOBS_API_URL}" \
 	ginkgo -vv \
-	--skip="Authz" --junit-report=junit.xml \
-	--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
+	--skip="Authz" --junit-report=junit-api.xml \
+	--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-api
 
-test-e2e-quiet:
+test-e2e-api-quiet:
 	E2E_BASE_URL="${BASE_URL}" E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" \
 	E2E_RHOBS_API_URL="${RHOBS_API_URL}" \
 	ginkgo --skip="Authz" \
-	--junit-report=junit.xml \
-	--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e
+	--junit-report=junit-api.xml \
+	--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-api
 
 # Run e2e CLI tests only (HCP cluster creation via rosactl)
 # Requires: E2E_BASE_URL, ROSACTL_BIN, AWS_REGION, CUSTOMER_AWS_ACCESS_KEY_ID, CUSTOMER_AWS_SECRET_ACCESS_KEY
 test-e2e-cli:
 	@E2E_BASE_URL="${BASE_URL}" \
 		E2E_ACCOUNT_ID="${E2E_ACCOUNT_ID}" \
+		E2E_RHOBS_API_URL="${RHOBS_API_URL}" \
 		ROSACTL_BIN="${ROSACTL_BIN}" \
 		AWS_REGION="${AWS_REGION}" \
 		ginkgo -vv --junit-report=junit-cli.xml \
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-cli
 
+test-e2e-platform-monitoring:
+	E2E_RHOBS_API_URL="${RHOBS_API_URL}" \
+	ginkgo -vv --junit-report=junit-platform-monitoring.xml \
+	--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-platform-monitoring
+
 # Run just the AWS credentials check test
 test-e2e-awscreds:
-	ginkgo -vv --focus="AWS Credentials Check" ./test/e2e
+	ginkgo -vv --focus="AWS Credentials Check" ./test/e2e-api
 
 # E2E infrastructure targets
 .PHONY: e2e-authz-infra-up e2e-authz-infra-down e2e-init-db test-e2e-authz
@@ -222,9 +232,9 @@ endif
 ifneq ($(SKIP),)
 	GINKGO_CMD += --skip="$(SKIP)"
 endif
-GINKGO_CMD += --junit-report=junit.xml --output-dir=/app/test-results ./test/e2e
+GINKGO_CMD += --junit-report=junit.xml --output-dir=/app/test-results ./test/e2e-api
 
-# Since we're using dynamic credentials in our aws config, we need to export the 
+# Since we're using dynamic credentials in our aws config, we need to export the
 # credentials to the container
 test-e2e-container: image-e2e-multiarch
 	@echo "✅ Exporting static credentials from profile $(AWS_PROFILE)..."

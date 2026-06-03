@@ -43,7 +43,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	e2e "github.com/openshift/rosa-regional-platform-api/test/e2e"
+
+	awstest "github.com/openshift/rosa-regional-platform-api/internal/test/aws"
+	"github.com/openshift/rosa-regional-platform-api/internal/test/thanos"
 )
 
 func customerEnv() []string {
@@ -55,7 +57,7 @@ type bundleItem struct {
 	Name string
 }
 
-func listClusterBundles(apiClient *e2e.APIClient, clusterID, accountID string) []bundleItem {
+func listClusterBundles(apiClient *awstest.APIClient, clusterID, accountID string) []bundleItem {
 	var matched []bundleItem
 	page := 1
 	for {
@@ -86,7 +88,7 @@ func listClusterBundles(apiClient *e2e.APIClient, clusterID, accountID string) [
 	return matched
 }
 
-func deleteClusterBundles(apiClient *e2e.APIClient, clusterID, accountID string) int {
+func deleteClusterBundles(apiClient *awstest.APIClient, clusterID, accountID string) int {
 	bundles := listClusterBundles(apiClient, clusterID, accountID)
 	for _, b := range bundles {
 		GinkgoWriter.Printf("Deleting bundle %s (%s)\n", b.ID, b.Name)
@@ -95,7 +97,7 @@ func deleteClusterBundles(apiClient *e2e.APIClient, clusterID, accountID string)
 	return len(bundles)
 }
 
-func waitForBundleRemoval(apiClient *e2e.APIClient, clusterID, accountID string, timeout time.Duration) bool {
+func waitForBundleRemoval(apiClient *awstest.APIClient, clusterID, accountID string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if len(listClusterBundles(apiClient, clusterID, accountID)) == 0 {
@@ -131,7 +133,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		clusterID         string
 		cloudUrl          string
 		region            string
-		apiClient         *e2e.APIClient
+		apiClient         *awstest.APIClient
 
 		// Track which resources were created so DeferCleanup knows what to tear down.
 		hcpCreated  bool
@@ -202,7 +204,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 			clusterName = fmt.Sprintf("e2e-%d", time.Now().Unix())
 		}
 
-		apiClient = e2e.NewAPIClient(baseURL)
+		apiClient = awstest.NewAPIClient(baseURL)
 
 		// Safety-net cleanup: runs after the Ordered container finishes,
 		// but only does work when the normal cleanup specs were skipped
@@ -613,6 +615,21 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		GinkgoWriter.Printf("Waiting 5m for the hcp and nodepools to be deployed\n")
 		time.Sleep(5 * time.Minute)
 		GinkgoWriter.Printf("HCP and nodepools deployed successfully\n")
+	})
+
+	It("should have hcp:hostedcluster_available metric in Thanos", Label("hcp-metrics", "monitor"), func() {
+		rhobsAPIURL := os.Getenv("E2E_RHOBS_API_URL")
+		if rhobsAPIURL == "" {
+			Skip("E2E_RHOBS_API_URL not set — skipping HCP metrics test")
+		}
+		rhobsClient := awstest.NewAPIClient(rhobsAPIURL)
+		query := `count(hcp:hostedcluster_available)`
+		Eventually(func() bool {
+			resp := thanos.Query(rhobsClient, query)
+			return resp.Status == "success" && len(resp.Data.Result) > 0
+		}, "5m", "15s").Should(BeTrue(),
+			"Expected hcp:hostedcluster_available metric to be queryable in Thanos "+
+				"(PrometheusRule → Thanos Ruler evaluation)")
 	})
 
 	It("should be able to delete the hcp cluster", Label("hcp-delete", "cleanup"), func() {

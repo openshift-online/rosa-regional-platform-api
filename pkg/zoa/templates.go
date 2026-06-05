@@ -32,12 +32,13 @@ type TATemplate struct {
 
 // RenderContext holds the variables available during template rendering.
 type RenderContext struct {
-	ExecID       string
-	ActionName   string
-	Namespace    string
-	OutputBucket string
-	JobRoleARN   string
-	Params       map[string]string
+	ExecID        string
+	ActionName    string
+	TargetCluster string
+	Namespace     string
+	OutputBucket  string
+	JobRoleARN    string
+	Params        map[string]string
 }
 
 // TemplateRegistry manages all loaded TA templates.
@@ -170,7 +171,7 @@ func (t *TATemplate) BuildManifestWork(ctx RenderContext) (*workv1.ManifestWork,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "zoa-" + ctx.ExecID,
-			Namespace: ctx.Namespace,
+			Namespace: ctx.TargetCluster,
 		},
 		Spec: workv1.ManifestWorkSpec{
 			Workload: workv1.ManifestsTemplate{

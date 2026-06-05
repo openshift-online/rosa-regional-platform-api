@@ -103,12 +103,13 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderCtx := zoa.RenderContext{
-		ExecID:       execID,
-		ActionName:   action,
-		Namespace:    zoa.JobNamespace,
-		OutputBucket: h.bucketName,
-		JobRoleARN:   h.jobRoleARN,
-		Params:       req.Params,
+		ExecID:        execID,
+		ActionName:    action,
+		TargetCluster: req.TargetCluster,
+		Namespace:     zoa.JobNamespace,
+		OutputBucket:  h.bucketName,
+		JobRoleARN:    h.jobRoleARN,
+		Params:        req.Params,
 	}
 
 	mw, err := tmpl.BuildManifestWork(renderCtx)

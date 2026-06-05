@@ -116,19 +116,20 @@ manifests:
 	require.True(t, ok)
 
 	ctx := RenderContext{
-		ExecID:       "abc123",
-		ActionName:   "get_nodes",
-		Namespace:    "zoa-jobs",
-		OutputBucket: "my-bucket",
-		JobRoleARN:   "arn:aws:iam::123:role/job",
-		Params:       nil,
+		ExecID:        "abc123",
+		ActionName:    "get_nodes",
+		TargetCluster: "local-cluster",
+		Namespace:     "zoa-jobs",
+		OutputBucket:  "my-bucket",
+		JobRoleARN:    "arn:aws:iam::123:role/job",
+		Params:        nil,
 	}
 
 	mw, err := tmpl.BuildManifestWork(ctx)
 	require.NoError(t, err)
 
 	assert.Equal(t, "zoa-abc123", mw.Name)
-	assert.Equal(t, "zoa-jobs", mw.Namespace)
+	assert.Equal(t, "local-cluster", mw.Namespace)
 	assert.Len(t, mw.Spec.Workload.Manifests, 4)
 	require.Len(t, mw.Spec.ManifestConfigs, 1)
 	assert.Equal(t, "zoa-get-nodes-abc123", mw.Spec.ManifestConfigs[0].ResourceIdentifier.Name)

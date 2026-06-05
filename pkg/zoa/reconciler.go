@@ -2,7 +2,6 @@ package zoa
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -68,23 +67,17 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 		return
 	}
 
-	// Search for the ResourceBundle by name matching the ManifestWork
-	search := fmt.Sprintf("name = '%s'", exec.ManifestWorkName)
-	bundles, err := r.maestroClient.ListResourceBundles(ctx, 1, 1, search, "", "")
+	bundle, err := r.maestroClient.GetResourceBundle(ctx, exec.ManifestWorkName)
 	if err != nil {
 		r.logger.Error("failed to query maestro for execution status",
 			"execution_id", exec.ExecutionID,
+			"resource_bundle_id", exec.ManifestWorkName,
 			"error", err,
 		)
 		return
 	}
 
-	if bundles == nil || len(bundles.Items) == 0 {
-		return
-	}
-
-	bundle := bundles.Items[0]
-	if bundle.Status == nil {
+	if bundle == nil || bundle.Status == nil {
 		return
 	}
 

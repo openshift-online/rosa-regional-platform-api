@@ -348,6 +348,40 @@ func (c *Client) ListResourceBundles(ctx context.Context, page, size int, search
 	return &list, nil
 }
 
+// GetResourceBundle retrieves a single resource bundle by ID from Maestro
+func (c *Client) GetResourceBundle(ctx context.Context, id string) (*ResourceBundle, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+resourceBundlesPath+"/"+url.PathEscape(id), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var apiErr Error
+		if json.Unmarshal(respBody, &apiErr) == nil && apiErr.Reason != "" {
+			return nil, &apiErr
+		}
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var bundle ResourceBundle
+	if err := json.Unmarshal(respBody, &bundle); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	return &bundle, nil
+}
+
 // DeleteResourceBundle deletes a resource bundle by ID from Maestro
 func (c *Client) DeleteResourceBundle(ctx context.Context, id string) error {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+resourceBundlesPath+"/"+url.PathEscape(id), nil)

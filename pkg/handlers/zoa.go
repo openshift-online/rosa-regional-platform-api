@@ -128,16 +128,18 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exec.ManifestWorkName = result.Name
+	resourceBundleID := string(result.UID)
+	exec.ManifestWorkName = resourceBundleID
 
-	if err := h.store.UpdateManifestWorkName(ctx, execID, result.Name); err != nil {
-		h.logger.Error("failed to update manifestwork name", "error", err, "execution_id", execID)
+	if err := h.store.UpdateManifestWorkName(ctx, execID, resourceBundleID); err != nil {
+		h.logger.Error("failed to update resource bundle ID", "error", err, "execution_id", execID)
 	}
 
 	h.logger.Info("trusted action dispatched",
 		"execution_id", execID,
 		"action", action,
 		"target_cluster", req.TargetCluster,
+		"resource_bundle_id", resourceBundleID,
 		"manifest_work", result.Name,
 		"account_id", accountID,
 	)

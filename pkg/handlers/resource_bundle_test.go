@@ -30,6 +30,10 @@ func (m *mockMaestroClient) ListResourceBundles(ctx context.Context, page, size 
 	return nil, errors.New("not implemented")
 }
 
+func (m *mockMaestroClient) GetResourceBundle(ctx context.Context, id string) (*maestro.ResourceBundle, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (m *mockMaestroClient) DeleteResourceBundle(ctx context.Context, id string) error {
 	if m.deleteResourceBundleFunc != nil {
 		return m.deleteResourceBundleFunc(ctx, id)
@@ -37,7 +41,6 @@ func (m *mockMaestroClient) DeleteResourceBundle(ctx context.Context, id string)
 	return errors.New("not implemented")
 }
 
-// We need to embed this to satisfy the maestro.Client interface
 func (m *mockMaestroClient) CreateConsumer(ctx context.Context, req *maestro.ConsumerCreateRequest) (*maestro.Consumer, error) {
 	return nil, errors.New("not implemented")
 }

@@ -93,6 +93,10 @@ func (m *zoaMockMaestroClient) ListResourceBundles(ctx context.Context, page, si
 	return nil, nil
 }
 
+func (m *zoaMockMaestroClient) GetResourceBundle(ctx context.Context, id string) (*maestro.ResourceBundle, error) {
+	return nil, nil
+}
+
 func (m *zoaMockMaestroClient) DeleteResourceBundle(ctx context.Context, id string) error {
 	return nil
 }

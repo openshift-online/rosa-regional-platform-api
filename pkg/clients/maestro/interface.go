@@ -15,6 +15,7 @@ type ClientInterface interface {
 	GetResourceBundle(ctx context.Context, id string) (*ResourceBundle, error)
 	DeleteResourceBundle(ctx context.Context, id string) error
 	CreateManifestWork(ctx context.Context, clusterName string, manifestWork *workv1.ManifestWork) (*workv1.ManifestWork, error)
+	GetManifestWork(ctx context.Context, clusterName string, name string) (*workv1.ManifestWork, error)
 }
 
 // Ensure Client implements ClientInterface

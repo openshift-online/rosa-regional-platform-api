@@ -97,6 +97,10 @@ func (m *zoaMockMaestroClient) GetResourceBundle(ctx context.Context, id string)
 	return nil, nil
 }
 
+func (m *zoaMockMaestroClient) GetManifestWork(ctx context.Context, clusterName string, name string) (*workv1.ManifestWork, error) {
+	return nil, nil
+}
+
 func (m *zoaMockMaestroClient) DeleteResourceBundle(ctx context.Context, id string) error {
 	return nil
 }

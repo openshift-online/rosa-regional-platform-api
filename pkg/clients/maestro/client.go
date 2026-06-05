@@ -454,6 +454,22 @@ func (c *Client) CreateManifestWork(ctx context.Context, clusterName string, man
 	return result, nil
 }
 
+// GetManifestWork retrieves a ManifestWork by name from Maestro via gRPC.
+// This follows the ARO-HCP pattern of using the gRPC client's Get method which
+// resolves by metadata.name (the name set during Create).
+func (c *Client) GetManifestWork(ctx context.Context, clusterName string, name string) (*workv1.ManifestWork, error) {
+	if c.workClient == nil {
+		return nil, fmt.Errorf("gRPC work client not initialized")
+	}
+
+	result, err := c.workClient.ManifestWorks(clusterName).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get manifestwork: %w", err)
+	}
+
+	return result, nil
+}
+
 // IsNotFound checks if an error represents a 404 Not Found response
 func IsNotFound(err error) bool {
 	if err == nil {

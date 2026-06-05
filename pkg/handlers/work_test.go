@@ -49,6 +49,10 @@ func (m *mockWorkMaestroClient) GetResourceBundle(ctx context.Context, id string
 	return nil, errors.New("not implemented")
 }
 
+func (m *mockWorkMaestroClient) GetManifestWork(ctx context.Context, clusterName string, name string) (*workv1.ManifestWork, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (m *mockWorkMaestroClient) DeleteResourceBundle(ctx context.Context, id string) error {
 	return errors.New("not implemented")
 }

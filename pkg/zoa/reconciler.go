@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
+	workv1 "open-cluster-management.io/api/work/v1"
 )
 
 // Reconciler periodically checks pending/running TA executions and updates their
-// status by inspecting Maestro ResourceBundle feedback.
+// status by inspecting Maestro ManifestWork feedback via gRPC.
 type Reconciler struct {
 	store         ExecutionStore
 	maestroClient maestro.ClientInterface
@@ -63,30 +64,30 @@ func (r *Reconciler) reconcilePending(ctx context.Context) {
 }
 
 func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
-	if exec.ManifestWorkName == "" {
+	if exec.ManifestWorkName == "" || exec.TargetCluster == "" {
 		return
 	}
 
-	bundle, err := r.maestroClient.GetResourceBundle(ctx, exec.ManifestWorkName)
+	mw, err := r.maestroClient.GetManifestWork(ctx, exec.TargetCluster, exec.ManifestWorkName)
 	if err != nil {
-		r.logger.Error("failed to query maestro for execution status",
+		r.logger.Error("failed to get manifestwork from maestro",
 			"execution_id", exec.ExecutionID,
-			"resource_bundle_id", exec.ManifestWorkName,
+			"manifest_work", exec.ManifestWorkName,
+			"target_cluster", exec.TargetCluster,
 			"error", err,
 		)
 		return
 	}
 
-	if bundle == nil || bundle.Status == nil {
+	if mw == nil {
 		return
 	}
 
-	newStatus, completed := r.parseJobStatus(bundle.Status)
+	newStatus, completed := r.parseManifestWorkStatus(mw)
 	if newStatus == "" {
 		return
 	}
 
-	// Only update if status actually changed
 	if ExecutionStatus(newStatus) == exec.Status {
 		return
 	}
@@ -108,78 +109,35 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 			"new_status", newStatus,
 			"error", err,
 		)
+		return
 	}
+
+	r.logger.Info("execution status updated",
+		"execution_id", exec.ExecutionID,
+		"status", newStatus,
+	)
 }
 
-// parseJobStatus extracts the Job completion status from ResourceBundle status feedback.
-// Returns the new status string and whether the job is terminal.
-func (r *Reconciler) parseJobStatus(status map[string]interface{}) (string, bool) {
-	resourceStatus, ok := status["resourceStatus"].([]interface{})
-	if !ok {
-		return "", false
-	}
-
-	for _, rs := range resourceStatus {
-		rsMap, ok := rs.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		feedback, ok := rsMap["statusFeedback"].(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		values, ok := feedback["values"].([]interface{})
-		if !ok {
-			continue
-		}
-
-		for _, v := range values {
-			vMap, ok := v.(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			name, _ := vMap["name"].(string)
-			fieldValue, _ := vMap["fieldValue"].(map[string]interface{})
-			if fieldValue == nil {
-				continue
-			}
-
-			intVal, _ := fieldValue["integer"].(float64)
-
-			switch name {
+// parseManifestWorkStatus extracts the Job completion status from ManifestWork status feedback.
+func (r *Reconciler) parseManifestWorkStatus(mw *workv1.ManifestWork) (string, bool) {
+	for _, resourceStatus := range mw.Status.ResourceStatus.Manifests {
+		for _, value := range resourceStatus.StatusFeedbacks.Values {
+			switch value.Name {
 			case "succeeded":
-				if intVal > 0 {
+				if value.Value.Integer != nil && *value.Value.Integer > 0 {
 					return string(StatusSucceeded), true
 				}
 			case "failed":
-				if intVal > 0 {
+				if value.Value.Integer != nil && *value.Value.Integer > 0 {
 					return string(StatusFailed), true
 				}
 			}
 		}
 	}
 
-	// Check conditions for "running" state
-	for _, rs := range resourceStatus {
-		rsMap, ok := rs.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		conditions, ok := rsMap["conditions"].([]interface{})
-		if !ok {
-			continue
-		}
-		for _, c := range conditions {
-			cMap, ok := c.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if cMap["type"] == "Applied" && cMap["status"] == "True" {
-				return string(StatusRunning), false
-			}
+	for _, condition := range mw.Status.Conditions {
+		if condition.Type == "Applied" && condition.Status == "True" {
+			return string(StatusRunning), false
 		}
 	}
 

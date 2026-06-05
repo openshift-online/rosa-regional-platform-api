@@ -627,3 +627,4 @@ func TestError_Error(t *testing.T) {
 		t.Errorf("expected error message='This is a test error', got %s", err.Error())
 	}
 }
+

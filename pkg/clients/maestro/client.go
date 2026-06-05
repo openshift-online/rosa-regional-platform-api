@@ -472,7 +472,7 @@ func (c *Client) GetClusterStatus(ctx context.Context, accountID, clusterID stri
 	return nil, fmt.Errorf("not implemented")
 }
 
-// ListNodePools lists nodepools from Maestro with pagination and optional cluster filter
+// ListNodePools lists nodepools from Maestro
 func (c *Client) ListNodePools(ctx context.Context, accountID string, limit, offset int, clusterID string) ([]*types.NodePool, int, error) {
 	// TODO: Implement actual Maestro API call
 	c.logger.Debug("listing nodepools", "account_id", accountID, "limit", limit, "offset", offset, "cluster_id", clusterID)
@@ -513,3 +513,5 @@ func (c *Client) GetNodePoolStatus(ctx context.Context, accountID, nodePoolID st
 	c.logger.Debug("getting nodepool status", "account_id", accountID, "nodepool_id", nodePoolID)
 	return nil, fmt.Errorf("not implemented")
 }
+
+

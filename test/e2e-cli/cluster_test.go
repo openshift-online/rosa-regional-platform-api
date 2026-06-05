@@ -610,11 +610,69 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		}).WithTimeout(2 * time.Minute).WithPolling(10 * time.Second).Should(Succeed())
 	})
 
-	// it should wait 5m for the hcp and nodepools to be deployed
-	It("should be able to wait 5m for the hcp and nodepools to be deployed", Label("nodepools-wait", "monitor"), func() {
-		GinkgoWriter.Printf("Waiting 5m for the hcp and nodepools to be deployed\n")
-		time.Sleep(5 * time.Minute)
-		GinkgoWriter.Printf("HCP and nodepools deployed successfully\n")
+	It("should have nodepools ready", Label("nodepools-wait", "monitor"), func() {
+		id := clusterID
+		if id == "" {
+			id = os.Getenv("HCP_INSTANCE_ID")
+		}
+		Expect(id).ToNot(BeEmpty(), "set clusterID from hcp-create (Ordered) or HCP_INSTANCE_ID when running nodepools-wait alone")
+
+		GinkgoWriter.Printf("Polling resource_bundles for NodePool readyCondition (cluster %s)\n", id)
+
+		Eventually(func(g Gomega) {
+			searchQuery := fmt.Sprintf("payload->'metadata'->'labels'->>'hyperfleet.io/cluster-id'='%s'", id)
+			resp, err := apiClient.Get("/api/v0/resource_bundles?search="+url.QueryEscape(searchQuery)+"&size=100", accountID)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			var list struct {
+				Items []map[string]interface{} `json:"items"`
+			}
+			g.Expect(json.Unmarshal(resp.Body, &list)).To(Succeed())
+			g.Expect(list.Items).NotTo(BeEmpty(), "no resource bundles found for cluster %s", id)
+
+			foundNodePool := false
+			for _, bundle := range list.Items {
+				manifests, _ := bundle["manifests"].([]interface{})
+				status, _ := bundle["status"].(map[string]interface{})
+				resourceStatuses, _ := status["resourceStatus"].([]interface{})
+
+				for i, raw := range manifests {
+					m, _ := raw.(map[string]interface{})
+					if m == nil || m["kind"] != "NodePool" {
+						continue
+					}
+					foundNodePool = true
+					meta, _ := m["metadata"].(map[string]interface{})
+					name, _ := meta["name"].(string)
+
+					readyValue := ""
+					if i < len(resourceStatuses) {
+						rs, _ := resourceStatuses[i].(map[string]interface{})
+						feedback, _ := rs["statusFeedback"].(map[string]interface{})
+						values, _ := feedback["values"].([]interface{})
+						for _, v := range values {
+							vm, _ := v.(map[string]interface{})
+							if vm["name"] == "readyCondition" {
+								fv, _ := vm["fieldValue"].(map[string]interface{})
+								readyValue, _ = fv["string"].(string)
+							}
+						}
+					}
+
+					if os.Getenv("E2E_STATUS_POLL_LOG") != "" {
+						_, _ = fmt.Fprintf(os.Stderr, "[%s] nodepool %s: readyCondition=%s\n",
+							time.Now().Format(time.RFC3339), name, readyValue)
+					}
+					GinkgoWriter.Printf("  nodepool %s: readyCondition=%s\n", name, readyValue)
+					g.Expect(readyValue).To(Equal("True"), "nodepool %s readyCondition should be True, got %s", name, readyValue)
+				}
+			}
+			g.Expect(foundNodePool).To(BeTrue(), "no NodePool manifest found in resource bundles for cluster %s", id)
+		}).WithTimeout(15*time.Minute).WithPolling(30*time.Second).Should(Succeed(),
+			"all nodepools should have readyCondition=True")
+
+		GinkgoWriter.Printf("All nodepools ready for cluster %s\n", id)
 	})
 
 	It("should have hcp:hostedcluster_available metric in Thanos", Label("hcp-metrics", "monitor"), func() {

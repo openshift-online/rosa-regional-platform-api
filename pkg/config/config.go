@@ -12,7 +12,18 @@ type Config struct {
 	Hyperfleet      HyperfleetConfig
 	Logging         LoggingConfig
 	Authz           *authz.Config
+	Zoa             ZoaConfig
 	AllowedAccounts []string
+}
+
+type ZoaConfig struct {
+	Enabled      bool
+	TableName    string
+	BucketName   string
+	JobRoleARN   string
+	AWSRegion    string
+	TemplatesDir string
+	PollInterval time.Duration
 }
 
 type ServerConfig struct {
@@ -70,5 +81,8 @@ func NewConfig() *Config {
 			Format: "json",
 		},
 		Authz: authz.DefaultConfig(),
+		Zoa: ZoaConfig{
+			PollInterval: 15 * time.Second,
+		},
 	}
 }

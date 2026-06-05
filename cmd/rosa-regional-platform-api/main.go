@@ -128,6 +128,34 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logger.Info("authz disabled via environment variable")
 	}
 
+	// ZOA configuration from environment variables
+	if os.Getenv("ZOA_ENABLED") == "true" {
+		cfg.Zoa.Enabled = true
+		cfg.Zoa.AWSRegion = dynamodbRegion
+		if table := os.Getenv("ZOA_TABLE_NAME"); table != "" {
+			cfg.Zoa.TableName = table
+		} else if dynamodbPrefix != "" {
+			cfg.Zoa.TableName = dynamodbPrefix + "-zoa-executions"
+		}
+		if bucket := os.Getenv("ZOA_BUCKET_NAME"); bucket != "" {
+			cfg.Zoa.BucketName = bucket
+		}
+		if role := os.Getenv("ZOA_JOB_ROLE_ARN"); role != "" {
+			cfg.Zoa.JobRoleARN = role
+		}
+		if dir := os.Getenv("ZOA_TEMPLATES_DIR"); dir != "" {
+			cfg.Zoa.TemplatesDir = dir
+		} else {
+			cfg.Zoa.TemplatesDir = "/etc/zoa/templates"
+		}
+		logger.Info("ZOA trusted actions enabled",
+			"table", cfg.Zoa.TableName,
+			"bucket", cfg.Zoa.BucketName,
+			"region", cfg.Zoa.AWSRegion,
+			"templates_dir", cfg.Zoa.TemplatesDir,
+		)
+	}
+
 	// Create server
 	srv, err := server.New(cfg, logger)
 	if err != nil {

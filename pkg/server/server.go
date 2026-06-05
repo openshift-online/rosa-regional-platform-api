@@ -211,9 +211,17 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	apiRouter.HandleFunc("/api/v0/ready", healthHandler.Readiness).Methods(http.MethodGet)
 	apiRouter.HandleFunc("/api/v0/info", infoHandler.Info).Methods(http.MethodGet)
 
-	// Add CORS and logging
+	// FedRAMP SC-08: restrict CORS to explicit allowed origins only.
+	// A wildcard ("*") origin is prohibited because it allows any cross-origin
+	// browser request to read API responses, undermining transmission integrity
+	// controls. Set cfg.Server.AllowedOrigins to the actual console origin(s)
+	// before deploying (e.g. "https://console.rosa.example.com").
+	allowedOrigins := cfg.Server.AllowedOrigins
+	if len(allowedOrigins) == 0 {
+		logger.Warn("CORS AllowedOrigins is empty — CORS preflight responses will be denied; set --allowed-origins for browser clients")
+	}
 	apiHandler := handlers.CORS(
-		handlers.AllowedOrigins([]string{"*"}),
+		handlers.AllowedOrigins(allowedOrigins),
 		handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodPut}),
 		handlers.AllowedHeaders([]string{"Content-Type", "Authorization"}),
 	)(apiRouter)
@@ -235,6 +243,10 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 			Handler:      apiHandler,
 			ReadTimeout:  30 * time.Second,
 			WriteTimeout: 30 * time.Second,
+			// FedRAMP AC-12 / SC-08: IdleTimeout terminates keep-alive connections
+			// that have been idle longer than 120 seconds, preventing indefinite
+			// session persistence and reducing the window for session hijacking.
+			IdleTimeout: 120 * time.Second,
 		},
 		healthServer: &http.Server{
 			Addr:         fmt.Sprintf("%s:%d", cfg.Server.HealthBindAddress, cfg.Server.HealthPort),

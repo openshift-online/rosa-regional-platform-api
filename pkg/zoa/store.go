@@ -173,29 +173,32 @@ func (s *DynamoExecutionStore) UpdateManifestWorkName(ctx context.Context, execu
 }
 
 func (s *DynamoExecutionStore) ListPending(ctx context.Context) ([]*Execution, error) {
-	result, err := s.dynamoClient.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        aws.String(s.tableName),
-		FilterExpression: aws.String("#status IN (:pending, :running)"),
-		ExpressionAttributeNames: map[string]string{
-			"#status": "status",
-		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pending": &types.AttributeValueMemberS{Value: string(StatusPending)},
-			":running": &types.AttributeValueMemberS{Value: string(StatusRunning)},
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to scan pending executions: %w", err)
-	}
+	executions := make([]*Execution, 0)
 
-	executions := make([]*Execution, 0, len(result.Items))
-	for _, item := range result.Items {
-		var exec Execution
-		if err := attributevalue.UnmarshalMap(item, &exec); err != nil {
-			s.logger.Error("failed to unmarshal execution item", "error", err)
-			continue
+	for _, status := range []ExecutionStatus{StatusPending, StatusRunning} {
+		result, err := s.dynamoClient.Query(ctx, &dynamodb.QueryInput{
+			TableName:              aws.String(s.tableName),
+			IndexName:              aws.String("status-index"),
+			KeyConditionExpression: aws.String("#status = :status"),
+			ExpressionAttributeNames: map[string]string{
+				"#status": "status",
+			},
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":status": &types.AttributeValueMemberS{Value: string(status)},
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to query %s executions: %w", status, err)
 		}
-		executions = append(executions, &exec)
+
+		for _, item := range result.Items {
+			var exec Execution
+			if err := attributevalue.UnmarshalMap(item, &exec); err != nil {
+				s.logger.Error("failed to unmarshal execution item", "error", err)
+				continue
+			}
+			executions = append(executions, &exec)
+		}
 	}
 
 	return executions, nil

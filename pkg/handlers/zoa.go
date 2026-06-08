@@ -104,6 +104,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Scope:         tmpl.Scope,
 		Profile:       tmpl.Profile,
 		Type:          tmpl.Type,
+		Revision:      h.jobConfig.Revision,
 		Status:        zoa.StatusPending,
 		OutputPath:    execID + "/output.json",
 	}
@@ -121,7 +122,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Namespace:     zoa.JobNamespace,
 		OutputBucket:  h.bucketName,
 		Operator:      operator,
-		Revision:      "HEAD",
+		Revision:      h.jobConfig.Revision,
 		Profile:       tmpl.Profile,
 		Type:          tmpl.Type,
 		Scope:         tmpl.Scope,
@@ -183,10 +184,8 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	fields := parseFields(r.URL.Query().Get("fields"))
 
-	response := &zoa.ExecutionResponse{}
-
-	if fields.includeMetadata {
-		response.Execution = exec
+	response := &zoa.ExecutionResponse{
+		Execution: exec,
 	}
 
 	if exec.Status == zoa.StatusSucceeded || exec.Status == zoa.StatusFailed {
@@ -216,10 +215,6 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 			response.Stdout = string(stdout)
 			response.Stderr = string(stderr)
 		}
-	}
-
-	if !fields.includeMetadata && response.Execution == nil {
-		response.Execution = &zoa.Execution{ExecutionID: execID}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -320,35 +315,27 @@ func (h *ZoaHandler) fetchS3Content(ctx context.Context, key string) ([]byte, er
 }
 
 type fieldsSelection struct {
-	includeMetadata bool
-	includeOutput   bool
-	includeLogs     bool
+	includeOutput bool
+	includeLogs   bool
 }
 
 func parseFields(raw string) fieldsSelection {
 	if raw == "" {
-		return fieldsSelection{includeMetadata: true, includeOutput: true}
+		return fieldsSelection{includeOutput: true}
 	}
 
 	if raw == "all" {
-		return fieldsSelection{includeMetadata: true, includeOutput: true, includeLogs: true}
+		return fieldsSelection{includeOutput: true, includeLogs: true}
 	}
 
 	sel := fieldsSelection{}
 	for _, f := range strings.Split(raw, ",") {
 		switch strings.TrimSpace(f) {
-		case "metadata":
-			sel.includeMetadata = true
 		case "output":
 			sel.includeOutput = true
 		case "logs":
 			sel.includeLogs = true
 		}
-	}
-
-	if !sel.includeMetadata && !sel.includeOutput && !sel.includeLogs {
-		sel.includeMetadata = true
-		sel.includeOutput = true
 	}
 
 	return sel

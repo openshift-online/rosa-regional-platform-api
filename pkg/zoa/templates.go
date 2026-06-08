@@ -107,6 +107,7 @@ func parseTemplate(data []byte) (*TATemplate, error) {
 // LoadJobConfig reads the zoa-job-config ConfigMap data from a directory.
 func LoadJobConfig(dir string) (*JobConfig, error) {
 	cfg := &JobConfig{
+		Revision:      "unknown",
 		CPURequest:    "100m",
 		MemoryRequest: "128Mi",
 		CPULimit:      "500m",
@@ -124,6 +125,9 @@ func LoadJobConfig(dir string) (*JobConfig, error) {
 
 	if v := readFile("image"); v != "" {
 		cfg.Image = v
+	}
+	if v := readFile("revision"); v != "" {
+		cfg.Revision = v
 	}
 	if v := readFile("cpu_request"); v != "" {
 		cfg.CPURequest = v

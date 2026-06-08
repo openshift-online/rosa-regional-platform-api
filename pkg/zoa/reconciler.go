@@ -9,22 +9,26 @@ import (
 	workv1 "open-cluster-management.io/api/work/v1"
 )
 
+const defaultExecutionTimeout = 30 * time.Minute
+
 // Reconciler periodically checks pending/running TA executions and updates their
 // status by inspecting Maestro ManifestWork feedback via gRPC.
 type Reconciler struct {
-	store         ExecutionStore
-	maestroClient maestro.ClientInterface
-	logger        *slog.Logger
-	interval      time.Duration
+	store            ExecutionStore
+	maestroClient    maestro.ClientInterface
+	logger           *slog.Logger
+	interval         time.Duration
+	executionTimeout time.Duration
 }
 
 // NewReconciler creates a new ZOA status reconciler.
 func NewReconciler(store ExecutionStore, maestroClient maestro.ClientInterface, interval time.Duration, logger *slog.Logger) *Reconciler {
 	return &Reconciler{
-		store:         store,
-		maestroClient: maestroClient,
-		logger:        logger,
-		interval:      interval,
+		store:            store,
+		maestroClient:    maestroClient,
+		logger:           logger,
+		interval:         interval,
+		executionTimeout: defaultExecutionTimeout,
 	}
 }
 
@@ -65,6 +69,22 @@ func (r *Reconciler) reconcilePending(ctx context.Context) {
 
 func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 	if exec.ManifestWorkName == "" || exec.TargetCluster == "" {
+		return
+	}
+
+	if r.isTimedOut(exec) {
+		now := time.Now().UTC()
+		createdAt, _ := time.Parse(time.RFC3339, exec.CreatedAt)
+		duration := int(now.Sub(createdAt).Seconds())
+		if err := r.store.UpdateStatus(ctx, exec.ExecutionID, StatusFailed, now.Format(time.RFC3339), duration); err != nil {
+			r.logger.Error("failed to mark execution as timed out", "execution_id", exec.ExecutionID, "error", err)
+		} else {
+			r.logger.Warn("execution timed out",
+				"execution_id", exec.ExecutionID,
+				"age", now.Sub(createdAt).String(),
+				"timeout", r.executionTimeout.String(),
+			)
+		}
 		return
 	}
 
@@ -116,6 +136,14 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 		"execution_id", exec.ExecutionID,
 		"status", newStatus,
 	)
+}
+
+func (r *Reconciler) isTimedOut(exec *Execution) bool {
+	createdAt, err := time.Parse(time.RFC3339, exec.CreatedAt)
+	if err != nil {
+		return false
+	}
+	return time.Since(createdAt) > r.executionTimeout
 }
 
 // parseManifestWorkStatus extracts the Job completion status from ManifestWork status feedback.

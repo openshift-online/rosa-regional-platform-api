@@ -102,6 +102,7 @@ type TADescribeResponse struct {
 // loaded from the zoa-job-config ConfigMap.
 type JobConfig struct {
 	Image            string `json:"image"`
+	Revision         string `json:"revision"`
 	CPURequest       string `json:"cpu_request"`
 	MemoryRequest    string `json:"memory_request"`
 	CPULimit         string `json:"cpu_limit"`

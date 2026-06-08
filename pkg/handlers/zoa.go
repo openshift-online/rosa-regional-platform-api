@@ -25,6 +25,7 @@ type ZoaHandler struct {
 	s3Client      S3PresignClient
 	bucketName    string
 	jobRoleARN    string
+	jobImage      string
 	logger        *slog.Logger
 }
 
@@ -37,6 +38,7 @@ type S3PresignClient interface {
 type ZoaConfig struct {
 	BucketName string
 	JobRoleARN string
+	JobImage   string
 }
 
 // NewZoaHandler creates a new ZoaHandler.
@@ -55,6 +57,7 @@ func NewZoaHandler(
 		s3Client:      s3Client,
 		bucketName:    cfg.BucketName,
 		jobRoleARN:    cfg.JobRoleARN,
+		jobImage:      cfg.JobImage,
 		logger:        logger,
 	}
 }
@@ -109,6 +112,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Namespace:     zoa.JobNamespace,
 		OutputBucket:  h.bucketName,
 		JobRoleARN:    h.jobRoleARN,
+		Image:         h.jobImage,
 		Params:        req.Params,
 	}
 

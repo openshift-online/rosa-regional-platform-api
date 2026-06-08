@@ -236,6 +236,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		zoaHandler := apphandlers.NewZoaHandler(zoaStore, zoaRegistry, maestroClient, s3Client, apphandlers.ZoaConfig{
 			BucketName: cfg.Zoa.BucketName,
 			JobRoleARN: cfg.Zoa.JobRoleARN,
+			JobImage:   cfg.Zoa.JobImage,
 		}, logger)
 
 		zoaRouter := apiRouter.PathPrefix("/api/v0/trusted_actions").Subrouter()

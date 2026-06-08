@@ -23,7 +23,9 @@ const (
 // TATemplate defines a Trusted Action loaded from a YAML template file.
 type TATemplate struct {
 	Name        string            `yaml:"name"`
+	Profile     string            `yaml:"profile"`
 	Scope       string            `yaml:"scope"`
+	Type        string            `yaml:"type"`
 	Description string            `yaml:"description"`
 	Manifests   []json.RawMessage `yaml:"manifests"`
 
@@ -38,6 +40,7 @@ type RenderContext struct {
 	Namespace     string
 	OutputBucket  string
 	JobRoleARN    string
+	Image         string
 	Params        map[string]string
 }
 
@@ -109,7 +112,9 @@ func (r *TemplateRegistry) List() []string {
 func parseTemplate(data []byte) (*TATemplate, error) {
 	var meta struct {
 		Name        string `yaml:"name"`
+		Profile     string `yaml:"profile"`
 		Scope       string `yaml:"scope"`
+		Type        string `yaml:"type"`
 		Description string `yaml:"description"`
 	}
 	if err := yaml.Unmarshal(data, &meta); err != nil {
@@ -122,7 +127,9 @@ func parseTemplate(data []byte) (*TATemplate, error) {
 
 	return &TATemplate{
 		Name:        meta.Name,
+		Profile:     meta.Profile,
 		Scope:       meta.Scope,
+		Type:        meta.Type,
 		Description: meta.Description,
 		rawTemplate: string(data),
 	}, nil

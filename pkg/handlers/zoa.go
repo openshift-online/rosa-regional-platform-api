@@ -192,7 +192,9 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if exec.Status == zoa.StatusSucceeded || exec.Status == zoa.StatusFailed {
 		if fields.includeOutput {
 			output, err := h.fetchS3Content(ctx, exec.ExecutionID+"/output.json")
-			if err == nil && output != nil {
+			if err != nil {
+				h.logger.Error("failed to fetch output from S3", "error", err, "bucket", h.bucketName, "key", exec.ExecutionID+"/output.json")
+			} else if output != nil {
 				var parsed interface{}
 				if json.Unmarshal(output, &parsed) == nil {
 					response.Output = parsed
@@ -203,8 +205,14 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if fields.includeLogs {
-			stdout, _ := h.fetchS3Content(ctx, exec.ExecutionID+"/stdout.log")
-			stderr, _ := h.fetchS3Content(ctx, exec.ExecutionID+"/stderr.log")
+			stdout, err := h.fetchS3Content(ctx, exec.ExecutionID+"/stdout.log")
+			if err != nil {
+				h.logger.Error("failed to fetch stdout from S3", "error", err, "key", exec.ExecutionID+"/stdout.log")
+			}
+			stderr, err2 := h.fetchS3Content(ctx, exec.ExecutionID+"/stderr.log")
+			if err2 != nil {
+				h.logger.Error("failed to fetch stderr from S3", "error", err2, "key", exec.ExecutionID+"/stderr.log")
+			}
 			response.Stdout = string(stdout)
 			response.Stderr = string(stderr)
 		}

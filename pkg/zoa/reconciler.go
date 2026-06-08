@@ -9,32 +9,39 @@ import (
 	workv1 "open-cluster-management.io/api/work/v1"
 )
 
-const defaultExecutionTimeout = 30 * time.Minute
-
 // Reconciler periodically checks pending/running TA executions and updates their
 // status by inspecting Maestro ManifestWork feedback via gRPC.
+// On terminal states (succeeded, failed, timeout), it deletes the ResourceBundle
+// BEFORE updating status, preventing stale RBs if the status update were to fail.
 type Reconciler struct {
-	store            ExecutionStore
-	maestroClient    maestro.ClientInterface
-	logger           *slog.Logger
-	interval         time.Duration
-	executionTimeout time.Duration
+	store         ExecutionStore
+	registry      *TemplateRegistry
+	maestroClient maestro.ClientInterface
+	jobConfig     *JobConfig
+	logger        *slog.Logger
+	interval      time.Duration
 }
 
-// NewReconciler creates a new ZOA status reconciler.
-func NewReconciler(store ExecutionStore, maestroClient maestro.ClientInterface, interval time.Duration, logger *slog.Logger) *Reconciler {
+func NewReconciler(
+	store ExecutionStore,
+	registry *TemplateRegistry,
+	maestroClient maestro.ClientInterface,
+	jobConfig *JobConfig,
+	interval time.Duration,
+	logger *slog.Logger,
+) *Reconciler {
 	return &Reconciler{
-		store:            store,
-		maestroClient:    maestroClient,
-		logger:           logger,
-		interval:         interval,
-		executionTimeout: defaultExecutionTimeout,
+		store:         store,
+		registry:      registry,
+		maestroClient: maestroClient,
+		jobConfig:     jobConfig,
+		logger:        logger,
+		interval:      interval,
 	}
 }
 
-// Run starts the reconciliation loop. It blocks until ctx is cancelled.
 func (r *Reconciler) Run(ctx context.Context) {
-	r.logger.Info("ZOA reconciler started", "interval", r.interval)
+	r.logger.Info("ZOA reconciler started", "interval", r.interval, "default_timeout_seconds", r.jobConfig.ExecutionTimeoutSeconds)
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 
@@ -73,18 +80,7 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 	}
 
 	if r.isTimedOut(exec) {
-		now := time.Now().UTC()
-		createdAt, _ := time.Parse(time.RFC3339, exec.CreatedAt)
-		duration := int(now.Sub(createdAt).Seconds())
-		if err := r.store.UpdateStatus(ctx, exec.ExecutionID, StatusFailed, now.Format(time.RFC3339), duration); err != nil {
-			r.logger.Error("failed to mark execution as timed out", "execution_id", exec.ExecutionID, "error", err)
-		} else {
-			r.logger.Warn("execution timed out",
-				"execution_id", exec.ExecutionID,
-				"age", now.Sub(createdAt).String(),
-				"timeout", r.executionTimeout.String(),
-			)
-		}
+		r.handleTimeout(ctx, exec)
 		return
 	}
 
@@ -112,18 +108,12 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 		return
 	}
 
-	var completedAt string
-	var duration int
 	if completed {
-		now := time.Now().UTC()
-		completedAt = now.Format(time.RFC3339)
-		createdAt, err := time.Parse(time.RFC3339, exec.CreatedAt)
-		if err == nil {
-			duration = int(now.Sub(createdAt).Seconds())
-		}
+		r.handleCompletion(ctx, exec, ExecutionStatus(newStatus))
+		return
 	}
 
-	if err := r.store.UpdateStatus(ctx, exec.ExecutionID, ExecutionStatus(newStatus), completedAt, duration); err != nil {
+	if err := r.store.UpdateStatus(ctx, exec.ExecutionID, ExecutionStatus(newStatus), "", 0); err != nil {
 		r.logger.Error("failed to update execution status",
 			"execution_id", exec.ExecutionID,
 			"new_status", newStatus,
@@ -138,12 +128,110 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 	)
 }
 
+// handleTimeout deletes the ResourceBundle FIRST, then marks as timed_out.
+// If RB deletion fails, status stays pending/running so the reconciler retries.
+func (r *Reconciler) handleTimeout(ctx context.Context, exec *Execution) {
+	timeout := r.timeoutForExecution(exec)
+	createdAt, _ := time.Parse(time.RFC3339, exec.CreatedAt)
+
+	r.logger.Warn("execution exceeded timeout, cleaning up",
+		"execution_id", exec.ExecutionID,
+		"age", time.Since(createdAt).String(),
+		"timeout", timeout.String(),
+	)
+
+	if err := r.deleteResourceBundle(ctx, exec); err != nil {
+		return
+	}
+
+	now := time.Now().UTC()
+	duration := int(now.Sub(createdAt).Seconds())
+	if err := r.store.UpdateStatus(ctx, exec.ExecutionID, StatusTimedOut, now.Format(time.RFC3339), duration); err != nil {
+		r.logger.Error("resource bundle deleted but failed to update status to timed_out — will not retry RB deletion",
+			"execution_id", exec.ExecutionID,
+			"error", err,
+		)
+		return
+	}
+
+	r.logger.Info("execution marked as timed_out",
+		"execution_id", exec.ExecutionID,
+		"duration_seconds", duration,
+	)
+}
+
+// handleCompletion deletes the ResourceBundle FIRST, then updates terminal status.
+// If RB deletion fails, status stays running so the reconciler retries.
+func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, terminalStatus ExecutionStatus) {
+	if err := r.deleteResourceBundle(ctx, exec); err != nil {
+		return
+	}
+
+	now := time.Now().UTC()
+	var duration int
+	createdAt, err := time.Parse(time.RFC3339, exec.CreatedAt)
+	if err == nil {
+		duration = int(now.Sub(createdAt).Seconds())
+	}
+
+	if err := r.store.UpdateStatus(ctx, exec.ExecutionID, terminalStatus, now.Format(time.RFC3339), duration); err != nil {
+		r.logger.Error("resource bundle deleted but failed to update terminal status — will not retry RB deletion",
+			"execution_id", exec.ExecutionID,
+			"terminal_status", string(terminalStatus),
+			"error", err,
+		)
+		return
+	}
+
+	r.logger.Info("execution completed",
+		"execution_id", exec.ExecutionID,
+		"status", string(terminalStatus),
+		"duration_seconds", duration,
+	)
+}
+
+// deleteResourceBundle removes the RB from Maestro. Returns nil on success or
+// if the RB is already gone (idempotent). Returns error if deletion actually fails.
+func (r *Reconciler) deleteResourceBundle(ctx context.Context, exec *Execution) error {
+	err := r.maestroClient.DeleteManifestWork(ctx, exec.TargetCluster, exec.ManifestWorkName)
+	if err != nil {
+		if maestro.IsNotFound(err) {
+			r.logger.Debug("resource bundle already deleted",
+				"execution_id", exec.ExecutionID,
+				"manifest_work", exec.ManifestWorkName,
+			)
+			return nil
+		}
+		r.logger.Error("failed to delete resource bundle — will retry next reconcile",
+			"execution_id", exec.ExecutionID,
+			"manifest_work", exec.ManifestWorkName,
+			"error", err,
+		)
+		return err
+	}
+
+	r.logger.Info("resource bundle deleted",
+		"execution_id", exec.ExecutionID,
+		"manifest_work", exec.ManifestWorkName,
+	)
+	return nil
+}
+
+func (r *Reconciler) timeoutForExecution(exec *Execution) time.Duration {
+	if r.registry != nil {
+		if tmpl, ok := r.registry.Get(exec.Action); ok && tmpl.TimeoutSeconds > 0 {
+			return time.Duration(tmpl.TimeoutSeconds) * time.Second
+		}
+	}
+	return time.Duration(r.jobConfig.ExecutionTimeoutSeconds) * time.Second
+}
+
 func (r *Reconciler) isTimedOut(exec *Execution) bool {
 	createdAt, err := time.Parse(time.RFC3339, exec.CreatedAt)
 	if err != nil {
 		return false
 	}
-	return time.Since(createdAt) > r.executionTimeout
+	return time.Since(createdAt) > r.timeoutForExecution(exec)
 }
 
 // parseManifestWorkStatus extracts the Job completion status from ManifestWork status feedback.

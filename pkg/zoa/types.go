@@ -8,6 +8,7 @@ const (
 	StatusRunning   ExecutionStatus = "running"
 	StatusSucceeded ExecutionStatus = "succeeded"
 	StatusFailed    ExecutionStatus = "failed"
+	StatusTimedOut  ExecutionStatus = "timed_out"
 )
 
 // Execution represents a single Trusted Action execution stored in DynamoDB.
@@ -78,14 +79,15 @@ type RBACRule struct {
 
 // TATemplate defines a Trusted Action loaded from a simplified YAML file.
 type TATemplate struct {
-	Name        string        `yaml:"name" json:"name"`
-	Profile     string        `yaml:"profile" json:"profile"`
-	Scope       string        `yaml:"scope" json:"scope"`
-	Type        string        `yaml:"type" json:"type"`
-	Description string        `yaml:"description" json:"description"`
-	Params      []TAParameter `yaml:"params,omitempty" json:"params,omitempty"`
-	RBAC        *TARBAC       `yaml:"rbac" json:"-"`
-	Script      string        `yaml:"script" json:"-"`
+	Name           string        `yaml:"name" json:"name"`
+	Profile        string        `yaml:"profile" json:"profile"`
+	Scope          string        `yaml:"scope" json:"scope"`
+	Type           string        `yaml:"type" json:"type"`
+	Description    string        `yaml:"description" json:"description"`
+	TimeoutSeconds int           `yaml:"timeout_seconds,omitempty" json:"timeout_seconds,omitempty"`
+	Params         []TAParameter `yaml:"params,omitempty" json:"params,omitempty"`
+	RBAC           *TARBAC       `yaml:"rbac" json:"-"`
+	Script         string        `yaml:"script" json:"-"`
 }
 
 // TADescribeResponse is returned by GET /trusted-actions/{action}.
@@ -101,14 +103,15 @@ type TADescribeResponse struct {
 // JobConfig holds boilerplate configuration for Job generation,
 // loaded from the zoa-job-config ConfigMap.
 type JobConfig struct {
-	Image            string `json:"image"`
-	Revision         string `json:"revision"`
-	CPURequest       string `json:"cpu_request"`
-	MemoryRequest    string `json:"memory_request"`
-	CPULimit         string `json:"cpu_limit"`
-	MemoryLimit      string `json:"memory_limit"`
-	TTLSeconds       int32  `json:"ttl_seconds"`
-	EntrypointScript string `json:"entrypoint_script"`
+	Image                  string `json:"image"`
+	Revision               string `json:"revision"`
+	CPURequest             string `json:"cpu_request"`
+	MemoryRequest          string `json:"memory_request"`
+	CPULimit               string `json:"cpu_limit"`
+	MemoryLimit            string `json:"memory_limit"`
+	TTLSeconds             int32  `json:"ttl_seconds"`
+	ExecutionTimeoutSeconds int    `json:"execution_timeout_seconds"`
+	EntrypointScript       string `json:"entrypoint_script"`
 }
 
 // RenderContext holds all the data needed to generate a ManifestWork for a TA execution.

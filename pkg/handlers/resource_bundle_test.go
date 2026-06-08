@@ -61,6 +61,10 @@ func (m *mockMaestroClient) CreateManifestWork(ctx context.Context, clusterName 
 	return nil, errors.New("not implemented")
 }
 
+func (m *mockMaestroClient) DeleteManifestWork(ctx context.Context, clusterName string, name string) error {
+	return nil
+}
+
 func TestResourceBundleHandler_List_Success(t *testing.T) {
 	now := time.Now()
 	expectedList := &maestro.ResourceBundleList{

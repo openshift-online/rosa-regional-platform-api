@@ -57,6 +57,10 @@ func (m *mockWorkMaestroClient) DeleteResourceBundle(ctx context.Context, id str
 	return errors.New("not implemented")
 }
 
+func (m *mockWorkMaestroClient) DeleteManifestWork(ctx context.Context, clusterName string, name string) error {
+	return nil
+}
+
 func TestWorkHandler_Create_Success(t *testing.T) {
 	mockClient := &mockWorkMaestroClient{
 		createManifestWorkFunc: func(ctx context.Context, clusterName string, manifestWork *workv1.ManifestWork) (*workv1.ManifestWork, error) {

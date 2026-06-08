@@ -107,12 +107,13 @@ func parseTemplate(data []byte) (*TATemplate, error) {
 // LoadJobConfig reads the zoa-job-config ConfigMap data from a directory.
 func LoadJobConfig(dir string) (*JobConfig, error) {
 	cfg := &JobConfig{
-		Revision:      "unknown",
-		CPURequest:    "100m",
-		MemoryRequest: "128Mi",
-		CPULimit:      "500m",
-		MemoryLimit:   "512Mi",
-		TTLSeconds:    3600,
+		Revision:                "unknown",
+		CPURequest:              "100m",
+		MemoryRequest:           "128Mi",
+		CPULimit:                "500m",
+		MemoryLimit:             "512Mi",
+		TTLSeconds:              3600,
+		ExecutionTimeoutSeconds: 1800,
 	}
 
 	readFile := func(name string) string {
@@ -144,6 +145,11 @@ func LoadJobConfig(dir string) (*JobConfig, error) {
 	if v := readFile("ttl_seconds"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 32); err == nil {
 			cfg.TTLSeconds = int32(n)
+		}
+	}
+	if v := readFile("execution_timeout_seconds"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			cfg.ExecutionTimeoutSeconds = int(n)
 		}
 	}
 	if v := readFile("entrypoint.sh"); v != "" {

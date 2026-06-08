@@ -253,7 +253,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		zoaRouter.HandleFunc("/{action}", zoaHandler.Describe).Methods(http.MethodGet)
 		zoaRouter.HandleFunc("", zoaHandler.Catalog).Methods(http.MethodGet)
 
-		zoaReconciler = zoa.NewReconciler(zoaStore, maestroClient, cfg.Zoa.PollInterval, logger)
+		zoaReconciler = zoa.NewReconciler(zoaStore, zoaRegistry, maestroClient, jobConfig, cfg.Zoa.PollInterval, logger)
 		logger.Info("ZOA trusted actions enabled", "table", cfg.Zoa.TableName, "bucket", cfg.Zoa.BucketName)
 	}
 

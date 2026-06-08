@@ -470,6 +470,21 @@ func (c *Client) GetManifestWork(ctx context.Context, clusterName string, name s
 	return result, nil
 }
 
+// DeleteManifestWork deletes a ManifestWork by name from Maestro via gRPC.
+func (c *Client) DeleteManifestWork(ctx context.Context, clusterName string, name string) error {
+	if c.workClient == nil {
+		return fmt.Errorf("gRPC work client not initialized")
+	}
+
+	err := c.workClient.ManifestWorks(clusterName).Delete(ctx, name, metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to delete manifestwork: %w", err)
+	}
+
+	c.logger.Info("manifestwork deleted", "cluster", clusterName, "work_name", name)
+	return nil
+}
+
 // IsNotFound checks if an error represents a 404 Not Found response
 func IsNotFound(err error) bool {
 	if err == nil {

@@ -4,17 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"log/slog"
-	"os"
 
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
@@ -23,12 +24,12 @@ import (
 )
 
 type mockExecutionStore struct {
-	createFunc              func(ctx context.Context, exec *zoa.Execution) error
-	getFunc                 func(ctx context.Context, executionID string) (*zoa.Execution, error)
-	listFunc                func(ctx context.Context, accountID string, limit int) ([]*zoa.Execution, error)
-	updateStatusFunc        func(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int) error
-	updateManifestWorkFunc  func(ctx context.Context, executionID, mwName string) error
-	listPendingFunc         func(ctx context.Context) ([]*zoa.Execution, error)
+	createFunc             func(ctx context.Context, exec *zoa.Execution) error
+	getFunc                func(ctx context.Context, executionID string) (*zoa.Execution, error)
+	listFunc               func(ctx context.Context, accountID string, limit int) ([]*zoa.Execution, error)
+	updateStatusFunc       func(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int) error
+	updateManifestWorkFunc func(ctx context.Context, executionID, mwName string) error
+	listPendingFunc        func(ctx context.Context) ([]*zoa.Execution, error)
 }
 
 func (m *mockExecutionStore) Create(ctx context.Context, exec *zoa.Execution) error {
@@ -114,43 +115,53 @@ func (m *zoaMockMaestroClient) CreateManifestWork(ctx context.Context, clusterNa
 	return result, nil
 }
 
-type mockS3PresignClient struct{}
+type mockS3Client struct{}
 
-func (m *mockS3PresignClient) PresignGetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.PresignOptions)) (*v4.PresignedHTTPRequest, error) {
-	return &v4.PresignedHTTPRequest{URL: "https://s3.example.com/presigned"}, nil
+func (m *mockS3Client) GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	return &s3.GetObjectOutput{
+		Body: io.NopCloser(strings.NewReader(`{"summary": "test output"}`)),
+	}, nil
 }
 
 func testZoaLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 }
 
+func testJobConfig() *zoa.JobConfig {
+	return &zoa.JobConfig{
+		Image:         "quay.io/test/zoa-tools:latest",
+		CPURequest:    "100m",
+		MemoryRequest: "128Mi",
+		CPULimit:      "500m",
+		MemoryLimit:   "512Mi",
+		TTLSeconds:    3600,
+		EntrypointScript: `#!/bin/bash
+set -uo pipefail
+/zoa/run.sh
+`,
+	}
+}
+
 func testTemplateRegistry(t *testing.T) *zoa.TemplateRegistry {
 	t.Helper()
 	dir := t.TempDir()
 	templateContent := `name: get_nodes
+profile: kube
 scope: kube-api
+type: read
 description: List all nodes in the target cluster
-manifests:
-  - apiVersion: v1
-    kind: ServiceAccount
-    metadata:
-      name: zoa-get-nodes-{{ .ExecID }}
-      namespace: {{ .Namespace }}
-  - apiVersion: batch/v1
-    kind: Job
-    metadata:
-      name: zoa-get-nodes-{{ .ExecID }}
-      namespace: {{ .Namespace }}
-    spec:
-      backoffLimit: 0
-      template:
-        spec:
-          serviceAccountName: zoa-get-nodes-{{ .ExecID }}
-          restartPolicy: Never
-          containers:
-            - name: ta
-              image: amazon/aws-cli:latest
-              command: ["kubectl", "get", "nodes", "-o", "json"]
+params:
+  - name: node_selector
+    required: false
+    default: ""
+rbac:
+  cluster_scoped: true
+  rules:
+    - apiGroups: [""]
+      resources: ["nodes"]
+      verbs: ["get", "list"]
+script: |
+  kubectl get nodes -o json > /artifacts/output.json
 `
 	err := os.WriteFile(dir+"/get_nodes.yaml", []byte(templateContent), 0644)
 	require.NoError(t, err)
@@ -163,9 +174,9 @@ manifests:
 
 func newTestZoaHandler(t *testing.T, store zoa.ExecutionStore, maestroClient *zoaMockMaestroClient) *ZoaHandler {
 	t.Helper()
-	return NewZoaHandler(store, testTemplateRegistry(t), maestroClient, &mockS3PresignClient{}, ZoaConfig{
+	return NewZoaHandler(store, testTemplateRegistry(t), maestroClient, &mockS3Client{}, ZoaConfig{
 		BucketName: "test-bucket",
-		JobRoleARN: "arn:aws:iam::123456789:role/test-role",
+		JobConfig:  testJobConfig(),
 	}, testZoaLogger())
 }
 
@@ -175,7 +186,7 @@ func TestZoaHandler_Create_Success(t *testing.T) {
 	handler := newTestZoaHandler(t, store, mc)
 
 	body := `{"target_cluster": "mc01"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/trusted_actions/get_nodes", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/trusted-actions/get_nodes/run", bytes.NewBufferString(body))
 	req = mux.SetURLVars(req, map[string]string{"action": "get_nodes"})
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ContextKeyAccountID, "111222333444"))
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ContextKeyCallerARN, "arn:aws:iam::111222333444:user/test"))
@@ -191,6 +202,9 @@ func TestZoaHandler_Create_Success(t *testing.T) {
 	assert.Equal(t, "get_nodes", resp.Action)
 	assert.Equal(t, "mc01", resp.TargetCluster)
 	assert.Equal(t, zoa.StatusPending, resp.Status)
+	assert.Equal(t, "kube", resp.Profile)
+	assert.Equal(t, "read", resp.Type)
+	assert.Equal(t, "test", resp.Operator)
 	assert.NotEmpty(t, resp.ExecutionID)
 }
 
@@ -200,7 +214,7 @@ func TestZoaHandler_Create_UnknownAction(t *testing.T) {
 	handler := newTestZoaHandler(t, store, mc)
 
 	body := `{"target_cluster": "mc01"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/trusted_actions/nonexistent", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/trusted-actions/nonexistent/run", bytes.NewBufferString(body))
 	req = mux.SetURLVars(req, map[string]string{"action": "nonexistent"})
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ContextKeyAccountID, "111222333444"))
 
@@ -216,7 +230,7 @@ func TestZoaHandler_Create_MissingTargetCluster(t *testing.T) {
 	handler := newTestZoaHandler(t, store, mc)
 
 	body := `{}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/trusted_actions/get_nodes", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/trusted-actions/get_nodes/run", bytes.NewBufferString(body))
 	req = mux.SetURLVars(req, map[string]string{"action": "get_nodes"})
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ContextKeyAccountID, "111222333444"))
 
@@ -240,7 +254,7 @@ func TestZoaHandler_Get_Found(t *testing.T) {
 	}
 	handler := newTestZoaHandler(t, store, &zoaMockMaestroClient{})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted_actions/runs/exec-123", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted-actions/runs/exec-123", nil)
 	req = mux.SetURLVars(req, map[string]string{"id": "exec-123"})
 
 	rr := httptest.NewRecorder()
@@ -248,11 +262,11 @@ func TestZoaHandler_Get_Found(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 
-	var resp zoa.Execution
+	var resp zoa.ExecutionResponse
 	err := json.NewDecoder(rr.Body).Decode(&resp)
 	require.NoError(t, err)
-	assert.Equal(t, "exec-123", resp.ExecutionID)
-	assert.Equal(t, "https://s3.example.com/presigned", resp.OutputURL)
+	assert.Equal(t, "exec-123", resp.Execution.ExecutionID)
+	assert.NotNil(t, resp.Output)
 }
 
 func TestZoaHandler_Get_NotFound(t *testing.T) {
@@ -263,7 +277,7 @@ func TestZoaHandler_Get_NotFound(t *testing.T) {
 	}
 	handler := newTestZoaHandler(t, store, &zoaMockMaestroClient{})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted_actions/runs/nonexistent", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted-actions/runs/nonexistent", nil)
 	req = mux.SetURLVars(req, map[string]string{"id": "nonexistent"})
 
 	rr := httptest.NewRecorder()
@@ -283,7 +297,7 @@ func TestZoaHandler_List(t *testing.T) {
 	}
 	handler := newTestZoaHandler(t, store, &zoaMockMaestroClient{})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted_actions/runs", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted-actions/runs", nil)
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ContextKeyAccountID, "111222333444"))
 
 	rr := httptest.NewRecorder()
@@ -296,4 +310,40 @@ func TestZoaHandler_List(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, resp.Total)
 	assert.Len(t, resp.Items, 2)
+}
+
+func TestZoaHandler_Describe(t *testing.T) {
+	handler := newTestZoaHandler(t, &mockExecutionStore{}, &zoaMockMaestroClient{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted-actions/get_nodes", nil)
+	req = mux.SetURLVars(req, map[string]string{"action": "get_nodes"})
+
+	rr := httptest.NewRecorder()
+	handler.Describe(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var resp zoa.TADescribeResponse
+	err := json.NewDecoder(rr.Body).Decode(&resp)
+	require.NoError(t, err)
+	assert.Equal(t, "get_nodes", resp.Name)
+	assert.Equal(t, "kube", resp.Profile)
+	assert.Equal(t, "read", resp.Type)
+	assert.Equal(t, "List all nodes in the target cluster", resp.Description)
+}
+
+func TestZoaHandler_Catalog(t *testing.T) {
+	handler := newTestZoaHandler(t, &mockExecutionStore{}, &zoaMockMaestroClient{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted-actions", nil)
+
+	rr := httptest.NewRecorder()
+	handler.Catalog(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var resp map[string]interface{}
+	err := json.NewDecoder(rr.Body).Decode(&resp)
+	require.NoError(t, err)
+	assert.Equal(t, float64(1), resp["total"])
 }

@@ -148,11 +148,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 		} else {
 			cfg.Zoa.TemplatesDir = "/etc/zoa/templates"
 		}
+		if dir := os.Getenv("ZOA_JOB_CONFIG_DIR"); dir != "" {
+			cfg.Zoa.JobConfigDir = dir
+		} else {
+			cfg.Zoa.JobConfigDir = "/etc/zoa/job-config"
+		}
 		logger.Info("ZOA trusted actions enabled",
 			"table", cfg.Zoa.TableName,
 			"bucket", cfg.Zoa.BucketName,
 			"region", cfg.Zoa.AWSRegion,
 			"templates_dir", cfg.Zoa.TemplatesDir,
+			"job_config_dir", cfg.Zoa.JobConfigDir,
 		)
 	}
 

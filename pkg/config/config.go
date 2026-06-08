@@ -21,9 +21,9 @@ type ZoaConfig struct {
 	TableName    string
 	BucketName   string
 	JobRoleARN   string
-	JobImage     string
 	AWSRegion    string
 	TemplatesDir string
+	JobConfigDir string
 	PollInterval time.Duration
 }
 

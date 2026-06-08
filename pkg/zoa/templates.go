@@ -1,48 +1,15 @@
 package zoa
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"text/template"
 
 	"gopkg.in/yaml.v3"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	workv1 "open-cluster-management.io/api/work/v1"
 )
-
-const (
-	JobNamespace = "zoa-jobs"
-)
-
-// TATemplate defines a Trusted Action loaded from a YAML template file.
-type TATemplate struct {
-	Name        string            `yaml:"name"`
-	Profile     string            `yaml:"profile"`
-	Scope       string            `yaml:"scope"`
-	Type        string            `yaml:"type"`
-	Description string            `yaml:"description"`
-	Manifests   []json.RawMessage `yaml:"manifests"`
-
-	rawTemplate string
-}
-
-// RenderContext holds the variables available during template rendering.
-type RenderContext struct {
-	ExecID        string
-	ActionName    string
-	TargetCluster string
-	Namespace     string
-	OutputBucket  string
-	JobRoleARN    string
-	Image         string
-	Params        map[string]string
-}
 
 // TemplateRegistry manages all loaded TA templates.
 type TemplateRegistry struct {
@@ -84,7 +51,7 @@ func (r *TemplateRegistry) LoadFromDir(dir string) error {
 		}
 
 		r.templates[tmpl.Name] = tmpl
-		r.logger.Info("loaded TA template", "name", tmpl.Name, "path", path)
+		r.logger.Info("loaded TA template", "name", tmpl.Name, "profile", tmpl.Profile, "type", tmpl.Type, "path", path)
 	}
 
 	if len(r.templates) == 0 {
@@ -109,123 +76,82 @@ func (r *TemplateRegistry) List() []string {
 	return names
 }
 
-func parseTemplate(data []byte) (*TATemplate, error) {
-	var meta struct {
-		Name        string `yaml:"name"`
-		Profile     string `yaml:"profile"`
-		Scope       string `yaml:"scope"`
-		Type        string `yaml:"type"`
-		Description string `yaml:"description"`
+// ListAll returns all registered templates (for catalog endpoint).
+func (r *TemplateRegistry) ListAll() []*TATemplate {
+	templates := make([]*TATemplate, 0, len(r.templates))
+	for _, t := range r.templates {
+		templates = append(templates, t)
 	}
-	if err := yaml.Unmarshal(data, &meta); err != nil {
-		return nil, fmt.Errorf("parsing template metadata: %w", err)
+	return templates
+}
+
+func parseTemplate(data []byte) (*TATemplate, error) {
+	var tmpl TATemplate
+	if err := yaml.Unmarshal(data, &tmpl); err != nil {
+		return nil, fmt.Errorf("parsing template: %w", err)
 	}
 
-	if meta.Name == "" {
+	if tmpl.Name == "" {
 		return nil, fmt.Errorf("template missing required 'name' field")
 	}
+	if tmpl.Profile == "" {
+		return nil, fmt.Errorf("template %s missing required 'profile' field", tmpl.Name)
+	}
+	if tmpl.Script == "" {
+		return nil, fmt.Errorf("template %s missing required 'script' field", tmpl.Name)
+	}
 
-	return &TATemplate{
-		Name:        meta.Name,
-		Profile:     meta.Profile,
-		Scope:       meta.Scope,
-		Type:        meta.Type,
-		Description: meta.Description,
-		rawTemplate: string(data),
-	}, nil
+	return &tmpl, nil
 }
 
-// BuildManifestWork renders the template with the given context and constructs a ManifestWork.
-func (t *TATemplate) BuildManifestWork(ctx RenderContext) (*workv1.ManifestWork, error) {
-	rendered, err := t.render(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("rendering template %s: %w", t.Name, err)
+// LoadJobConfig reads the zoa-job-config ConfigMap data from a directory.
+func LoadJobConfig(dir string) (*JobConfig, error) {
+	cfg := &JobConfig{
+		CPURequest:    "100m",
+		MemoryRequest: "128Mi",
+		CPULimit:      "500m",
+		MemoryLimit:   "512Mi",
+		TTLSeconds:    3600,
 	}
 
-	var parsed struct {
-		Manifests []map[string]interface{} `yaml:"manifests"`
-	}
-	if err := yaml.Unmarshal([]byte(rendered), &parsed); err != nil {
-		return nil, fmt.Errorf("parsing rendered template: %w", err)
-	}
-
-	manifests := make([]workv1.Manifest, 0, len(parsed.Manifests))
-	var jobName string
-	var jobNamespace string
-
-	for _, m := range parsed.Manifests {
-		jsonBytes, err := json.Marshal(m)
+	readFile := func(name string) string {
+		data, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
-			return nil, fmt.Errorf("marshaling manifest to JSON: %w", err)
+			return ""
 		}
-
-		manifests = append(manifests, workv1.Manifest{
-			RawExtension: runtime.RawExtension{Raw: jsonBytes},
-		})
-
-		if kind, _ := m["kind"].(string); kind == "Job" {
-			if metadata, ok := m["metadata"].(map[string]interface{}); ok {
-				jobName, _ = metadata["name"].(string)
-				jobNamespace, _ = metadata["namespace"].(string)
-			}
-		}
+		return strings.TrimSpace(string(data))
 	}
 
-	mw := &workv1.ManifestWork{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "work.open-cluster-management.io/v1",
-			Kind:       "ManifestWork",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "zoa-" + ctx.ExecID,
-			Namespace: ctx.TargetCluster,
-		},
-		Spec: workv1.ManifestWorkSpec{
-			Workload: workv1.ManifestsTemplate{
-				Manifests: manifests,
-			},
-		},
+	if v := readFile("image"); v != "" {
+		cfg.Image = v
 	}
-
-	if jobName != "" {
-		ns := jobNamespace
-		if ns == "" {
-			ns = ctx.Namespace
-		}
-		mw.Spec.ManifestConfigs = []workv1.ManifestConfigOption{
-			{
-				ResourceIdentifier: workv1.ResourceIdentifier{
-					Group:     "batch",
-					Resource:  "jobs",
-					Name:      jobName,
-					Namespace: ns,
-				},
-				FeedbackRules: []workv1.FeedbackRule{
-					{
-						Type: workv1.JSONPathsType,
-						JsonPaths: []workv1.JsonPath{
-							{Name: "succeeded", Path: ".status.succeeded"},
-							{Name: "failed", Path: ".status.failed"},
-						},
-					},
-				},
-			},
+	if v := readFile("cpu_request"); v != "" {
+		cfg.CPURequest = v
+	}
+	if v := readFile("memory_request"); v != "" {
+		cfg.MemoryRequest = v
+	}
+	if v := readFile("cpu_limit"); v != "" {
+		cfg.CPULimit = v
+	}
+	if v := readFile("memory_limit"); v != "" {
+		cfg.MemoryLimit = v
+	}
+	if v := readFile("ttl_seconds"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 32); err == nil {
+			cfg.TTLSeconds = int32(n)
 		}
 	}
-
-	return mw, nil
-}
-
-func (t *TATemplate) render(ctx RenderContext) (string, error) {
-	tmpl, err := template.New(t.Name).Parse(t.rawTemplate)
-	if err != nil {
-		return "", fmt.Errorf("parsing Go template: %w", err)
+	if v := readFile("entrypoint.sh"); v != "" {
+		cfg.EntrypointScript = v
 	}
 
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, ctx); err != nil {
-		return "", fmt.Errorf("executing template: %w", err)
+	if cfg.Image == "" {
+		return nil, fmt.Errorf("zoa-job-config missing required 'image' field")
+	}
+	if cfg.EntrypointScript == "" {
+		return nil, fmt.Errorf("zoa-job-config missing required 'entrypoint.sh' field")
 	}
 
-	return buf.String(), nil
+	return cfg, nil
 }

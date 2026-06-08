@@ -3,12 +3,15 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
@@ -22,23 +25,21 @@ type ZoaHandler struct {
 	store         zoa.ExecutionStore
 	registry      *zoa.TemplateRegistry
 	maestroClient maestro.ClientInterface
-	s3Client      S3PresignClient
+	s3Client      S3Client
 	bucketName    string
-	jobRoleARN    string
-	jobImage      string
+	jobConfig     *zoa.JobConfig
 	logger        *slog.Logger
 }
 
-// S3PresignClient is the interface for generating presigned S3 URLs.
-type S3PresignClient interface {
-	PresignGetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.PresignOptions)) (*v4.PresignedHTTPRequest, error)
+// S3Client provides operations for accessing S3 objects.
+type S3Client interface {
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 }
 
 // ZoaConfig holds configuration for the ZOA handler.
 type ZoaConfig struct {
 	BucketName string
-	JobRoleARN string
-	JobImage   string
+	JobConfig  *zoa.JobConfig
 }
 
 // NewZoaHandler creates a new ZoaHandler.
@@ -46,7 +47,7 @@ func NewZoaHandler(
 	store zoa.ExecutionStore,
 	registry *zoa.TemplateRegistry,
 	maestroClient maestro.ClientInterface,
-	s3Client S3PresignClient,
+	s3Client S3Client,
 	cfg ZoaConfig,
 	logger *slog.Logger,
 ) *ZoaHandler {
@@ -56,13 +57,12 @@ func NewZoaHandler(
 		maestroClient: maestroClient,
 		s3Client:      s3Client,
 		bucketName:    cfg.BucketName,
-		jobRoleARN:    cfg.JobRoleARN,
-		jobImage:      cfg.JobImage,
+		jobConfig:     cfg.JobConfig,
 		logger:        logger,
 	}
 }
 
-// Create handles POST /api/v0/trusted_actions/{action}
+// Create handles POST /api/v0/trusted-actions/{action}/run
 func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
@@ -86,15 +86,24 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validateParams(tmpl, req.Params); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid-params", err.Error())
+		return
+	}
+
 	execID := uuid.New().String()
+	operator := extractOperator(callerARN)
 
 	exec := &zoa.Execution{
 		ExecutionID:   execID,
 		AccountID:     accountID,
 		CallerARN:     callerARN,
+		Operator:      operator,
 		Action:        action,
 		TargetCluster: req.TargetCluster,
 		Scope:         tmpl.Scope,
+		Profile:       tmpl.Profile,
+		Type:          tmpl.Type,
 		Status:        zoa.StatusPending,
 		OutputPath:    execID + "/output.json",
 	}
@@ -111,16 +120,20 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		TargetCluster: req.TargetCluster,
 		Namespace:     zoa.JobNamespace,
 		OutputBucket:  h.bucketName,
-		JobRoleARN:    h.jobRoleARN,
-		Image:         h.jobImage,
+		Operator:      operator,
+		Revision:      "HEAD",
+		Profile:       tmpl.Profile,
+		Type:          tmpl.Type,
+		Scope:         tmpl.Scope,
 		Params:        req.Params,
+		Config:        *h.jobConfig,
 	}
 
-	mw, err := tmpl.BuildManifestWork(renderCtx)
+	mw, err := zoa.BuildManifestWork(tmpl, renderCtx)
 	if err != nil {
-		h.logger.Error("failed to render manifestwork", "error", err, "execution_id", execID)
+		h.logger.Error("failed to build manifestwork", "error", err, "execution_id", execID)
 		_ = h.store.UpdateStatus(ctx, execID, zoa.StatusFailed, time.Now().UTC().Format(time.RFC3339), 0)
-		h.writeError(w, http.StatusInternalServerError, "render-error", "Failed to render trusted action template")
+		h.writeError(w, http.StatusInternalServerError, "render-error", "Failed to build trusted action manifest")
 		return
 	}
 
@@ -133,7 +146,6 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	exec.ManifestWorkName = result.Name
-
 	if err := h.store.UpdateManifestWorkName(ctx, execID, result.Name); err != nil {
 		h.logger.Error("failed to update manifestwork name", "error", err, "execution_id", execID)
 	}
@@ -143,7 +155,8 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"action", action,
 		"target_cluster", req.TargetCluster,
 		"manifest_work", result.Name,
-		"account_id", accountID,
+		"operator", operator,
+		"profile", tmpl.Profile,
 	)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -151,7 +164,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(exec)
 }
 
-// Get handles GET /api/v0/trusted_actions/runs/{id}
+// Get handles GET /api/v0/trusted-actions/runs/{id}
 func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	execID := mux.Vars(r)["id"]
@@ -168,36 +181,37 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if exec.Status == zoa.StatusSucceeded && exec.OutputPath != "" {
-		presignedURL, err := h.generatePresignedURL(ctx, exec.OutputPath)
-		if err != nil {
-			h.logger.Error("failed to generate presigned URL", "error", err, "execution_id", execID)
-		} else {
-			exec.OutputURL = presignedURL
+	fields := parseFields(r.URL.Query().Get("fields"))
+
+	response := &zoa.ExecutionResponse{}
+
+	if fields.includeMetadata {
+		response.Execution = exec
+	}
+
+	if exec.Status == zoa.StatusSucceeded || exec.Status == zoa.StatusFailed {
+		if fields.includeOutput {
+			output, err := h.fetchS3Content(ctx, exec.ExecutionID+"/output.json")
+			if err == nil && output != nil {
+				var parsed interface{}
+				if json.Unmarshal(output, &parsed) == nil {
+					response.Output = parsed
+				} else {
+					response.Output = string(output)
+				}
+			}
+		}
+
+		if fields.includeLogs {
+			stdout, _ := h.fetchS3Content(ctx, exec.ExecutionID+"/stdout.log")
+			stderr, _ := h.fetchS3Content(ctx, exec.ExecutionID+"/stderr.log")
+			response.Stdout = string(stdout)
+			response.Stderr = string(stderr)
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(exec)
-}
-
-// List handles GET /api/v0/trusted_actions/runs
-func (h *ZoaHandler) List(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	accountID := middleware.GetAccountID(ctx)
-
-	executions, err := h.store.List(ctx, accountID, 50)
-	if err != nil {
-		h.logger.Error("failed to list executions", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusInternalServerError, "store-error", "Failed to list executions")
-		return
-	}
-
-	response := &zoa.ExecutionList{
-		Kind:  "ExecutionList",
-		Items: executions,
-		Total: len(executions),
+	if !fields.includeMetadata && response.Execution == nil {
+		response.Execution = &zoa.Execution{ExecutionID: execID}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -205,17 +219,151 @@ func (h *ZoaHandler) List(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(response)
 }
 
-func (h *ZoaHandler) generatePresignedURL(ctx context.Context, key string) (string, error) {
-	result, err := h.s3Client.PresignGetObject(ctx, &s3.GetObjectInput{
+// List handles GET /api/v0/trusted-actions/runs
+func (h *ZoaHandler) List(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	accountID := middleware.GetAccountID(ctx)
+
+	limit := 20
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+
+	executions, err := h.store.List(ctx, accountID, limit)
+	if err != nil {
+		h.logger.Error("failed to list executions", "error", err, "account_id", accountID)
+		h.writeError(w, http.StatusInternalServerError, "store-error", "Failed to list executions")
+		return
+	}
+
+	response := &zoa.ExecutionList{
+		Items:   executions,
+		Total:   len(executions),
+		Page:    1,
+		Limit:   limit,
+		HasMore: len(executions) >= limit,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+// Catalog handles GET /api/v0/trusted-actions
+func (h *ZoaHandler) Catalog(w http.ResponseWriter, r *http.Request) {
+	templates := h.registry.ListAll()
+
+	items := make([]zoa.TADescribeResponse, 0, len(templates))
+	for _, t := range templates {
+		items = append(items, zoa.TADescribeResponse{
+			Name:        t.Name,
+			Profile:     t.Profile,
+			Scope:       t.Scope,
+			Type:        t.Type,
+			Description: t.Description,
+			Params:      t.Params,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"items": items,
+		"total": len(items),
+	})
+}
+
+// Describe handles GET /api/v0/trusted-actions/{action}
+func (h *ZoaHandler) Describe(w http.ResponseWriter, r *http.Request) {
+	action := mux.Vars(r)["action"]
+
+	tmpl, ok := h.registry.Get(action)
+	if !ok {
+		h.writeError(w, http.StatusNotFound, "unknown-action", "Trusted action not found: "+action)
+		return
+	}
+
+	response := &zoa.TADescribeResponse{
+		Name:        tmpl.Name,
+		Profile:     tmpl.Profile,
+		Scope:       tmpl.Scope,
+		Type:        tmpl.Type,
+		Description: tmpl.Description,
+		Params:      tmpl.Params,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+func (h *ZoaHandler) fetchS3Content(ctx context.Context, key string) ([]byte, error) {
+	result, err := h.s3Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: &h.bucketName,
 		Key:    &key,
-	}, func(opts *s3.PresignOptions) {
-		opts.Expires = 15 * time.Minute
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return result.URL, nil
+	defer result.Body.Close()
+	return io.ReadAll(result.Body)
+}
+
+type fieldsSelection struct {
+	includeMetadata bool
+	includeOutput   bool
+	includeLogs     bool
+}
+
+func parseFields(raw string) fieldsSelection {
+	if raw == "" {
+		return fieldsSelection{includeMetadata: true, includeOutput: true}
+	}
+
+	if raw == "all" {
+		return fieldsSelection{includeMetadata: true, includeOutput: true, includeLogs: true}
+	}
+
+	sel := fieldsSelection{}
+	for _, f := range strings.Split(raw, ",") {
+		switch strings.TrimSpace(f) {
+		case "metadata":
+			sel.includeMetadata = true
+		case "output":
+			sel.includeOutput = true
+		case "logs":
+			sel.includeLogs = true
+		}
+	}
+
+	if !sel.includeMetadata && !sel.includeOutput && !sel.includeLogs {
+		sel.includeMetadata = true
+		sel.includeOutput = true
+	}
+
+	return sel
+}
+
+func validateParams(tmpl *zoa.TATemplate, params map[string]string) error {
+	for _, p := range tmpl.Params {
+		if p.Required {
+			val, ok := params[p.Name]
+			if !ok || val == "" {
+				return fmt.Errorf("required parameter '%s' is missing", p.Name)
+			}
+		}
+	}
+	return nil
+}
+
+func extractOperator(callerARN string) string {
+	parts := strings.Split(callerARN, "/")
+	if len(parts) > 0 {
+		return parts[len(parts)-1]
+	}
+	return callerARN
 }
 
 func (h *ZoaHandler) writeError(w http.ResponseWriter, status int, code, reason string) {

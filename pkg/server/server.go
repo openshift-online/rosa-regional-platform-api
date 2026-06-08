@@ -220,26 +220,28 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 
 		zoaStore := zoa.NewDynamoExecutionStore(cfg.Zoa.TableName, zoaDynamoClient, logger)
 
-		// Load TA templates from mounted directory
 		zoaRegistry := zoa.NewTemplateRegistry(logger)
 		if err := zoaRegistry.LoadFromDir(cfg.Zoa.TemplatesDir); err != nil {
 			return nil, fmt.Errorf("failed to load ZOA templates from %s: %w", cfg.Zoa.TemplatesDir, err)
 		}
 
-		// Create S3 presign client
+		jobConfig, err := zoa.LoadJobConfig(cfg.Zoa.JobConfigDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load ZOA job config from %s: %w", cfg.Zoa.JobConfigDir, err)
+		}
+
 		awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(cfg.Zoa.AWSRegion))
 		if err != nil {
 			return nil, fmt.Errorf("failed to load AWS config for ZOA S3: %w", err)
 		}
-		s3Client := s3.NewPresignClient(s3.NewFromConfig(awsCfg))
+		s3Client := s3.NewFromConfig(awsCfg)
 
 		zoaHandler := apphandlers.NewZoaHandler(zoaStore, zoaRegistry, maestroClient, s3Client, apphandlers.ZoaConfig{
 			BucketName: cfg.Zoa.BucketName,
-			JobRoleARN: cfg.Zoa.JobRoleARN,
-			JobImage:   cfg.Zoa.JobImage,
+			JobConfig:  jobConfig,
 		}, logger)
 
-		zoaRouter := apiRouter.PathPrefix("/api/v0/trusted_actions").Subrouter()
+		zoaRouter := apiRouter.PathPrefix("/api/v0/trusted-actions").Subrouter()
 		if privilegedMiddleware != nil {
 			zoaRouter.Use(privilegedMiddleware.CheckPrivileged)
 		} else {
@@ -247,7 +249,9 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		}
 		zoaRouter.HandleFunc("/runs", zoaHandler.List).Methods(http.MethodGet)
 		zoaRouter.HandleFunc("/runs/{id}", zoaHandler.Get).Methods(http.MethodGet)
-		zoaRouter.HandleFunc("/{action}", zoaHandler.Create).Methods(http.MethodPost)
+		zoaRouter.HandleFunc("/{action}/run", zoaHandler.Create).Methods(http.MethodPost)
+		zoaRouter.HandleFunc("/{action}", zoaHandler.Describe).Methods(http.MethodGet)
+		zoaRouter.HandleFunc("", zoaHandler.Catalog).Methods(http.MethodGet)
 
 		zoaReconciler = zoa.NewReconciler(zoaStore, maestroClient, cfg.Zoa.PollInterval, logger)
 		logger.Info("ZOA trusted actions enabled", "table", cfg.Zoa.TableName, "bucket", cfg.Zoa.BucketName)

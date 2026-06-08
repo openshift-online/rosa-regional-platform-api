@@ -188,7 +188,7 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		Execution: exec,
 	}
 
-	if exec.Status == zoa.StatusSucceeded || exec.Status == zoa.StatusFailed {
+	if exec.Status == zoa.StatusSucceeded || exec.Status == zoa.StatusFailed || exec.Status == zoa.StatusTimedOut {
 		if fields.includeOutput {
 			output, err := h.fetchS3Content(ctx, exec.ExecutionID+"/output.json")
 			if err != nil {
@@ -204,16 +204,11 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if fields.includeLogs {
-			stdout, err := h.fetchS3Content(ctx, exec.ExecutionID+"/stdout.log")
+			logs, err := h.fetchS3Content(ctx, exec.ExecutionID+"/execution.log")
 			if err != nil {
-				h.logger.Error("failed to fetch stdout from S3", "error", err, "key", exec.ExecutionID+"/stdout.log")
+				h.logger.Error("failed to fetch logs from S3", "error", err, "key", exec.ExecutionID+"/execution.log")
 			}
-			stderr, err2 := h.fetchS3Content(ctx, exec.ExecutionID+"/stderr.log")
-			if err2 != nil {
-				h.logger.Error("failed to fetch stderr from S3", "error", err2, "key", exec.ExecutionID+"/stderr.log")
-			}
-			response.Stdout = string(stdout)
-			response.Stderr = string(stderr)
+			response.Logs = string(logs)
 		}
 	}
 

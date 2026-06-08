@@ -160,15 +160,12 @@ func (r *Reconciler) handleTimeout(ctx context.Context, exec *Execution) {
 	)
 }
 
-// handleCompletion processes a terminal execution status.
-// On success: deletes RB first (race-safe), then updates status.
-// On failure: updates status only — leaves RB/Job in place for log inspection
-// (Job's ttlSecondsAfterFinished handles eventual GC).
+// handleCompletion deletes the ResourceBundle FIRST, then updates terminal status.
+// Logs are preserved in S3 by the entrypoint (uploaded before Job exits), so RB
+// deletion is safe on all terminal states including failure.
 func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, terminalStatus ExecutionStatus) {
-	if terminalStatus == StatusSucceeded {
-		if err := r.deleteResourceBundle(ctx, exec); err != nil {
-			return
-		}
+	if err := r.deleteResourceBundle(ctx, exec); err != nil {
+		return
 	}
 
 	now := time.Now().UTC()
@@ -179,7 +176,7 @@ func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, term
 	}
 
 	if err := r.store.UpdateStatus(ctx, exec.ExecutionID, terminalStatus, now.Format(time.RFC3339), duration); err != nil {
-		r.logger.Error("failed to update terminal status",
+		r.logger.Error("resource bundle deleted but failed to update terminal status",
 			"execution_id", exec.ExecutionID,
 			"terminal_status", string(terminalStatus),
 			"error", err,
@@ -192,13 +189,6 @@ func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, term
 		"status", string(terminalStatus),
 		"duration_seconds", duration,
 	)
-
-	if terminalStatus == StatusFailed {
-		r.logger.Info("failed job preserved for log inspection (TTL will GC)",
-			"execution_id", exec.ExecutionID,
-			"manifest_work", exec.ManifestWorkName,
-		)
-	}
 }
 
 // deleteResourceBundle removes the RB from Maestro. Returns nil on success or

@@ -42,8 +42,7 @@ type CreateRequest struct {
 type ExecutionResponse struct {
 	*Execution
 	Output interface{} `json:"output,omitempty"`
-	Stdout string      `json:"stdout,omitempty"`
-	Stderr string      `json:"stderr,omitempty"`
+	Logs   string      `json:"logs,omitempty"`
 }
 
 // ExecutionList wraps a paginated list response.

@@ -13,6 +13,8 @@ import (
 const (
 	JobNamespace = "zoa-jobs"
 
+	hcpNamespacePrefix = "clusters-"
+
 	labelPrefix     = "zoa.rosa.io/"
 	labelExecID     = labelPrefix + "execution-id"
 	labelAction     = labelPrefix + "action"
@@ -28,6 +30,10 @@ const (
 
 // BuildManifestWork generates a complete ManifestWork from a TATemplate and RenderContext.
 func BuildManifestWork(tmpl *TATemplate, ctx RenderContext) (*workv1.ManifestWork, error) {
+	if err := validateSecretsPolicy(tmpl, ctx); err != nil {
+		return nil, err
+	}
+
 	labels := buildLabels(ctx)
 	manifests := make([]workv1.Manifest, 0, 5)
 
@@ -411,6 +417,42 @@ func resolveTargetNamespace(tmpl *TATemplate, ctx RenderContext) string {
 		}
 	}
 	return ctx.Namespace
+}
+
+// validateSecretsPolicy enforces that no TA can access secrets in HCP namespaces (clusters-*).
+// For namespace-scoped TAs targeting an HCP namespace, any rule granting secrets access is rejected.
+// Cluster-scoped TAs are allowed (K8s RBAC cannot deny per-namespace) but script-level guards
+// provide defense-in-depth.
+func validateSecretsPolicy(tmpl *TATemplate, ctx RenderContext) error {
+	if tmpl.RBAC == nil || len(tmpl.RBAC.Rules) == 0 {
+		return nil
+	}
+
+	if tmpl.RBAC.ClusterScoped {
+		return nil
+	}
+
+	targetNS := resolveTargetNamespace(tmpl, ctx)
+	if !strings.HasPrefix(targetNS, hcpNamespacePrefix) {
+		return nil
+	}
+
+	for _, rule := range tmpl.RBAC.Rules {
+		if ruleGrantsSecrets(rule) {
+			return fmt.Errorf("secrets access denied: namespace %q is an HCP namespace (prefix %q)", targetNS, hcpNamespacePrefix)
+		}
+	}
+	return nil
+}
+
+func ruleGrantsSecrets(rule RBACRule) bool {
+	for _, res := range rule.Resources {
+		r := strings.ToLower(res)
+		if r == "secrets" || r == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 func toManifest(obj interface{}) (workv1.Manifest, error) {

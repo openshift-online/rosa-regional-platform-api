@@ -106,7 +106,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Type:          tmpl.Type,
 		Revision:      h.jobConfig.Revision,
 		Status:        zoa.StatusPending,
-		OutputPath:    execID + "/output.json",
+		OutputPath:    "s3://" + h.bucketName + "/" + execID + "/output.json",
 	}
 
 	if err := h.store.Create(ctx, exec); err != nil {
@@ -190,9 +190,13 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	if exec.Status == zoa.StatusSucceeded || exec.Status == zoa.StatusFailed || exec.Status == zoa.StatusTimedOut {
 		if fields.includeOutput {
-			output, err := h.fetchS3Content(ctx, exec.ExecutionID+"/output.json")
+			outputURI := exec.OutputPath
+			if outputURI == "" {
+				outputURI = exec.ExecutionID + "/output.json"
+			}
+			output, err := h.fetchS3Content(ctx, outputURI)
 			if err != nil {
-				h.logger.Error("failed to fetch output from S3", "error", err, "bucket", h.bucketName, "key", exec.ExecutionID+"/output.json")
+				h.logger.Error("failed to fetch output from S3", "error", err, "uri", outputURI)
 			} else if output != nil {
 				var parsed interface{}
 				if json.Unmarshal(output, &parsed) == nil {
@@ -204,9 +208,13 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if fields.includeLogs {
-			logs, err := h.fetchS3Content(ctx, exec.ExecutionID+"/execution.log")
+			logsURI := strings.Replace(exec.OutputPath, "/output.json", "/execution.log", 1)
+			if exec.OutputPath == "" {
+				logsURI = exec.ExecutionID + "/execution.log"
+			}
+			logs, err := h.fetchS3Content(ctx, logsURI)
 			if err != nil {
-				h.logger.Error("failed to fetch logs from S3", "error", err, "key", exec.ExecutionID+"/execution.log")
+				h.logger.Error("failed to fetch logs from S3", "error", err, "uri", logsURI)
 			}
 			response.Logs = string(logs)
 		}
@@ -348,9 +356,14 @@ func (h *ZoaHandler) Describe(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(response)
 }
 
-func (h *ZoaHandler) fetchS3Content(ctx context.Context, key string) ([]byte, error) {
+func (h *ZoaHandler) fetchS3Content(ctx context.Context, s3URI string) ([]byte, error) {
+	bucket, key := parseS3URI(s3URI)
+	if bucket == "" {
+		bucket = h.bucketName
+		key = s3URI
+	}
 	result, err := h.s3Client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: &h.bucketName,
+		Bucket: &bucket,
 		Key:    &key,
 	})
 	if err != nil {
@@ -358,6 +371,18 @@ func (h *ZoaHandler) fetchS3Content(ctx context.Context, key string) ([]byte, er
 	}
 	defer result.Body.Close()
 	return io.ReadAll(result.Body)
+}
+
+func parseS3URI(uri string) (bucket, key string) {
+	if !strings.HasPrefix(uri, "s3://") {
+		return "", uri
+	}
+	path := strings.TrimPrefix(uri, "s3://")
+	idx := strings.Index(path, "/")
+	if idx < 0 {
+		return path, ""
+	}
+	return path[:idx], path[idx+1:]
 }
 
 type fieldsSelection struct {

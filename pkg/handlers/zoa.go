@@ -421,7 +421,25 @@ func validateParams(tmpl *zoa.TATemplate, params map[string]string) error {
 			}
 		}
 	}
+
+	if hasParamWithDefault(tmpl, "namespace", "") && hasParamWithDefault(tmpl, "all_namespaces", "false") {
+		ns := params["namespace"]
+		allNs := params["all_namespaces"]
+		if ns == "" && allNs != "true" {
+			return fmt.Errorf("specify namespace or set all_namespaces=true")
+		}
+	}
+
 	return nil
+}
+
+func hasParamWithDefault(tmpl *zoa.TATemplate, name, defaultVal string) bool {
+	for _, p := range tmpl.Params {
+		if p.Name == name && p.Default == defaultVal {
+			return true
+		}
+	}
+	return false
 }
 
 func extractOperator(callerARN string) string {

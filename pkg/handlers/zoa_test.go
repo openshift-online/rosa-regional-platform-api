@@ -26,7 +26,7 @@ import (
 type mockExecutionStore struct {
 	createFunc             func(ctx context.Context, exec *zoa.Execution) error
 	getFunc                func(ctx context.Context, executionID string) (*zoa.Execution, error)
-	listFunc               func(ctx context.Context, accountID string, limit int) ([]*zoa.Execution, error)
+	listFunc               func(ctx context.Context, accountID string, limit int, filter *zoa.ListFilter) ([]*zoa.Execution, error)
 	updateStatusFunc       func(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int) error
 	updateCompletionFunc   func(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int, artifactsAvailable bool) error
 	updateManifestWorkFunc func(ctx context.Context, executionID, mwName string) error
@@ -47,9 +47,9 @@ func (m *mockExecutionStore) Get(ctx context.Context, executionID string) (*zoa.
 	return nil, nil
 }
 
-func (m *mockExecutionStore) List(ctx context.Context, accountID string, limit int) ([]*zoa.Execution, error) {
+func (m *mockExecutionStore) List(ctx context.Context, accountID string, limit int, filter *zoa.ListFilter) ([]*zoa.Execution, error) {
 	if m.listFunc != nil {
-		return m.listFunc(ctx, accountID, limit)
+		return m.listFunc(ctx, accountID, limit, filter)
 	}
 	return nil, nil
 }
@@ -300,7 +300,7 @@ func TestZoaHandler_Get_NotFound(t *testing.T) {
 
 func TestZoaHandler_List(t *testing.T) {
 	store := &mockExecutionStore{
-		listFunc: func(ctx context.Context, accountID string, limit int) ([]*zoa.Execution, error) {
+		listFunc: func(ctx context.Context, accountID string, limit int, filter *zoa.ListFilter) ([]*zoa.Execution, error) {
 			return []*zoa.Execution{
 				{ExecutionID: "exec-1", Action: "get_nodes", Status: zoa.StatusSucceeded},
 				{ExecutionID: "exec-2", Action: "get_nodes", Status: zoa.StatusPending},

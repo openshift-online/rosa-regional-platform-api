@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -14,11 +15,22 @@ import (
 	"github.com/openshift/rosa-regional-platform-api/pkg/authz/client"
 )
 
+// ListFilter defines optional filters for listing executions.
+type ListFilter struct {
+	Status        string
+	Action        string
+	TargetCluster string
+	Operator      string
+	Scope         string
+	Type          string
+	Since         string // RFC3339 timestamp
+}
+
 // ExecutionStore provides CRUD operations for ZOA executions.
 type ExecutionStore interface {
 	Create(ctx context.Context, exec *Execution) error
 	Get(ctx context.Context, executionID string) (*Execution, error)
-	List(ctx context.Context, accountID string, limit int) ([]*Execution, error)
+	List(ctx context.Context, accountID string, limit int, filter *ListFilter) ([]*Execution, error)
 	UpdateStatus(ctx context.Context, executionID string, status ExecutionStatus, completedAt string, duration int) error
 	UpdateCompletion(ctx context.Context, executionID string, status ExecutionStatus, completedAt string, duration int, artifactsAvailable bool) error
 	UpdateManifestWorkName(ctx context.Context, executionID, mwName string) error
@@ -91,16 +103,65 @@ func (s *DynamoExecutionStore) Get(ctx context.Context, executionID string) (*Ex
 	return &exec, nil
 }
 
-func (s *DynamoExecutionStore) List(ctx context.Context, accountID string, limit int) ([]*Execution, error) {
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String(s.tableName),
-		IndexName:              aws.String("account-index"),
-		KeyConditionExpression: aws.String("accountId = :aid"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":aid": &types.AttributeValueMemberS{Value: accountID},
-		},
-		ScanIndexForward: aws.Bool(false),
+func (s *DynamoExecutionStore) List(ctx context.Context, accountID string, limit int, filter *ListFilter) ([]*Execution, error) {
+	exprNames := map[string]string{}
+	exprValues := map[string]types.AttributeValue{
+		":aid": &types.AttributeValueMemberS{Value: accountID},
 	}
+
+	var filterParts []string
+
+	if filter != nil {
+		if filter.Status != "" {
+			filterParts = append(filterParts, "#status = :fstatus")
+			exprNames["#status"] = "status"
+			exprValues[":fstatus"] = &types.AttributeValueMemberS{Value: filter.Status}
+		}
+		if filter.Action != "" {
+			filterParts = append(filterParts, "#action = :faction")
+			exprNames["#action"] = "action"
+			exprValues[":faction"] = &types.AttributeValueMemberS{Value: filter.Action}
+		}
+		if filter.TargetCluster != "" {
+			filterParts = append(filterParts, "targetCluster = :ftarget")
+			exprValues[":ftarget"] = &types.AttributeValueMemberS{Value: filter.TargetCluster}
+		}
+		if filter.Operator != "" {
+			filterParts = append(filterParts, "operator = :foperator")
+			exprValues[":foperator"] = &types.AttributeValueMemberS{Value: filter.Operator}
+		}
+		if filter.Scope != "" {
+			filterParts = append(filterParts, "scope = :fscope")
+			exprValues[":fscope"] = &types.AttributeValueMemberS{Value: filter.Scope}
+		}
+		if filter.Type != "" {
+			filterParts = append(filterParts, "#type = :ftype")
+			exprNames["#type"] = "type"
+			exprValues[":ftype"] = &types.AttributeValueMemberS{Value: filter.Type}
+		}
+		if filter.Since != "" {
+			filterParts = append(filterParts, "createdAt >= :fsince")
+			exprValues[":fsince"] = &types.AttributeValueMemberS{Value: filter.Since}
+		}
+	}
+
+	input := &dynamodb.QueryInput{
+		TableName:                 aws.String(s.tableName),
+		IndexName:                 aws.String("account-index"),
+		KeyConditionExpression:    aws.String("accountId = :aid"),
+		ExpressionAttributeValues: exprValues,
+		ScanIndexForward:          aws.Bool(false),
+	}
+
+	if len(filterParts) > 0 {
+		filterExpr := strings.Join(filterParts, " AND ")
+		input.FilterExpression = aws.String(filterExpr)
+	}
+
+	if len(exprNames) > 0 {
+		input.ExpressionAttributeNames = exprNames
+	}
+
 	if limit > 0 {
 		input.Limit = aws.Int32(int32(limit))
 	}

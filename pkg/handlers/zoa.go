@@ -221,15 +221,31 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *ZoaHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
+	query := r.URL.Query()
 
 	limit := 20
-	if v := r.URL.Query().Get("limit"); v != "" {
+	if v := query.Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
 			limit = n
 		}
 	}
 
-	executions, err := h.store.List(ctx, accountID, limit)
+	filter := &zoa.ListFilter{
+		Status:        query.Get("status"),
+		Action:        query.Get("action"),
+		TargetCluster: query.Get("target"),
+		Operator:      query.Get("operator"),
+		Scope:         query.Get("scope"),
+		Type:          query.Get("type"),
+	}
+
+	if since := query.Get("since"); since != "" {
+		if ts, err := parseSince(since); err == nil {
+			filter.Since = ts
+		}
+	}
+
+	executions, err := h.store.List(ctx, accountID, limit, filter)
 	if err != nil {
 		h.logger.Error("failed to list executions", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusInternalServerError, "store-error", "Failed to list executions")
@@ -247,6 +263,41 @@ func (h *ZoaHandler) List(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(response)
+}
+
+// parseSince converts a duration shorthand (e.g. "1h", "24h", "7d") or RFC3339 timestamp to an RFC3339 string.
+func parseSince(s string) (string, error) {
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC().Format(time.RFC3339), nil
+	}
+
+	s = strings.TrimSpace(s)
+	if len(s) < 2 {
+		return "", fmt.Errorf("invalid since value: %s", s)
+	}
+
+	unit := s[len(s)-1]
+	numStr := s[:len(s)-1]
+	num, err := strconv.Atoi(numStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid since value: %s", s)
+	}
+
+	var d time.Duration
+	switch unit {
+	case 's':
+		d = time.Duration(num) * time.Second
+	case 'm':
+		d = time.Duration(num) * time.Minute
+	case 'h':
+		d = time.Duration(num) * time.Hour
+	case 'd':
+		d = time.Duration(num) * 24 * time.Hour
+	default:
+		return "", fmt.Errorf("invalid since unit: %c (use s, m, h, or d)", unit)
+	}
+
+	return time.Now().UTC().Add(-d).Format(time.RFC3339), nil
 }
 
 // Catalog handles GET /api/v0/trusted-actions

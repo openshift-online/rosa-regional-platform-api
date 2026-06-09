@@ -114,34 +114,38 @@ func (s *DynamoExecutionStore) List(ctx context.Context, accountID string, limit
 
 	if filter != nil {
 		if filter.Status != "" {
-			filterParts = append(filterParts, "#status = :fstatus")
-			exprNames["#status"] = "status"
+			filterParts = append(filterParts, "#fld_status = :fstatus")
+			exprNames["#fld_status"] = "status"
 			exprValues[":fstatus"] = &types.AttributeValueMemberS{Value: filter.Status}
 		}
 		if filter.Action != "" {
-			filterParts = append(filterParts, "#action = :faction")
-			exprNames["#action"] = "action"
+			filterParts = append(filterParts, "#fld_action = :faction")
+			exprNames["#fld_action"] = "action"
 			exprValues[":faction"] = &types.AttributeValueMemberS{Value: filter.Action}
 		}
 		if filter.TargetCluster != "" {
-			filterParts = append(filterParts, "targetCluster = :ftarget")
+			filterParts = append(filterParts, "#fld_target = :ftarget")
+			exprNames["#fld_target"] = "targetCluster"
 			exprValues[":ftarget"] = &types.AttributeValueMemberS{Value: filter.TargetCluster}
 		}
 		if filter.Operator != "" {
-			filterParts = append(filterParts, "operator = :foperator")
+			filterParts = append(filterParts, "#fld_operator = :foperator")
+			exprNames["#fld_operator"] = "operator"
 			exprValues[":foperator"] = &types.AttributeValueMemberS{Value: filter.Operator}
 		}
 		if filter.Scope != "" {
-			filterParts = append(filterParts, "scope = :fscope")
+			filterParts = append(filterParts, "#fld_scope = :fscope")
+			exprNames["#fld_scope"] = "scope"
 			exprValues[":fscope"] = &types.AttributeValueMemberS{Value: filter.Scope}
 		}
 		if filter.Type != "" {
-			filterParts = append(filterParts, "#type = :ftype")
-			exprNames["#type"] = "type"
+			filterParts = append(filterParts, "#fld_type = :ftype")
+			exprNames["#fld_type"] = "type"
 			exprValues[":ftype"] = &types.AttributeValueMemberS{Value: filter.Type}
 		}
 		if filter.Since != "" {
-			keyCondition += " AND createdAt >= :fsince"
+			keyCondition += " AND #fld_created >= :fsince"
+			exprNames["#fld_created"] = "createdAt"
 			exprValues[":fsince"] = &types.AttributeValueMemberS{Value: filter.Since}
 		}
 	}

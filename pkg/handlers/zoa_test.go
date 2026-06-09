@@ -28,6 +28,7 @@ type mockExecutionStore struct {
 	getFunc                func(ctx context.Context, executionID string) (*zoa.Execution, error)
 	listFunc               func(ctx context.Context, accountID string, limit int) ([]*zoa.Execution, error)
 	updateStatusFunc       func(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int) error
+	updateCompletionFunc   func(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int, artifactsAvailable bool) error
 	updateManifestWorkFunc func(ctx context.Context, executionID, mwName string) error
 	listPendingFunc        func(ctx context.Context) ([]*zoa.Execution, error)
 }
@@ -56,6 +57,13 @@ func (m *mockExecutionStore) List(ctx context.Context, accountID string, limit i
 func (m *mockExecutionStore) UpdateStatus(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int) error {
 	if m.updateStatusFunc != nil {
 		return m.updateStatusFunc(ctx, executionID, status, completedAt, duration)
+	}
+	return nil
+}
+
+func (m *mockExecutionStore) UpdateCompletion(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int, artifactsAvailable bool) error {
+	if m.updateCompletionFunc != nil {
+		return m.updateCompletionFunc(ctx, executionID, status, completedAt, duration, artifactsAvailable)
 	}
 	return nil
 }

@@ -13,23 +13,24 @@ const (
 
 // Execution represents a single Trusted Action execution stored in DynamoDB.
 type Execution struct {
-	ExecutionID      string          `dynamodbav:"executionId" json:"id"`
-	AccountID        string          `dynamodbav:"accountId" json:"account_id,omitempty"`
-	CallerARN        string          `dynamodbav:"callerArn" json:"caller_arn,omitempty"`
-	Operator         string          `dynamodbav:"operator" json:"operator,omitempty"`
-	Action           string          `dynamodbav:"action" json:"action"`
-	TargetCluster    string          `dynamodbav:"targetCluster" json:"target_cluster"`
-	Scope            string          `dynamodbav:"scope" json:"scope"`
-	Profile          string          `dynamodbav:"profile" json:"profile,omitempty"`
-	Type             string          `dynamodbav:"type" json:"type,omitempty"`
-	Revision         string          `dynamodbav:"revision,omitempty" json:"revision,omitempty"`
-	Status           ExecutionStatus `dynamodbav:"status" json:"status"`
-	ManifestWorkName string          `dynamodbav:"manifestWorkName,omitempty" json:"manifest_work_name,omitempty"`
-	OutputPath       string          `dynamodbav:"outputPath,omitempty" json:"output_path,omitempty"`
-	CreatedAt        string          `dynamodbav:"createdAt" json:"created_at"`
-	UpdatedAt        string          `dynamodbav:"updatedAt" json:"updated_at,omitempty"`
-	CompletedAt      string          `dynamodbav:"completedAt,omitempty" json:"completed_at,omitempty"`
-	DurationSeconds  int             `dynamodbav:"duration,omitempty" json:"duration_seconds,omitempty"`
+	ExecutionID        string          `dynamodbav:"executionId" json:"id"`
+	AccountID          string          `dynamodbav:"accountId" json:"account_id,omitempty"`
+	CallerARN          string          `dynamodbav:"callerArn" json:"caller_arn,omitempty"`
+	Operator           string          `dynamodbav:"operator" json:"operator,omitempty"`
+	Action             string          `dynamodbav:"action" json:"action"`
+	TargetCluster      string          `dynamodbav:"targetCluster" json:"target_cluster"`
+	Scope              string          `dynamodbav:"scope" json:"scope"`
+	Profile            string          `dynamodbav:"profile" json:"profile,omitempty"`
+	Type               string          `dynamodbav:"type" json:"type,omitempty"`
+	Revision           string          `dynamodbav:"revision,omitempty" json:"revision,omitempty"`
+	Status             ExecutionStatus `dynamodbav:"status" json:"status"`
+	ManifestWorkName   string          `dynamodbav:"manifestWorkName,omitempty" json:"manifest_work_name,omitempty"`
+	OutputPath         string          `dynamodbav:"outputPath,omitempty" json:"output_path,omitempty"`
+	ArtifactsAvailable *bool           `dynamodbav:"artifactsAvailable,omitempty" json:"artifacts_available,omitempty"`
+	CreatedAt          string          `dynamodbav:"createdAt" json:"created_at"`
+	UpdatedAt          string          `dynamodbav:"updatedAt" json:"updated_at,omitempty"`
+	CompletedAt        string          `dynamodbav:"completedAt,omitempty" json:"completed_at,omitempty"`
+	DurationSeconds    int             `dynamodbav:"duration,omitempty" json:"duration_seconds,omitempty"`
 }
 
 // CreateRequest is the JSON body for POST /api/v0/trusted-actions/{action}/run.

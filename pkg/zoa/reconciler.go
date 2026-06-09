@@ -99,24 +99,24 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 		return
 	}
 
-	newStatus, completed := r.parseManifestWorkStatus(mw)
-	if newStatus == "" {
+	result := r.parseManifestWorkStatus(mw)
+	if result.status == "" {
 		return
 	}
 
-	if ExecutionStatus(newStatus) == exec.Status {
+	if result.status == exec.Status {
 		return
 	}
 
-	if completed {
-		r.handleCompletion(ctx, exec, ExecutionStatus(newStatus))
+	if result.completed {
+		r.handleCompletion(ctx, exec, result)
 		return
 	}
 
-	if err := r.store.UpdateStatus(ctx, exec.ExecutionID, ExecutionStatus(newStatus), "", 0); err != nil {
+	if err := r.store.UpdateStatus(ctx, exec.ExecutionID, result.status, "", 0); err != nil {
 		r.logger.Error("failed to update execution status",
 			"execution_id", exec.ExecutionID,
-			"new_status", newStatus,
+			"new_status", string(result.status),
 			"error", err,
 		)
 		return
@@ -124,7 +124,7 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 
 	r.logger.Info("execution status updated",
 		"execution_id", exec.ExecutionID,
-		"status", newStatus,
+		"status", string(result.status),
 	)
 }
 
@@ -163,7 +163,7 @@ func (r *Reconciler) handleTimeout(ctx context.Context, exec *Execution) {
 // handleCompletion deletes the ResourceBundle FIRST, then updates terminal status.
 // Logs are preserved in S3 by the entrypoint (uploaded before Job exits), so RB
 // deletion is safe on all terminal states including failure.
-func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, terminalStatus ExecutionStatus) {
+func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, result *jobResult) {
 	if err := r.deleteResourceBundle(ctx, exec); err != nil {
 		return
 	}
@@ -175,10 +175,11 @@ func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, term
 		duration = int(now.Sub(createdAt).Seconds())
 	}
 
-	if err := r.store.UpdateStatus(ctx, exec.ExecutionID, terminalStatus, now.Format(time.RFC3339), duration); err != nil {
+	artifactsAvailable := result.uploadOk
+	if err := r.store.UpdateCompletion(ctx, exec.ExecutionID, result.status, now.Format(time.RFC3339), duration, artifactsAvailable); err != nil {
 		r.logger.Error("resource bundle deleted but failed to update terminal status",
 			"execution_id", exec.ExecutionID,
-			"terminal_status", string(terminalStatus),
+			"terminal_status", string(result.status),
 			"error", err,
 		)
 		return
@@ -186,8 +187,10 @@ func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, term
 
 	r.logger.Info("execution completed",
 		"execution_id", exec.ExecutionID,
-		"status", string(terminalStatus),
+		"status", string(result.status),
 		"duration_seconds", duration,
+		"artifacts_available", artifactsAvailable,
+		"action_exit_code", result.actionExitCode,
 	)
 }
 
@@ -235,28 +238,53 @@ func (r *Reconciler) isTimedOut(exec *Execution) bool {
 	return time.Since(createdAt) > r.timeoutForExecution(exec)
 }
 
-// parseManifestWorkStatus extracts the Job completion status from ManifestWork status feedback.
-func (r *Reconciler) parseManifestWorkStatus(mw *workv1.ManifestWork) (string, bool) {
+// jobResult holds parsed completion info from ManifestWork feedback.
+type jobResult struct {
+	status         ExecutionStatus
+	completed      bool
+	uploadOk       bool
+	actionExitCode int
+}
+
+// parseManifestWorkStatus extracts the Job completion status and annotations from ManifestWork feedback.
+func (r *Reconciler) parseManifestWorkStatus(mw *workv1.ManifestWork) *jobResult {
+	result := &jobResult{}
+
 	for _, resourceStatus := range mw.Status.ResourceStatus.Manifests {
 		for _, value := range resourceStatus.StatusFeedbacks.Values {
 			switch value.Name {
 			case "succeeded":
 				if value.Value.Integer != nil && *value.Value.Integer > 0 {
-					return string(StatusSucceeded), true
+					result.status = StatusSucceeded
+					result.completed = true
 				}
 			case "failed":
 				if value.Value.Integer != nil && *value.Value.Integer > 0 {
-					return string(StatusFailed), true
+					result.status = StatusFailed
+					result.completed = true
+				}
+			case "uploadOk":
+				if value.Value.String != nil && *value.Value.String == "true" {
+					result.uploadOk = true
+				}
+			case "actionExitCode":
+				if value.Value.Integer != nil {
+					result.actionExitCode = int(*value.Value.Integer)
 				}
 			}
 		}
 	}
 
+	if result.status != "" {
+		return result
+	}
+
 	for _, condition := range mw.Status.Conditions {
 		if condition.Type == "Applied" && condition.Status == "True" {
-			return string(StatusRunning), false
+			result.status = StatusRunning
+			return result
 		}
 	}
 
-	return "", false
+	return result
 }

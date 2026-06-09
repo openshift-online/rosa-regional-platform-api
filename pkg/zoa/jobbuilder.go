@@ -37,6 +37,12 @@ func BuildManifestWork(tmpl *TATemplate, ctx RenderContext) (*workv1.ManifestWor
 	}
 	manifests = append(manifests, rbacManifests...)
 
+	jobPatchManifests, err := buildJobPatchRBAC(ctx, labels)
+	if err != nil {
+		return nil, fmt.Errorf("building job patch RBAC: %w", err)
+	}
+	manifests = append(manifests, jobPatchManifests...)
+
 	cmManifest, err := buildScriptConfigMap(tmpl, ctx, labels)
 	if err != nil {
 		return nil, fmt.Errorf("building script configmap: %w", err)
@@ -79,6 +85,8 @@ func BuildManifestWork(tmpl *TATemplate, ctx RenderContext) (*workv1.ManifestWor
 							JsonPaths: []workv1.JsonPath{
 								{Name: "succeeded", Path: ".status.succeeded"},
 								{Name: "failed", Path: ".status.failed"},
+								{Name: "uploadOk", Path: ".metadata.annotations.zoa\\.rosa\\.io/upload-ok"},
+								{Name: "actionExitCode", Path: ".metadata.annotations.zoa\\.rosa\\.io/action-exit-code"},
 							},
 						},
 					},
@@ -232,8 +240,12 @@ func buildScriptConfigMap(tmpl *TATemplate, ctx RenderContext, labels map[string
 }
 
 func buildJob(tmpl *TATemplate, ctx RenderContext, labels map[string]string) (workv1.Manifest, error) {
+	jobName := "zoa-" + ctx.ExecID
+
 	envVars := []map[string]interface{}{
 		{"name": "RUN_ID", "value": ctx.ExecID},
+		{"name": "JOB_NAME", "value": jobName},
+		{"name": "JOB_NAMESPACE", "value": ctx.Namespace},
 		{"name": "CLUSTER_ID", "value": ctx.TargetCluster},
 		{"name": "ARTIFACT_BUCKET", "value": ctx.OutputBucket},
 		{"name": "ACTION_NAME", "value": ctx.ActionName},
@@ -262,7 +274,7 @@ func buildJob(tmpl *TATemplate, ctx RenderContext, labels map[string]string) (wo
 		"apiVersion": "batch/v1",
 		"kind":       "Job",
 		"metadata": map[string]interface{}{
-			"name":      "zoa-" + ctx.ExecID,
+			"name":      jobName,
 			"namespace": ctx.Namespace,
 			"labels":    labels,
 		},
@@ -317,6 +329,62 @@ func buildJob(tmpl *TATemplate, ctx RenderContext, labels map[string]string) (wo
 	}
 
 	return toManifest(job)
+}
+
+// buildJobPatchRBAC creates Role+RoleBinding allowing the SA to annotate its own Job.
+func buildJobPatchRBAC(ctx RenderContext, labels map[string]string) ([]workv1.Manifest, error) {
+	roleName := fmt.Sprintf("zoa-job-patch-%s", ctx.ExecID)
+	saName := profileToSAName(ctx.Profile)
+
+	role := map[string]interface{}{
+		"apiVersion": "rbac.authorization.k8s.io/v1",
+		"kind":       "Role",
+		"metadata": map[string]interface{}{
+			"name":      roleName,
+			"namespace": ctx.Namespace,
+			"labels":    labels,
+		},
+		"rules": []map[string]interface{}{
+			{
+				"apiGroups":     []string{"batch"},
+				"resources":     []string{"jobs"},
+				"verbs":         []string{"get", "patch"},
+				"resourceNames": []string{"zoa-" + ctx.ExecID},
+			},
+		},
+	}
+	roleManifest, err := toManifest(role)
+	if err != nil {
+		return nil, err
+	}
+
+	binding := map[string]interface{}{
+		"apiVersion": "rbac.authorization.k8s.io/v1",
+		"kind":       "RoleBinding",
+		"metadata": map[string]interface{}{
+			"name":      roleName,
+			"namespace": ctx.Namespace,
+			"labels":    labels,
+		},
+		"roleRef": map[string]interface{}{
+			"apiGroup": "rbac.authorization.k8s.io",
+			"kind":     "Role",
+			"name":     roleName,
+		},
+		"subjects": []map[string]interface{}{
+			{
+				"kind":      "ServiceAccount",
+				"name":      saName,
+				"namespace": ctx.Namespace,
+			},
+		},
+	}
+	bindingManifest, err := toManifest(binding)
+	if err != nil {
+		return nil, err
+	}
+
+	return []workv1.Manifest{roleManifest, bindingManifest}, nil
 }
 
 func profileToSAName(profile string) string {

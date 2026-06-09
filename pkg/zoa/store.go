@@ -20,6 +20,7 @@ type ExecutionStore interface {
 	Get(ctx context.Context, executionID string) (*Execution, error)
 	List(ctx context.Context, accountID string, limit int) ([]*Execution, error)
 	UpdateStatus(ctx context.Context, executionID string, status ExecutionStatus, completedAt string, duration int) error
+	UpdateCompletion(ctx context.Context, executionID string, status ExecutionStatus, completedAt string, duration int, artifactsAvailable bool) error
 	UpdateManifestWorkName(ctx context.Context, executionID, mwName string) error
 	ListPending(ctx context.Context) ([]*Execution, error)
 }
@@ -151,6 +152,37 @@ func (s *DynamoExecutionStore) UpdateStatus(ctx context.Context, executionID str
 	}
 
 	s.logger.Info("execution status updated", "execution_id", executionID, "status", status)
+	return nil
+}
+
+func (s *DynamoExecutionStore) UpdateCompletion(ctx context.Context, executionID string, status ExecutionStatus, completedAt string, duration int, artifactsAvailable bool) error {
+	_, err := s.dynamoClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(s.tableName),
+		Key: map[string]types.AttributeValue{
+			"executionId": &types.AttributeValueMemberS{Value: executionID},
+		},
+		UpdateExpression: aws.String("SET #status = :s, updatedAt = :u, completedAt = :c, #dur = :d, artifactsAvailable = :a"),
+		ExpressionAttributeNames: map[string]string{
+			"#status": "status",
+			"#dur":    "duration",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":s": &types.AttributeValueMemberS{Value: string(status)},
+			":u": &types.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339)},
+			":c": &types.AttributeValueMemberS{Value: completedAt},
+			":d": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", duration)},
+			":a": &types.AttributeValueMemberBOOL{Value: artifactsAvailable},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update execution completion: %w", err)
+	}
+
+	s.logger.Info("execution completion updated",
+		"execution_id", executionID,
+		"status", status,
+		"artifacts_available", artifactsAvailable,
+	)
 	return nil
 }
 

@@ -121,8 +121,8 @@ func TestBuildManifestWork_ClusterScoped(t *testing.T) {
 
 	assert.Equal(t, "zoa-abc123", mw.Name)
 	assert.Equal(t, "local-cluster", mw.Namespace)
-	// ClusterRole + ClusterRoleBinding + ConfigMap + Job = 4 manifests
-	assert.Len(t, mw.Spec.Workload.Manifests, 4)
+	// ClusterRole + ClusterRoleBinding + JobPatchRole + JobPatchRoleBinding + ConfigMap + Job = 6 manifests
+	assert.Len(t, mw.Spec.Workload.Manifests, 6)
 	require.Len(t, mw.Spec.ManifestConfigs, 1)
 	assert.Equal(t, "zoa-abc123", mw.Spec.ManifestConfigs[0].ResourceIdentifier.Name)
 	assert.Equal(t, "zoa-jobs", mw.Spec.ManifestConfigs[0].ResourceIdentifier.Namespace)
@@ -177,8 +177,8 @@ func TestBuildManifestWork_NamespaceScoped(t *testing.T) {
 
 	assert.Equal(t, "zoa-def456", mw.Name)
 	assert.Equal(t, "mc01", mw.Namespace)
-	// Role + RoleBinding + ConfigMap + Job = 4 manifests
-	assert.Len(t, mw.Spec.Workload.Manifests, 4)
+	// Role + RoleBinding + JobPatchRole + JobPatchRoleBinding + ConfigMap + Job = 6 manifests
+	assert.Len(t, mw.Spec.Workload.Manifests, 6)
 }
 
 func TestLoadJobConfig(t *testing.T) {

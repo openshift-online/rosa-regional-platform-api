@@ -109,6 +109,7 @@ func (s *DynamoExecutionStore) List(ctx context.Context, accountID string, limit
 		":aid": &types.AttributeValueMemberS{Value: accountID},
 	}
 
+	keyCondition := "accountId = :aid"
 	var filterParts []string
 
 	if filter != nil {
@@ -140,7 +141,7 @@ func (s *DynamoExecutionStore) List(ctx context.Context, accountID string, limit
 			exprValues[":ftype"] = &types.AttributeValueMemberS{Value: filter.Type}
 		}
 		if filter.Since != "" {
-			filterParts = append(filterParts, "createdAt >= :fsince")
+			keyCondition += " AND createdAt >= :fsince"
 			exprValues[":fsince"] = &types.AttributeValueMemberS{Value: filter.Since}
 		}
 	}
@@ -148,7 +149,7 @@ func (s *DynamoExecutionStore) List(ctx context.Context, accountID string, limit
 	input := &dynamodb.QueryInput{
 		TableName:                 aws.String(s.tableName),
 		IndexName:                 aws.String("account-index"),
-		KeyConditionExpression:    aws.String("accountId = :aid"),
+		KeyConditionExpression:    aws.String(keyCondition),
 		ExpressionAttributeValues: exprValues,
 		ScanIndexForward:          aws.Bool(false),
 	}

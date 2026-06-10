@@ -59,9 +59,6 @@ func (s *DynamoExecutionStore) Create(ctx context.Context, exec *Execution) erro
 	if exec.CreatedAt == "" {
 		exec.CreatedAt = now
 	}
-	if exec.UpdatedAt == "" {
-		exec.UpdatedAt = now
-	}
 
 	item, err := attributevalue.MarshalMap(exec)
 	if err != nil {
@@ -191,11 +188,10 @@ func (s *DynamoExecutionStore) List(ctx context.Context, accountID string, limit
 }
 
 func (s *DynamoExecutionStore) UpdateStatus(ctx context.Context, executionID string, status ExecutionStatus, completedAt string, duration int) error {
-	updateExpr := "SET #status = :s, updatedAt = :u"
+	updateExpr := "SET #status = :s"
 	exprNames := map[string]string{"#status": "status"}
 	exprValues := map[string]types.AttributeValue{
 		":s": &types.AttributeValueMemberS{Value: string(status)},
-		":u": &types.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339)},
 	}
 
 	if completedAt != "" {
@@ -228,9 +224,8 @@ func (s *DynamoExecutionStore) UpdateTACompletion(ctx context.Context, execution
 		Key: map[string]types.AttributeValue{
 			"executionId": &types.AttributeValueMemberS{Value: executionID},
 		},
-		UpdateExpression: aws.String("SET updatedAt = :u, taCompletedAt = :tc, taDuration = :td"),
+		UpdateExpression: aws.String("SET taCompletedAt = :tc, taDuration = :td"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":u":  &types.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339)},
 			":tc": &types.AttributeValueMemberS{Value: taCompletedAt},
 			":td": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", taDuration)},
 		},
@@ -252,14 +247,13 @@ func (s *DynamoExecutionStore) UpdateCompletion(ctx context.Context, executionID
 		Key: map[string]types.AttributeValue{
 			"executionId": &types.AttributeValueMemberS{Value: executionID},
 		},
-		UpdateExpression: aws.String("SET #status = :s, updatedAt = :u, completedAt = :c, #dur = :d, outputStatus = :os, taCompletedAt = :tc, taDuration = :td"),
+		UpdateExpression: aws.String("SET #status = :s, completedAt = :c, #dur = :d, outputStatus = :os, taCompletedAt = :tc, taDuration = :td"),
 		ExpressionAttributeNames: map[string]string{
 			"#status": "status",
 			"#dur":    "duration",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":s":  &types.AttributeValueMemberS{Value: string(status)},
-			":u":  &types.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339)},
 			":c":  &types.AttributeValueMemberS{Value: completedAt},
 			":d":  &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", duration)},
 			":os": &types.AttributeValueMemberS{Value: string(outputStatus)},
@@ -286,10 +280,9 @@ func (s *DynamoExecutionStore) UpdateManifestWorkName(ctx context.Context, execu
 		Key: map[string]types.AttributeValue{
 			"executionId": &types.AttributeValueMemberS{Value: executionID},
 		},
-		UpdateExpression: aws.String("SET manifestWorkName = :mw, updatedAt = :u"),
+		UpdateExpression: aws.String("SET manifestWorkName = :mw"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":mw": &types.AttributeValueMemberS{Value: mwName},
-			":u":  &types.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339)},
 		},
 	})
 	if err != nil {

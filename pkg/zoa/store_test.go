@@ -91,7 +91,6 @@ func TestDynamoExecutionStore_Create(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "test-table", *capturedInput.TableName)
 	assert.NotEmpty(t, exec.CreatedAt)
-	assert.NotEmpty(t, exec.UpdatedAt)
 }
 
 func TestDynamoExecutionStore_Get(t *testing.T) {

@@ -36,7 +36,7 @@ type Execution struct {
 	OutputPath       string          `dynamodbav:"outputPath,omitempty" json:"output_path,omitempty"`
 	OutputStatus     OutputStatus    `dynamodbav:"outputStatus,omitempty" json:"output_status,omitempty"`
 	CreatedAt        string          `dynamodbav:"createdAt" json:"created_at"`
-	UpdatedAt        string          `dynamodbav:"updatedAt" json:"updated_at,omitempty"`
+	UpdatedAt        string          `dynamodbav:"updatedAt" json:"-"`
 	TACompletedAt    string          `dynamodbav:"taCompletedAt,omitempty" json:"ta_completed_at,omitempty"`
 	TADurationSeconds int            `dynamodbav:"taDuration,omitempty" json:"ta_duration_seconds,omitempty"`
 	CompletedAt      string          `dynamodbav:"completedAt,omitempty" json:"completed_at,omitempty"`

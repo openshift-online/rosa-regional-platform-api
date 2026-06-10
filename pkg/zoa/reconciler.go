@@ -158,18 +158,12 @@ func (r *Reconciler) handleTimeout(ctx context.Context, exec *Execution) {
 }
 
 // handleTACompletion records when the TA runner Job finishes (upload still running).
-// Duration is measured from when the execution started running (ManifestWork applied),
-// not from submission time, to exclude Maestro dispatch overhead.
 func (r *Reconciler) handleTACompletion(ctx context.Context, exec *Execution) {
 	now := time.Now().UTC()
 	var taDuration int
-
-	startedAt, err := time.Parse(time.RFC3339, exec.UpdatedAt)
-	if err != nil {
-		startedAt, err = time.Parse(time.RFC3339, exec.CreatedAt)
-	}
+	createdAt, err := time.Parse(time.RFC3339, exec.CreatedAt)
 	if err == nil {
-		taDuration = int(now.Sub(startedAt).Seconds())
+		taDuration = int(now.Sub(createdAt).Seconds())
 	}
 
 	if err := r.store.UpdateTACompletion(ctx, exec.ExecutionID, now.Format(time.RFC3339), taDuration); err != nil {
@@ -195,12 +189,9 @@ func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, resu
 
 	now := time.Now().UTC()
 	var totalDuration int
-	startedAt, err := time.Parse(time.RFC3339, exec.UpdatedAt)
-	if err != nil {
-		startedAt, err = time.Parse(time.RFC3339, exec.CreatedAt)
-	}
+	createdAt, err := time.Parse(time.RFC3339, exec.CreatedAt)
 	if err == nil {
-		totalDuration = int(now.Sub(startedAt).Seconds())
+		totalDuration = int(now.Sub(createdAt).Seconds())
 	}
 
 	taCompletedAt := exec.TACompletedAt

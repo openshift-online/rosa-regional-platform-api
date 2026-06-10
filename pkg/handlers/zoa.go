@@ -101,6 +101,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Operator:      operator,
 		Action:        action,
 		TargetCluster: req.TargetCluster,
+		Params:        req.Params,
 		Scope:         tmpl.Scope,
 		Type:          tmpl.Type,
 		Revision:      h.jobConfig.Revision,
@@ -314,14 +315,13 @@ func parseSince(s string) (string, error) {
 func (h *ZoaHandler) Catalog(w http.ResponseWriter, r *http.Request) {
 	templates := h.registry.ListAll()
 
-	items := make([]zoa.TADescribeResponse, 0, len(templates))
+	items := make([]zoa.TAListItem, 0, len(templates))
 	for _, t := range templates {
-		items = append(items, zoa.TADescribeResponse{
+		items = append(items, zoa.TAListItem{
 			Name:        t.Name,
 			Scope:       t.Scope,
 			Type:        t.Type,
 			Description: t.Description,
-			Params:      t.Params,
 		})
 	}
 

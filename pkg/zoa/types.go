@@ -30,8 +30,9 @@ type Execution struct {
 	TargetCluster    string          `dynamodbav:"targetCluster" json:"target_cluster"`
 	Scope            string          `dynamodbav:"scope" json:"scope"`
 	Type             string          `dynamodbav:"type" json:"type,omitempty"`
-	Revision         string          `dynamodbav:"revision,omitempty" json:"revision,omitempty"`
-	Status           ExecutionStatus `dynamodbav:"status" json:"status"`
+	Params           map[string]string `dynamodbav:"params,omitempty" json:"params,omitempty"`
+	Revision         string            `dynamodbav:"revision,omitempty" json:"revision,omitempty"`
+	Status           ExecutionStatus   `dynamodbav:"status" json:"status"`
 	ManifestWorkName string          `dynamodbav:"manifestWorkName,omitempty" json:"manifest_work_name,omitempty"`
 	OutputPath       string          `dynamodbav:"outputPath,omitempty" json:"output_path,omitempty"`
 	OutputStatus     OutputStatus    `dynamodbav:"outputStatus,omitempty" json:"output_status,omitempty"`
@@ -96,6 +97,14 @@ type TATemplate struct {
 	Params         []TAParameter `yaml:"params,omitempty" json:"params,omitempty"`
 	RBAC           *TARBAC       `yaml:"rbac" json:"-"`
 	Script         string        `yaml:"script" json:"-"`
+}
+
+// TAListItem is the lean response for GET /trusted-actions (catalog listing).
+type TAListItem struct {
+	Name        string `json:"name"`
+	Scope       string `json:"scope"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
 }
 
 // TADescribeResponse is returned by GET /trusted-actions/{action}.

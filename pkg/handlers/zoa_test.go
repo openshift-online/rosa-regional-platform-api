@@ -24,13 +24,14 @@ import (
 )
 
 type mockExecutionStore struct {
-	createFunc             func(ctx context.Context, exec *zoa.Execution) error
-	getFunc                func(ctx context.Context, executionID string) (*zoa.Execution, error)
-	listFunc               func(ctx context.Context, accountID string, limit int, filter *zoa.ListFilter) ([]*zoa.Execution, error)
-	updateStatusFunc       func(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int) error
-	updateCompletionFunc   func(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int, artifactsAvailable bool) error
-	updateManifestWorkFunc func(ctx context.Context, executionID, mwName string) error
-	listPendingFunc        func(ctx context.Context) ([]*zoa.Execution, error)
+	createFunc               func(ctx context.Context, exec *zoa.Execution) error
+	getFunc                  func(ctx context.Context, executionID string) (*zoa.Execution, error)
+	listFunc                 func(ctx context.Context, accountID string, limit int, filter *zoa.ListFilter) ([]*zoa.Execution, error)
+	updateStatusFunc         func(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int) error
+	updateTACompletionFunc   func(ctx context.Context, executionID string, taCompletedAt string, taDuration int) error
+	updateCompletionFunc     func(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int, outputStatus zoa.OutputStatus, taCompletedAt string, taDuration int) error
+	updateManifestWorkFunc   func(ctx context.Context, executionID, mwName string) error
+	listPendingFunc          func(ctx context.Context) ([]*zoa.Execution, error)
 }
 
 func (m *mockExecutionStore) Create(ctx context.Context, exec *zoa.Execution) error {
@@ -61,9 +62,16 @@ func (m *mockExecutionStore) UpdateStatus(ctx context.Context, executionID strin
 	return nil
 }
 
-func (m *mockExecutionStore) UpdateCompletion(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int, artifactsAvailable bool) error {
+func (m *mockExecutionStore) UpdateTACompletion(ctx context.Context, executionID string, taCompletedAt string, taDuration int) error {
+	if m.updateTACompletionFunc != nil {
+		return m.updateTACompletionFunc(ctx, executionID, taCompletedAt, taDuration)
+	}
+	return nil
+}
+
+func (m *mockExecutionStore) UpdateCompletion(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int, outputStatus zoa.OutputStatus, taCompletedAt string, taDuration int) error {
 	if m.updateCompletionFunc != nil {
-		return m.updateCompletionFunc(ctx, executionID, status, completedAt, duration, artifactsAvailable)
+		return m.updateCompletionFunc(ctx, executionID, status, completedAt, duration, outputStatus, taCompletedAt, taDuration)
 	}
 	return nil
 }
@@ -158,7 +166,6 @@ func testTemplateRegistry(t *testing.T) *zoa.TemplateRegistry {
 	t.Helper()
 	dir := t.TempDir()
 	templateContent := `name: get_nodes
-profile: kube
 scope: kube-api
 type: read
 description: List all nodes in the target cluster
@@ -214,8 +221,8 @@ func TestZoaHandler_Create_Success(t *testing.T) {
 	assert.Equal(t, "get_nodes", resp.Action)
 	assert.Equal(t, "mc01", resp.TargetCluster)
 	assert.Equal(t, zoa.StatusPending, resp.Status)
-	assert.Equal(t, "kube", resp.Profile)
 	assert.Equal(t, "read", resp.Type)
+	assert.Equal(t, "kube-api", resp.Scope)
 	assert.Equal(t, "test", resp.Operator)
 	assert.NotEmpty(t, resp.ExecutionID)
 }
@@ -261,6 +268,7 @@ func TestZoaHandler_Get_Found(t *testing.T) {
 				Status:        zoa.StatusSucceeded,
 				TargetCluster: "mc01",
 				OutputPath:    "exec-123/output.json",
+				OutputStatus:  zoa.OutputStatusUploaded,
 			}, nil
 		},
 	}
@@ -339,8 +347,8 @@ func TestZoaHandler_Describe(t *testing.T) {
 	err := json.NewDecoder(rr.Body).Decode(&resp)
 	require.NoError(t, err)
 	assert.Equal(t, "get_nodes", resp.Name)
-	assert.Equal(t, "kube", resp.Profile)
 	assert.Equal(t, "read", resp.Type)
+	assert.Equal(t, "kube-api", resp.Scope)
 	assert.Equal(t, "List all nodes in the target cluster", resp.Description)
 }
 

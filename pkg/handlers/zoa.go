@@ -102,10 +102,10 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Action:        action,
 		TargetCluster: req.TargetCluster,
 		Scope:         tmpl.Scope,
-		Profile:       tmpl.Profile,
 		Type:          tmpl.Type,
 		Revision:      h.jobConfig.Revision,
 		Status:        zoa.StatusPending,
+		OutputStatus:  zoa.OutputStatusPending,
 		OutputPath:    "s3://" + h.bucketName + "/" + execID + "/output.json",
 	}
 
@@ -123,7 +123,6 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		OutputBucket:  h.bucketName,
 		Operator:      operator,
 		Revision:      h.jobConfig.Revision,
-		Profile:       tmpl.Profile,
 		Type:          tmpl.Type,
 		Scope:         tmpl.Scope,
 		Params:        req.Params,
@@ -157,7 +156,8 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"target_cluster", req.TargetCluster,
 		"manifest_work", result.Name,
 		"operator", operator,
-		"profile", tmpl.Profile,
+		"scope", tmpl.Scope,
+		"type", tmpl.Type,
 	)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -189,34 +189,36 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if exec.Status == zoa.StatusSucceeded || exec.Status == zoa.StatusFailed || exec.Status == zoa.StatusTimedOut {
-		if fields.includeOutput {
-			outputURI := exec.OutputPath
-			if outputURI == "" {
-				outputURI = exec.ExecutionID + "/output.json"
-			}
-			output, err := h.fetchS3Content(ctx, outputURI)
-			if err != nil {
-				h.logger.Error("failed to fetch output from S3", "error", err, "uri", outputURI)
-			} else if output != nil {
-				var parsed interface{}
-				if json.Unmarshal(output, &parsed) == nil {
-					response.Output = parsed
-				} else {
-					response.Output = string(output)
+		if exec.OutputStatus == zoa.OutputStatusUploaded {
+			if fields.includeOutput {
+				outputURI := exec.OutputPath
+				if outputURI == "" {
+					outputURI = exec.ExecutionID + "/output.json"
+				}
+				output, err := h.fetchS3Content(ctx, outputURI)
+				if err != nil {
+					h.logger.Error("failed to fetch output from S3", "error", err, "uri", outputURI)
+				} else if output != nil {
+					var parsed interface{}
+					if json.Unmarshal(output, &parsed) == nil {
+						response.Output = parsed
+					} else {
+						response.Output = string(output)
+					}
 				}
 			}
-		}
 
-		if fields.includeLogs {
-			logsURI := strings.Replace(exec.OutputPath, "/output.json", "/execution.log", 1)
-			if exec.OutputPath == "" {
-				logsURI = exec.ExecutionID + "/execution.log"
+			if fields.includeLogs {
+				logsURI := strings.Replace(exec.OutputPath, "/output.json", "/execution.log", 1)
+				if exec.OutputPath == "" {
+					logsURI = exec.ExecutionID + "/execution.log"
+				}
+				logs, err := h.fetchS3Content(ctx, logsURI)
+				if err != nil {
+					h.logger.Error("failed to fetch logs from S3", "error", err, "uri", logsURI)
+				}
+				response.Logs = string(logs)
 			}
-			logs, err := h.fetchS3Content(ctx, logsURI)
-			if err != nil {
-				h.logger.Error("failed to fetch logs from S3", "error", err, "uri", logsURI)
-			}
-			response.Logs = string(logs)
 		}
 	}
 
@@ -316,7 +318,6 @@ func (h *ZoaHandler) Catalog(w http.ResponseWriter, r *http.Request) {
 	for _, t := range templates {
 		items = append(items, zoa.TADescribeResponse{
 			Name:        t.Name,
-			Profile:     t.Profile,
 			Scope:       t.Scope,
 			Type:        t.Type,
 			Description: t.Description,
@@ -344,7 +345,6 @@ func (h *ZoaHandler) Describe(w http.ResponseWriter, r *http.Request) {
 
 	response := &zoa.TADescribeResponse{
 		Name:        tmpl.Name,
-		Profile:     tmpl.Profile,
 		Scope:       tmpl.Scope,
 		Type:        tmpl.Type,
 		Description: tmpl.Description,

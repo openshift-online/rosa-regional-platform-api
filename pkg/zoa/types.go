@@ -11,26 +11,36 @@ const (
 	StatusTimedOut  ExecutionStatus = "timed_out"
 )
 
+// OutputStatus represents the state of the S3 output upload for an execution.
+type OutputStatus string
+
+const (
+	OutputStatusPending  OutputStatus = "pending"
+	OutputStatusUploaded OutputStatus = "uploaded"
+	OutputStatusFailed   OutputStatus = "failed"
+)
+
 // Execution represents a single Trusted Action execution stored in DynamoDB.
 type Execution struct {
-	ExecutionID        string          `dynamodbav:"executionId" json:"id"`
-	AccountID          string          `dynamodbav:"accountId" json:"account_id,omitempty"`
-	CallerARN          string          `dynamodbav:"callerArn" json:"caller_arn,omitempty"`
-	Operator           string          `dynamodbav:"operator" json:"operator,omitempty"`
-	Action             string          `dynamodbav:"action" json:"action"`
-	TargetCluster      string          `dynamodbav:"targetCluster" json:"target_cluster"`
-	Scope              string          `dynamodbav:"scope" json:"scope"`
-	Profile            string          `dynamodbav:"profile" json:"profile,omitempty"`
-	Type               string          `dynamodbav:"type" json:"type,omitempty"`
-	Revision           string          `dynamodbav:"revision,omitempty" json:"revision,omitempty"`
-	Status             ExecutionStatus `dynamodbav:"status" json:"status"`
-	ManifestWorkName   string          `dynamodbav:"manifestWorkName,omitempty" json:"manifest_work_name,omitempty"`
-	OutputPath         string          `dynamodbav:"outputPath,omitempty" json:"output_path,omitempty"`
-	ArtifactsAvailable *bool           `dynamodbav:"artifactsAvailable,omitempty" json:"artifacts_available,omitempty"`
-	CreatedAt          string          `dynamodbav:"createdAt" json:"created_at"`
-	UpdatedAt          string          `dynamodbav:"updatedAt" json:"updated_at,omitempty"`
-	CompletedAt        string          `dynamodbav:"completedAt,omitempty" json:"completed_at,omitempty"`
-	DurationSeconds    int             `dynamodbav:"duration,omitempty" json:"duration_seconds,omitempty"`
+	ExecutionID      string          `dynamodbav:"executionId" json:"id"`
+	AccountID        string          `dynamodbav:"accountId" json:"account_id,omitempty"`
+	CallerARN        string          `dynamodbav:"callerArn" json:"caller_arn,omitempty"`
+	Operator         string          `dynamodbav:"operator" json:"operator,omitempty"`
+	Action           string          `dynamodbav:"action" json:"action"`
+	TargetCluster    string          `dynamodbav:"targetCluster" json:"target_cluster"`
+	Scope            string          `dynamodbav:"scope" json:"scope"`
+	Type             string          `dynamodbav:"type" json:"type,omitempty"`
+	Revision         string          `dynamodbav:"revision,omitempty" json:"revision,omitempty"`
+	Status           ExecutionStatus `dynamodbav:"status" json:"status"`
+	ManifestWorkName string          `dynamodbav:"manifestWorkName,omitempty" json:"manifest_work_name,omitempty"`
+	OutputPath       string          `dynamodbav:"outputPath,omitempty" json:"output_path,omitempty"`
+	OutputStatus     OutputStatus    `dynamodbav:"outputStatus,omitempty" json:"output_status,omitempty"`
+	CreatedAt        string          `dynamodbav:"createdAt" json:"created_at"`
+	UpdatedAt        string          `dynamodbav:"updatedAt" json:"updated_at,omitempty"`
+	TACompletedAt    string          `dynamodbav:"taCompletedAt,omitempty" json:"ta_completed_at,omitempty"`
+	TADurationSeconds int            `dynamodbav:"taDuration,omitempty" json:"ta_duration_seconds,omitempty"`
+	CompletedAt      string          `dynamodbav:"completedAt,omitempty" json:"completed_at,omitempty"`
+	DurationSeconds  int             `dynamodbav:"duration,omitempty" json:"duration_seconds,omitempty"`
 }
 
 // CreateRequest is the JSON body for POST /api/v0/trusted-actions/{action}/run.
@@ -80,7 +90,6 @@ type RBACRule struct {
 // TATemplate defines a Trusted Action loaded from a simplified YAML file.
 type TATemplate struct {
 	Name           string        `yaml:"name" json:"name"`
-	Profile        string        `yaml:"profile" json:"profile"`
 	Scope          string        `yaml:"scope" json:"scope"`
 	Type           string        `yaml:"type" json:"type"`
 	Description    string        `yaml:"description" json:"description"`
@@ -93,7 +102,6 @@ type TATemplate struct {
 // TADescribeResponse is returned by GET /trusted-actions/{action}.
 type TADescribeResponse struct {
 	Name        string        `json:"name"`
-	Profile     string        `json:"profile"`
 	Scope       string        `json:"scope"`
 	Type        string        `json:"type"`
 	Description string        `json:"description"`
@@ -103,15 +111,17 @@ type TADescribeResponse struct {
 // JobConfig holds boilerplate configuration for Job generation,
 // loaded from the zoa-job-config ConfigMap.
 type JobConfig struct {
-	Image                  string `json:"image"`
-	Revision               string `json:"revision"`
-	CPURequest             string `json:"cpu_request"`
-	MemoryRequest          string `json:"memory_request"`
-	CPULimit               string `json:"cpu_limit"`
-	MemoryLimit            string `json:"memory_limit"`
-	TTLSeconds             int32  `json:"ttl_seconds"`
+	Image                   string `json:"image"`
+	Revision                string `json:"revision"`
+	CPURequest              string `json:"cpu_request"`
+	MemoryRequest           string `json:"memory_request"`
+	CPULimit                string `json:"cpu_limit"`
+	MemoryLimit             string `json:"memory_limit"`
+	TTLSeconds              int32  `json:"ttl_seconds"`
 	ExecutionTimeoutSeconds int    `json:"execution_timeout_seconds"`
-	EntrypointScript       string `json:"entrypoint_script"`
+	EntrypointScript        string `json:"entrypoint_script"`
+	UploadTimeoutSeconds    int    `json:"upload_timeout_seconds"`
+	UploadEntrypointScript  string `json:"upload_entrypoint_script"`
 }
 
 // RenderContext holds all the data needed to generate a ManifestWork for a TA execution.
@@ -123,7 +133,6 @@ type RenderContext struct {
 	OutputBucket  string
 	Operator      string
 	Revision      string
-	Profile       string
 	Type          string
 	Scope         string
 	Params        map[string]string

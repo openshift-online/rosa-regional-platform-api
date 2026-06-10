@@ -17,7 +17,6 @@ func templateTestLogger() *slog.Logger {
 func TestTemplateRegistry_LoadFromDir(t *testing.T) {
 	dir := t.TempDir()
 	content := `name: get_nodes
-profile: kube
 scope: kube-api
 type: read
 description: List all nodes
@@ -39,7 +38,6 @@ script: |
 	tmpl, ok := registry.Get("get_nodes")
 	assert.True(t, ok)
 	assert.Equal(t, "get_nodes", tmpl.Name)
-	assert.Equal(t, "kube", tmpl.Profile)
 	assert.Equal(t, "kube-api", tmpl.Scope)
 	assert.Equal(t, "read", tmpl.Type)
 	assert.Equal(t, "List all nodes", tmpl.Description)
@@ -60,7 +58,6 @@ func TestTemplateRegistry_LoadFromDir_Empty(t *testing.T) {
 func TestTemplateRegistry_LoadFromDir_MissingScript(t *testing.T) {
 	dir := t.TempDir()
 	content := `name: bad_template
-profile: kube
 scope: kube-api
 type: read
 description: Missing script
@@ -80,10 +77,9 @@ rbac:
 
 func TestBuildManifestWork_ClusterScoped(t *testing.T) {
 	tmpl := &TATemplate{
-		Name:    "get_nodes",
-		Profile: "kube",
-		Scope:   "kube-api",
-		Type:    "read",
+		Name:  "get_nodes",
+		Scope: "kube-api",
+		Type:  "read",
 		RBAC: &TARBAC{
 			ClusterScoped: true,
 			Rules: []RBACRule{
@@ -101,7 +97,6 @@ func TestBuildManifestWork_ClusterScoped(t *testing.T) {
 		OutputBucket:  "my-bucket",
 		Operator:      "slopezma",
 		Revision:      "a1b2c3d",
-		Profile:       "kube",
 		Type:          "read",
 		Scope:         "kube-api",
 		Params:        nil,
@@ -121,10 +116,11 @@ func TestBuildManifestWork_ClusterScoped(t *testing.T) {
 
 	assert.Equal(t, "zoa-abc123", mw.Name)
 	assert.Equal(t, "local-cluster", mw.Namespace)
-	// ClusterRole + ClusterRoleBinding + JobPatchRole + JobPatchRoleBinding + ConfigMap + Job = 6 manifests
-	assert.Len(t, mw.Spec.Workload.Manifests, 6)
-	require.Len(t, mw.Spec.ManifestConfigs, 1)
+	// SA + ClusterRole + ClusterRoleBinding + OutputCM + OutputRole + OutputRoleBinding + ScriptCM + RunnerJob + UploadJob = 9
+	assert.Len(t, mw.Spec.Workload.Manifests, 9)
+	require.Len(t, mw.Spec.ManifestConfigs, 2)
 	assert.Equal(t, "zoa-abc123", mw.Spec.ManifestConfigs[0].ResourceIdentifier.Name)
+	assert.Equal(t, "zoa-abc123-upload", mw.Spec.ManifestConfigs[1].ResourceIdentifier.Name)
 	assert.Equal(t, "zoa-jobs", mw.Spec.ManifestConfigs[0].ResourceIdentifier.Namespace)
 	assert.Equal(t, "slopezma", mw.Labels[labelOperator])
 	assert.Equal(t, "a1b2c3d", mw.Labels[labelRevision])
@@ -132,10 +128,9 @@ func TestBuildManifestWork_ClusterScoped(t *testing.T) {
 
 func TestBuildManifestWork_NamespaceScoped(t *testing.T) {
 	tmpl := &TATemplate{
-		Name:    "get_pods",
-		Profile: "kube",
-		Scope:   "kube-api",
-		Type:    "read",
+		Name:  "get_pods",
+		Scope: "kube-api",
+		Type:  "read",
 		Params: []TAParameter{
 			{Name: "namespace", Required: true},
 		},
@@ -157,7 +152,6 @@ func TestBuildManifestWork_NamespaceScoped(t *testing.T) {
 		OutputBucket:  "bucket",
 		Operator:      "user1",
 		Revision:      "HEAD",
-		Profile:       "kube",
 		Type:          "read",
 		Scope:         "kube-api",
 		Params:        map[string]string{"namespace": "maestro"},
@@ -177,8 +171,49 @@ func TestBuildManifestWork_NamespaceScoped(t *testing.T) {
 
 	assert.Equal(t, "zoa-def456", mw.Name)
 	assert.Equal(t, "mc01", mw.Namespace)
-	// Role + RoleBinding + JobPatchRole + JobPatchRoleBinding + ConfigMap + Job = 6 manifests
+	// SA + Role + RoleBinding + OutputCM + OutputRole + OutputRoleBinding + ScriptCM + RunnerJob + UploadJob = 9
+	assert.Len(t, mw.Spec.Workload.Manifests, 9)
+	require.Len(t, mw.Spec.ManifestConfigs, 2)
+}
+
+func TestBuildManifestWork_AWSScope_NoSAManifest(t *testing.T) {
+	tmpl := &TATemplate{
+		Name:  "describe_instance",
+		Scope: "aws",
+		Type:  "read",
+		RBAC:  nil,
+		Script: "aws ec2 describe-instances > /artifacts/output.json\n",
+	}
+
+	ctx := RenderContext{
+		ExecID:        "aws789",
+		ActionName:    "describe_instance",
+		TargetCluster: "mc01",
+		Namespace:     "zoa-jobs",
+		OutputBucket:  "bucket",
+		Operator:      "slopezma",
+		Revision:      "abc",
+		Type:          "read",
+		Scope:         "aws",
+		Params:        nil,
+		Config: JobConfig{
+			Image:            "quay.io/test/zoa-tools:latest",
+			CPURequest:       "100m",
+			MemoryRequest:    "128Mi",
+			CPULimit:         "500m",
+			MemoryLimit:      "512Mi",
+			TTLSeconds:       3600,
+			EntrypointScript: "#!/bin/bash\n/zoa/run.sh\n",
+		},
+	}
+
+	mw, err := BuildManifestWork(tmpl, ctx)
+	require.NoError(t, err)
+
+	// No SA manifest (static SA pre-provisioned), no RBAC from template (nil):
+	// OutputCM + OutputRole + OutputRoleBinding + ScriptCM + RunnerJob + UploadJob = 6
 	assert.Len(t, mw.Spec.Workload.Manifests, 6)
+	require.Len(t, mw.Spec.ManifestConfigs, 2)
 }
 
 func TestLoadJobConfig(t *testing.T) {
@@ -213,7 +248,7 @@ func TestLoadJobConfig_MissingImage(t *testing.T) {
 
 func TestTemplateRegistry_Get_NotFound(t *testing.T) {
 	registry := NewTemplateRegistry(templateTestLogger())
-	registry.templates["exists"] = &TATemplate{Name: "exists", Profile: "kube", Script: "echo"}
+	registry.templates["exists"] = &TATemplate{Name: "exists", Scope: "kube-api", Script: "echo"}
 
 	_, ok := registry.Get("nonexistent")
 	assert.False(t, ok)
@@ -221,8 +256,8 @@ func TestTemplateRegistry_Get_NotFound(t *testing.T) {
 
 func TestTemplateRegistry_List(t *testing.T) {
 	registry := NewTemplateRegistry(templateTestLogger())
-	registry.templates["action_a"] = &TATemplate{Name: "action_a", Profile: "kube", Script: "echo a"}
-	registry.templates["action_b"] = &TATemplate{Name: "action_b", Profile: "kube", Script: "echo b"}
+	registry.templates["action_a"] = &TATemplate{Name: "action_a", Scope: "kube-api", Script: "echo a"}
+	registry.templates["action_b"] = &TATemplate{Name: "action_b", Scope: "kube-api", Script: "echo b"}
 
 	names := registry.List()
 	assert.Len(t, names, 2)
@@ -232,29 +267,38 @@ func TestTemplateRegistry_List(t *testing.T) {
 
 func TestTemplateRegistry_ListAll(t *testing.T) {
 	registry := NewTemplateRegistry(templateTestLogger())
-	registry.templates["action_a"] = &TATemplate{Name: "action_a", Profile: "kube", Script: "echo a"}
-	registry.templates["action_b"] = &TATemplate{Name: "action_b", Profile: "aws-read", Script: "echo b"}
+	registry.templates["action_a"] = &TATemplate{Name: "action_a", Scope: "kube-api", Script: "echo a"}
+	registry.templates["action_b"] = &TATemplate{Name: "action_b", Scope: "aws", Script: "echo b"}
 
 	all := registry.ListAll()
 	assert.Len(t, all, 2)
 }
 
-func TestProfileToSAName(t *testing.T) {
+func TestIsRunnerSADynamic(t *testing.T) {
+	assert.True(t, isRunnerSADynamic("kube-api"))
+	assert.True(t, isRunnerSADynamic("custom"))
+	assert.True(t, isRunnerSADynamic(""))
+	assert.False(t, isRunnerSADynamic("aws"))
+}
+
+func TestScopeTypeToRunnerSA(t *testing.T) {
 	tests := []struct {
-		profile  string
+		name     string
+		scope    string
+		taType   string
+		execID   string
 		expected string
 	}{
-		{"kube", "zoa-kube-sa"},
-		{"aws-read", "zoa-aws-read-sa"},
-		{"aws-write", "zoa-aws-write-sa"},
-		{"breakglass-read", "zoa-breakglass-read-sa"},
-		{"breakglass-write", "zoa-breakglass-write-sa"},
-		{"unknown", "zoa-kube-sa"},
+		{"kube-api read uses per-exec SA", "kube-api", "read", "abc123", "zoa-runner-abc123"},
+		{"kube-api write uses per-exec SA", "kube-api", "write", "def456", "zoa-runner-def456"},
+		{"aws read uses static SA", "aws", "read", "xyz789", "zoa-aws-read"},
+		{"aws write uses static SA", "aws", "write", "xyz789", "zoa-aws-write"},
+		{"unknown scope uses per-exec SA", "custom", "read", "abc123", "zoa-runner-abc123"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.profile, func(t *testing.T) {
-			assert.Equal(t, tt.expected, profileToSAName(tt.profile))
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, scopeTypeToRunnerSA(tt.scope, tt.taType, tt.execID))
 		})
 	}
 }

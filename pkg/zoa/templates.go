@@ -51,7 +51,7 @@ func (r *TemplateRegistry) LoadFromDir(dir string) error {
 		}
 
 		r.templates[tmpl.Name] = tmpl
-		r.logger.Info("loaded TA template", "name", tmpl.Name, "profile", tmpl.Profile, "type", tmpl.Type, "path", path)
+		r.logger.Info("loaded TA template", "name", tmpl.Name, "scope", tmpl.Scope, "type", tmpl.Type, "path", path)
 	}
 
 	if len(r.templates) == 0 {
@@ -94,8 +94,8 @@ func parseTemplate(data []byte) (*TATemplate, error) {
 	if tmpl.Name == "" {
 		return nil, fmt.Errorf("template missing required 'name' field")
 	}
-	if tmpl.Profile == "" {
-		return nil, fmt.Errorf("template %s missing required 'profile' field", tmpl.Name)
+	if tmpl.Scope == "" {
+		return nil, fmt.Errorf("template %s missing required 'scope' field", tmpl.Name)
 	}
 	if tmpl.Script == "" {
 		return nil, fmt.Errorf("template %s missing required 'script' field", tmpl.Name)
@@ -154,6 +154,14 @@ func LoadJobConfig(dir string) (*JobConfig, error) {
 	}
 	if v := readFile("entrypoint.sh"); v != "" {
 		cfg.EntrypointScript = v
+	}
+	if v := readFile("upload_entrypoint.sh"); v != "" {
+		cfg.UploadEntrypointScript = v
+	}
+	if v := readFile("upload_timeout_seconds"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			cfg.UploadTimeoutSeconds = int(n)
+		}
 	}
 
 	if cfg.Image == "" {

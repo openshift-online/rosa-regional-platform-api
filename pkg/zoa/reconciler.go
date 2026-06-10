@@ -100,32 +100,29 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 	}
 
 	result := r.parseManifestWorkStatus(mw)
-	if result.status == "" {
-		return
-	}
 
-	if result.status == exec.Status {
-		return
-	}
-
-	if result.completed {
+	if result.fullyCompleted() {
 		r.handleCompletion(ctx, exec, result)
 		return
 	}
 
-	if err := r.store.UpdateStatus(ctx, exec.ExecutionID, result.status, "", 0); err != nil {
-		r.logger.Error("failed to update execution status",
-			"execution_id", exec.ExecutionID,
-			"new_status", string(result.status),
-			"error", err,
-		)
-		return
+	if result.taCompleted() && exec.TACompletedAt == "" {
+		r.handleTACompletion(ctx, exec)
 	}
 
-	r.logger.Info("execution status updated",
-		"execution_id", exec.ExecutionID,
-		"status", string(result.status),
-	)
+	if result.applied && exec.Status == StatusPending {
+		if err := r.store.UpdateStatus(ctx, exec.ExecutionID, StatusRunning, "", 0); err != nil {
+			r.logger.Error("failed to update execution status to running",
+				"execution_id", exec.ExecutionID,
+				"error", err,
+			)
+			return
+		}
+		r.logger.Info("execution status updated",
+			"execution_id", exec.ExecutionID,
+			"status", "running",
+		)
+	}
 }
 
 // handleTimeout deletes the ResourceBundle FIRST, then marks as timed_out.
@@ -160,26 +157,60 @@ func (r *Reconciler) handleTimeout(ctx context.Context, exec *Execution) {
 	)
 }
 
+// handleTACompletion records when the TA runner Job finishes (upload still running).
+func (r *Reconciler) handleTACompletion(ctx context.Context, exec *Execution) {
+	now := time.Now().UTC()
+	var taDuration int
+	createdAt, err := time.Parse(time.RFC3339, exec.CreatedAt)
+	if err == nil {
+		taDuration = int(now.Sub(createdAt).Seconds())
+	}
+
+	if err := r.store.UpdateTACompletion(ctx, exec.ExecutionID, now.Format(time.RFC3339), taDuration); err != nil {
+		r.logger.Error("failed to update TA completion",
+			"execution_id", exec.ExecutionID,
+			"error", err,
+		)
+		return
+	}
+
+	r.logger.Info("TA job completed, upload pending",
+		"execution_id", exec.ExecutionID,
+		"ta_duration_seconds", taDuration,
+	)
+}
+
 // handleCompletion deletes the ResourceBundle FIRST, then updates terminal status.
-// Logs are preserved in S3 by the entrypoint (uploaded before Job exits), so RB
-// deletion is safe on all terminal states including failure.
+// Both runner and uploader Jobs have finished at this point.
 func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, result *jobResult) {
 	if err := r.deleteResourceBundle(ctx, exec); err != nil {
 		return
 	}
 
 	now := time.Now().UTC()
-	var duration int
+	var totalDuration int
 	createdAt, err := time.Parse(time.RFC3339, exec.CreatedAt)
 	if err == nil {
-		duration = int(now.Sub(createdAt).Seconds())
+		totalDuration = int(now.Sub(createdAt).Seconds())
 	}
 
-	artifactsAvailable := result.uploadOk
-	if err := r.store.UpdateCompletion(ctx, exec.ExecutionID, result.status, now.Format(time.RFC3339), duration, artifactsAvailable); err != nil {
+	taCompletedAt := exec.TACompletedAt
+	taDuration := exec.TADurationSeconds
+	if taCompletedAt == "" {
+		taCompletedAt = now.Format(time.RFC3339)
+		taDuration = totalDuration
+	}
+
+	status := result.taStatus()
+	if status == "" {
+		status = StatusFailed
+	}
+	outputStatus := result.outputStatus()
+
+	if err := r.store.UpdateCompletion(ctx, exec.ExecutionID, status, now.Format(time.RFC3339), totalDuration, outputStatus, taCompletedAt, taDuration); err != nil {
 		r.logger.Error("resource bundle deleted but failed to update terminal status",
 			"execution_id", exec.ExecutionID,
-			"terminal_status", string(result.status),
+			"terminal_status", string(status),
 			"error", err,
 		)
 		return
@@ -187,10 +218,10 @@ func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, resu
 
 	r.logger.Info("execution completed",
 		"execution_id", exec.ExecutionID,
-		"status", string(result.status),
-		"duration_seconds", duration,
-		"artifacts_available", artifactsAvailable,
-		"action_exit_code", result.actionExitCode,
+		"status", string(status),
+		"output_status", string(outputStatus),
+		"duration_seconds", totalDuration,
+		"ta_duration_seconds", taDuration,
 	)
 }
 
@@ -238,50 +269,81 @@ func (r *Reconciler) isTimedOut(exec *Execution) bool {
 	return time.Since(createdAt) > r.timeoutForExecution(exec)
 }
 
-// jobResult holds parsed completion info from ManifestWork feedback.
+// jobResult holds parsed completion info from ManifestWork feedback for both Jobs.
 type jobResult struct {
-	status         ExecutionStatus
-	completed      bool
-	uploadOk       bool
-	actionExitCode int
+	taSucceeded     bool
+	taFailed        bool
+	uploadSucceeded bool
+	uploadFailed    bool
+	applied         bool
 }
 
-// parseManifestWorkStatus extracts the Job completion status and annotations from ManifestWork feedback.
+func (jr *jobResult) taCompleted() bool {
+	return jr.taSucceeded || jr.taFailed
+}
+
+func (jr *jobResult) uploadCompleted() bool {
+	return jr.uploadSucceeded || jr.uploadFailed
+}
+
+func (jr *jobResult) fullyCompleted() bool {
+	return jr.taCompleted() && jr.uploadCompleted()
+}
+
+func (jr *jobResult) taStatus() ExecutionStatus {
+	if jr.taSucceeded {
+		return StatusSucceeded
+	}
+	if jr.taFailed {
+		return StatusFailed
+	}
+	return ""
+}
+
+func (jr *jobResult) outputStatus() OutputStatus {
+	if jr.uploadSucceeded {
+		return OutputStatusUploaded
+	}
+	if jr.uploadFailed {
+		return OutputStatusFailed
+	}
+	return OutputStatusPending
+}
+
+// parseManifestWorkStatus extracts Job status from both runner and uploader feedback.
 func (r *Reconciler) parseManifestWorkStatus(mw *workv1.ManifestWork) *jobResult {
 	result := &jobResult{}
 
 	for _, resourceStatus := range mw.Status.ResourceStatus.Manifests {
 		for _, value := range resourceStatus.StatusFeedbacks.Values {
 			switch value.Name {
-			case "succeeded":
+			case "taSucceeded":
 				if value.Value.Integer != nil && *value.Value.Integer > 0 {
-					result.status = StatusSucceeded
-					result.completed = true
+					result.taSucceeded = true
 				}
-			case "failed":
+			case "taFailed":
 				if value.Value.Integer != nil && *value.Value.Integer > 0 {
-					result.status = StatusFailed
-					result.completed = true
+					result.taFailed = true
 				}
-			case "uploadOk":
-				if value.Value.String != nil && *value.Value.String == "true" {
-					result.uploadOk = true
+			case "uploadSucceeded":
+				if value.Value.Integer != nil && *value.Value.Integer > 0 {
+					result.uploadSucceeded = true
 				}
-			case "actionExitCode":
-				if value.Value.Integer != nil {
-					result.actionExitCode = int(*value.Value.Integer)
+			case "uploadFailed":
+				if value.Value.Integer != nil && *value.Value.Integer > 0 {
+					result.uploadFailed = true
 				}
 			}
 		}
 	}
 
-	if result.status != "" {
+	if result.taCompleted() || result.uploadCompleted() {
 		return result
 	}
 
 	for _, condition := range mw.Status.Conditions {
 		if condition.Type == "Applied" && condition.Status == "True" {
-			result.status = StatusRunning
+			result.applied = true
 			return result
 		}
 	}

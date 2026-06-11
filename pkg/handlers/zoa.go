@@ -137,34 +137,41 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	originalAction := action
+	originalType := tmpl.Type
+	executedAction := ""
+
 	if req.DryRun && tmpl.DryRunAction != "" {
-		action = tmpl.DryRunAction
-		dryTmpl, ok := h.registry.Get(action)
+		executedAction = tmpl.DryRunAction
+		dryTmpl, ok := h.registry.Get(executedAction)
 		if !ok {
 			h.writeError(w, http.StatusInternalServerError, "dry-run-error", "dry_run_action '"+tmpl.DryRunAction+"' not found in registry")
 			return
 		}
 		tmpl = dryTmpl
+		action = executedAction
 	}
 
 	execID := uuid.New().String()
 	operator := extractOperator(callerARN)
 
 	exec := &zoa.Execution{
-		ExecutionID:   execID,
-		AccountID:     accountID,
-		CallerARN:     callerARN,
-		Operator:      operator,
-		Action:        action,
-		TargetCluster: req.TargetCluster,
-		Params:        cleanParams,
-		Jira:          req.Jira,
-		Scope:         tmpl.Scope,
-		Type:          tmpl.Type,
-		Revision:      h.jobConfig.Revision,
-		Status:        zoa.StatusPending,
-		OutputStatus:  zoa.OutputStatusPending,
-		OutputPath:    "s3://" + h.bucketName + "/" + execID + "/output.json",
+		ExecutionID:    execID,
+		AccountID:      accountID,
+		CallerARN:      callerARN,
+		Operator:       operator,
+		Action:         originalAction,
+		ExecutedAction: executedAction,
+		DryRun:         req.DryRun,
+		TargetCluster:  req.TargetCluster,
+		Params:         cleanParams,
+		Jira:           req.Jira,
+		Scope:          tmpl.Scope,
+		Type:           originalType,
+		Revision:       h.jobConfig.Revision,
+		Status:         zoa.StatusPending,
+		OutputStatus:   zoa.OutputStatusPending,
+		OutputPath:     "s3://" + h.bucketName + "/" + execID + "/output.json",
 	}
 
 	if err := h.store.Create(ctx, exec); err != nil {

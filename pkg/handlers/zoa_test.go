@@ -24,14 +24,12 @@ import (
 )
 
 type mockExecutionStore struct {
-	createFunc               func(ctx context.Context, exec *zoa.Execution) error
-	getFunc                  func(ctx context.Context, executionID string) (*zoa.Execution, error)
-	listFunc                 func(ctx context.Context, accountID string, limit int, filter *zoa.ListFilter) ([]*zoa.Execution, error)
-	updateStatusFunc         func(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int) error
-	updateTACompletionFunc   func(ctx context.Context, executionID string, taCompletedAt string, taDuration int) error
-	updateCompletionFunc     func(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int, outputStatus zoa.OutputStatus, taCompletedAt string, taDuration int) error
-	updateManifestWorkFunc   func(ctx context.Context, executionID, mwName string) error
-	listPendingFunc          func(ctx context.Context) ([]*zoa.Execution, error)
+	createFunc             func(ctx context.Context, exec *zoa.Execution) error
+	getFunc                func(ctx context.Context, executionID string) (*zoa.Execution, error)
+	listFunc               func(ctx context.Context, accountID string, limit int, filter *zoa.ListFilter) ([]*zoa.Execution, error)
+	updateStatusFunc       func(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int) error
+	updateManifestWorkFunc func(ctx context.Context, executionID, mwName string) error
+	listPendingFunc        func(ctx context.Context) ([]*zoa.Execution, error)
 }
 
 func (m *mockExecutionStore) Create(ctx context.Context, exec *zoa.Execution) error {
@@ -62,17 +60,7 @@ func (m *mockExecutionStore) UpdateStatus(ctx context.Context, executionID strin
 	return nil
 }
 
-func (m *mockExecutionStore) UpdateTACompletion(ctx context.Context, executionID string, taCompletedAt string, taDuration int) error {
-	if m.updateTACompletionFunc != nil {
-		return m.updateTACompletionFunc(ctx, executionID, taCompletedAt, taDuration)
-	}
-	return nil
-}
-
-func (m *mockExecutionStore) UpdateCompletion(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int, outputStatus zoa.OutputStatus, taCompletedAt string, taDuration int) error {
-	if m.updateCompletionFunc != nil {
-		return m.updateCompletionFunc(ctx, executionID, status, completedAt, duration, outputStatus, taCompletedAt, taDuration)
-	}
+func (m *mockExecutionStore) UpdateCompletion(ctx context.Context, executionID string, status zoa.ExecutionStatus, completedAt string, duration int, runnerSeconds int, uploadSeconds int, outputStatus zoa.OutputStatus) error {
 	return nil
 }
 

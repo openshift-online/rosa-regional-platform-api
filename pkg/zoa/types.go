@@ -36,11 +36,11 @@ type Execution struct {
 	ManifestWorkName string          `dynamodbav:"manifestWorkName,omitempty" json:"manifest_work_name,omitempty"`
 	OutputPath       string          `dynamodbav:"outputPath,omitempty" json:"output_path,omitempty"`
 	OutputStatus     OutputStatus    `dynamodbav:"outputStatus,omitempty" json:"output_status,omitempty"`
-	CreatedAt        string          `dynamodbav:"createdAt" json:"created_at"`
-	TACompletedAt    string          `dynamodbav:"taCompletedAt,omitempty" json:"ta_completed_at,omitempty"`
-	TADurationSeconds int            `dynamodbav:"taDuration,omitempty" json:"ta_duration_seconds,omitempty"`
-	CompletedAt      string          `dynamodbav:"completedAt,omitempty" json:"completed_at,omitempty"`
-	DurationSeconds  int             `dynamodbav:"duration,omitempty" json:"duration_seconds,omitempty"`
+	CreatedAt       string `dynamodbav:"createdAt" json:"created_at"`
+	CompletedAt     string `dynamodbav:"completedAt,omitempty" json:"completed_at,omitempty"`
+	RunnerSeconds   int    `dynamodbav:"runnerSeconds,omitempty" json:"runner_seconds,omitempty"`
+	UploadSeconds   int    `dynamodbav:"uploadSeconds,omitempty" json:"upload_seconds,omitempty"`
+	DurationSeconds int    `dynamodbav:"durationSeconds,omitempty" json:"duration_seconds,omitempty"`
 }
 
 // CreateRequest is the JSON body for POST /api/v0/trusted-actions/{action}/run.

@@ -32,8 +32,7 @@ type ExecutionStore interface {
 	Get(ctx context.Context, executionID string) (*Execution, error)
 	List(ctx context.Context, accountID string, limit int, filter *ListFilter) ([]*Execution, error)
 	UpdateStatus(ctx context.Context, executionID string, status ExecutionStatus, completedAt string, duration int) error
-	UpdateTACompletion(ctx context.Context, executionID string, taCompletedAt string, taDuration int) error
-	UpdateCompletion(ctx context.Context, executionID string, status ExecutionStatus, completedAt string, duration int, outputStatus OutputStatus, taCompletedAt string, taDuration int) error
+	UpdateCompletion(ctx context.Context, executionID string, status ExecutionStatus, completedAt string, duration int, runnerSeconds int, uploadSeconds int, outputStatus OutputStatus) error
 	UpdateManifestWorkName(ctx context.Context, executionID, mwName string) error
 	ListPending(ctx context.Context) ([]*Execution, error)
 }
@@ -218,47 +217,23 @@ func (s *DynamoExecutionStore) UpdateStatus(ctx context.Context, executionID str
 	return nil
 }
 
-func (s *DynamoExecutionStore) UpdateTACompletion(ctx context.Context, executionID string, taCompletedAt string, taDuration int) error {
+func (s *DynamoExecutionStore) UpdateCompletion(ctx context.Context, executionID string, status ExecutionStatus, completedAt string, duration int, runnerSeconds int, uploadSeconds int, outputStatus OutputStatus) error {
 	_, err := s.dynamoClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(s.tableName),
 		Key: map[string]types.AttributeValue{
 			"executionId": &types.AttributeValueMemberS{Value: executionID},
 		},
-		UpdateExpression: aws.String("SET taCompletedAt = :tc, taDuration = :td"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":tc": &types.AttributeValueMemberS{Value: taCompletedAt},
-			":td": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", taDuration)},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to update TA completion: %w", err)
-	}
-
-	s.logger.Info("TA completion updated",
-		"execution_id", executionID,
-		"ta_duration_seconds", taDuration,
-	)
-	return nil
-}
-
-func (s *DynamoExecutionStore) UpdateCompletion(ctx context.Context, executionID string, status ExecutionStatus, completedAt string, duration int, outputStatus OutputStatus, taCompletedAt string, taDuration int) error {
-	_, err := s.dynamoClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String(s.tableName),
-		Key: map[string]types.AttributeValue{
-			"executionId": &types.AttributeValueMemberS{Value: executionID},
-		},
-		UpdateExpression: aws.String("SET #status = :s, completedAt = :c, #dur = :d, outputStatus = :os, taCompletedAt = :tc, taDuration = :td"),
+		UpdateExpression: aws.String("SET #status = :s, completedAt = :c, durationSeconds = :d, runnerSeconds = :r, uploadSeconds = :u, outputStatus = :os"),
 		ExpressionAttributeNames: map[string]string{
 			"#status": "status",
-			"#dur":    "duration",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":s":  &types.AttributeValueMemberS{Value: string(status)},
 			":c":  &types.AttributeValueMemberS{Value: completedAt},
 			":d":  &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", duration)},
+			":r":  &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", runnerSeconds)},
+			":u":  &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", uploadSeconds)},
 			":os": &types.AttributeValueMemberS{Value: string(outputStatus)},
-			":tc": &types.AttributeValueMemberS{Value: taCompletedAt},
-			":td": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", taDuration)},
 		},
 	})
 	if err != nil {
@@ -269,7 +244,9 @@ func (s *DynamoExecutionStore) UpdateCompletion(ctx context.Context, executionID
 		"execution_id", executionID,
 		"status", status,
 		"output_status", outputStatus,
-		"ta_duration_seconds", taDuration,
+		"runner_seconds", runnerSeconds,
+		"upload_seconds", uploadSeconds,
+		"duration_seconds", duration,
 	)
 	return nil
 }

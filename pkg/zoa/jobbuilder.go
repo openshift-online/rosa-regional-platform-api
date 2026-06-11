@@ -119,6 +119,8 @@ func BuildManifestWork(tmpl *TATemplate, ctx RenderContext) (*workv1.ManifestWor
 							JsonPaths: []workv1.JsonPath{
 								{Name: "taSucceeded", Path: ".status.succeeded"},
 								{Name: "taFailed", Path: ".status.failed"},
+								{Name: "runnerStartTime", Path: ".status.startTime"},
+								{Name: "runnerCompletionTime", Path: ".status.completionTime"},
 							},
 						},
 					},
@@ -136,6 +138,7 @@ func BuildManifestWork(tmpl *TATemplate, ctx RenderContext) (*workv1.ManifestWor
 							JsonPaths: []workv1.JsonPath{
 								{Name: "uploadSucceeded", Path: ".status.succeeded"},
 								{Name: "uploadFailed", Path: ".status.failed"},
+								{Name: "uploadCompletionTime", Path: ".status.completionTime"},
 							},
 						},
 					},

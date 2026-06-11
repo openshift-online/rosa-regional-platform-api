@@ -106,10 +106,6 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 		return
 	}
 
-	if result.taCompleted() && exec.TACompletedAt == "" {
-		r.handleTACompletion(ctx, exec)
-	}
-
 	if result.applied && exec.Status == StatusPending {
 		if err := r.store.UpdateStatus(ctx, exec.ExecutionID, StatusRunning, "", 0); err != nil {
 			r.logger.Error("failed to update execution status to running",
@@ -157,49 +153,19 @@ func (r *Reconciler) handleTimeout(ctx context.Context, exec *Execution) {
 	)
 }
 
-// handleTACompletion records when the TA runner Job finishes (upload still running).
-func (r *Reconciler) handleTACompletion(ctx context.Context, exec *Execution) {
-	now := time.Now().UTC()
-	var taDuration int
-	createdAt, err := time.Parse(time.RFC3339, exec.CreatedAt)
-	if err == nil {
-		taDuration = int(now.Sub(createdAt).Seconds())
-	}
-
-	if err := r.store.UpdateTACompletion(ctx, exec.ExecutionID, now.Format(time.RFC3339), taDuration); err != nil {
-		r.logger.Error("failed to update TA completion",
-			"execution_id", exec.ExecutionID,
-			"error", err,
-		)
-		return
-	}
-
-	r.logger.Info("TA job completed, upload pending",
-		"execution_id", exec.ExecutionID,
-		"ta_duration_seconds", taDuration,
-	)
-}
-
 // handleCompletion deletes the ResourceBundle FIRST, then updates terminal status.
-// Both runner and uploader Jobs have finished at this point.
+// Computes durations from Job timestamps reported via Maestro feedback.
 func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, result *jobResult) {
 	if err := r.deleteResourceBundle(ctx, exec); err != nil {
 		return
 	}
 
 	now := time.Now().UTC()
-	var totalDuration int
-	createdAt, err := time.Parse(time.RFC3339, exec.CreatedAt)
-	if err == nil {
-		totalDuration = int(now.Sub(createdAt).Seconds())
-	}
+	createdAt, _ := time.Parse(time.RFC3339, exec.CreatedAt)
+	totalDuration := int(now.Sub(createdAt).Seconds())
 
-	taCompletedAt := exec.TACompletedAt
-	taDuration := exec.TADurationSeconds
-	if taCompletedAt == "" {
-		taCompletedAt = now.Format(time.RFC3339)
-		taDuration = totalDuration
-	}
+	runnerSeconds := result.computeRunnerSeconds()
+	uploadSeconds := result.computeUploadSeconds()
 
 	status := result.taStatus()
 	if status == "" {
@@ -207,7 +173,7 @@ func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, resu
 	}
 	outputStatus := result.outputStatus()
 
-	if err := r.store.UpdateCompletion(ctx, exec.ExecutionID, status, now.Format(time.RFC3339), totalDuration, outputStatus, taCompletedAt, taDuration); err != nil {
+	if err := r.store.UpdateCompletion(ctx, exec.ExecutionID, status, now.Format(time.RFC3339), totalDuration, runnerSeconds, uploadSeconds, outputStatus); err != nil {
 		r.logger.Error("resource bundle deleted but failed to update terminal status",
 			"execution_id", exec.ExecutionID,
 			"terminal_status", string(status),
@@ -221,7 +187,8 @@ func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, resu
 		"status", string(status),
 		"output_status", string(outputStatus),
 		"duration_seconds", totalDuration,
-		"ta_duration_seconds", taDuration,
+		"runner_seconds", runnerSeconds,
+		"upload_seconds", uploadSeconds,
 	)
 }
 
@@ -271,11 +238,14 @@ func (r *Reconciler) isTimedOut(exec *Execution) bool {
 
 // jobResult holds parsed completion info from ManifestWork feedback for both Jobs.
 type jobResult struct {
-	taSucceeded     bool
-	taFailed        bool
-	uploadSucceeded bool
-	uploadFailed    bool
-	applied         bool
+	taSucceeded         bool
+	taFailed            bool
+	uploadSucceeded     bool
+	uploadFailed        bool
+	applied             bool
+	runnerStartTime     string
+	runnerCompletionTime string
+	uploadCompletionTime string
 }
 
 func (jr *jobResult) taCompleted() bool {
@@ -310,6 +280,24 @@ func (jr *jobResult) outputStatus() OutputStatus {
 	return OutputStatusPending
 }
 
+func (jr *jobResult) computeRunnerSeconds() int {
+	start, err1 := time.Parse(time.RFC3339, jr.runnerStartTime)
+	end, err2 := time.Parse(time.RFC3339, jr.runnerCompletionTime)
+	if err1 != nil || err2 != nil {
+		return 0
+	}
+	return int(end.Sub(start).Seconds())
+}
+
+func (jr *jobResult) computeUploadSeconds() int {
+	runnerEnd, err1 := time.Parse(time.RFC3339, jr.runnerCompletionTime)
+	uploadEnd, err2 := time.Parse(time.RFC3339, jr.uploadCompletionTime)
+	if err1 != nil || err2 != nil {
+		return 0
+	}
+	return int(uploadEnd.Sub(runnerEnd).Seconds())
+}
+
 // parseManifestWorkStatus extracts Job status from both runner and uploader feedback.
 func (r *Reconciler) parseManifestWorkStatus(mw *workv1.ManifestWork) *jobResult {
 	result := &jobResult{}
@@ -332,6 +320,18 @@ func (r *Reconciler) parseManifestWorkStatus(mw *workv1.ManifestWork) *jobResult
 			case "uploadFailed":
 				if value.Value.Integer != nil && *value.Value.Integer > 0 {
 					result.uploadFailed = true
+				}
+			case "runnerStartTime":
+				if value.Value.String != nil {
+					result.runnerStartTime = *value.Value.String
+				}
+			case "runnerCompletionTime":
+				if value.Value.String != nil {
+					result.runnerCompletionTime = *value.Value.String
+				}
+			case "uploadCompletionTime":
+				if value.Value.String != nil {
+					result.uploadCompletionTime = *value.Value.String
 				}
 			}
 		}

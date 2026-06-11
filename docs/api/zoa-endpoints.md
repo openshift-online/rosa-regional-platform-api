@@ -1,6 +1,6 @@
 # ZOA API — Endpoint Reference
 
-**Last Updated Date**: 2026-06-10
+**Last Updated Date**: 2026-06-11
 
 **Base Path**: `/api/v0/trusted-actions`
 
@@ -174,24 +174,26 @@ S3 content (output/logs) is only fetched for terminal executions (`succeeded`, `
   "status": "succeeded",
   "output_status": "uploaded",
   "revision": "a1b2c3d",
+  "params": {"namespace": "maestro"},
   "created_at": "2026-06-10T12:00:00Z",
-  "ta_completed_at": "2026-06-10T12:00:10Z",
-  "ta_duration_seconds": 10,
-  "completed_at": "2026-06-10T12:00:12Z",
-  "duration_seconds": 12,
+  "completed_at": "2026-06-10T12:00:29Z",
+  "runner_seconds": 5,
+  "upload_seconds": 12,
+  "duration_seconds": 29,
 
   "output": [
     {"name": "maestro-abc-123", "namespace": "maestro", "status": "Running", "restarts": 0, "age": "3d"}
   ],
 
-  "logs": "[zoa] execution_id=fa65418c-... action=get_pods target=mc-useast1-1\n[zoa] operator=slopezma scope=kube-api type=read\n---\n..."
+  "logs": "[11:00:01] runner starting\n[zoa] execution_id=fa65418c-... action=get_pods target=mc-useast1-1\n...\n--- upload ---\n[11:00:06] upload starting\n[11:00:09] runner waited (3s)\n[11:00:10] configmap read (1s)\n[11:00:10] decoded (0s), uploading to s3\n"
 }
 ```
 
 **Notes:**
 
 - `output` is the parsed JSON from `/artifacts/output.json` (structure depends on the TA)
-- `logs` is the raw text content of `execution.log`
+- `logs` is the raw text content of `execution.log` (includes both runner and upload timeline)
+- `params` records the parameters passed at submission time (audit trail)
 - `output` and `logs` are only fetched when `output_status` is `"uploaded"`
 - If `output_status` is `"pending"` or `"failed"`, these fields are omitted
 - If S3 fetch fails for output/logs, the field is omitted (not an error response)
@@ -257,11 +259,12 @@ Filters are applied at DynamoDB level:
       "type": "read",
       "status": "succeeded",
       "output_status": "uploaded",
+      "params": {"namespace": "maestro"},
       "created_at": "2026-06-10T12:00:00Z",
-      "ta_completed_at": "2026-06-10T12:00:10Z",
-      "ta_duration_seconds": 10,
-      "completed_at": "2026-06-10T12:00:12Z",
-      "duration_seconds": 12
+      "completed_at": "2026-06-10T12:00:29Z",
+      "runner_seconds": 5,
+      "upload_seconds": 12,
+      "duration_seconds": 29
     }
   ],
   "total": 1,
@@ -440,11 +443,12 @@ pending → uploaded    (uploader Job succeeded)
 | Field | Set When | Meaning |
 |-------|----------|---------|
 | `created_at` | On POST (submission) | When the execution was requested |
-| `updated_at` | On every status change | Last time the reconciler touched this record |
-| `ta_completed_at` | On TA Job completion | When the runner Job finished |
-| `ta_duration_seconds` | On TA Job completion | `ta_completed_at - created_at` in seconds |
-| `completed_at` | On overall completion | When the full execution finished (incl. upload) |
-| `duration_seconds` | On overall completion | `completed_at - created_at` in seconds |
+| `completed_at` | On overall completion | When the reconciler detected both Jobs done |
+| `runner_seconds` | On overall completion | Runner Job wall-clock time (from K8s `.status.startTime` to `.status.completionTime`) |
+| `upload_seconds` | On overall completion | Time from runner completion to uploader completion (wait + configmap + decode + S3 upload) |
+| `duration_seconds` | On overall completion | Total wall-clock: `completed_at - created_at` (includes Maestro dispatch overhead) |
+
+**Derived metric** (not stored): `dispatch_overhead = duration_seconds - runner_seconds - upload_seconds`
 
 ---
 
@@ -462,17 +466,17 @@ pending → uploaded    (uploader Job succeeded)
 | `targetCluster` | String | — | Target MC identifier |
 | `scope` | String | — | `kube-api` or `aws-api` |
 | `type` | String | — | `read` or `write` |
+| `params` | Map | — | Execution parameters (audit trail) |
 | `status` | String | — | Current status |
 | `outputStatus` | String | — | `pending`, `uploaded`, or `failed` |
 | `revision` | String | — | Git SHA of TA definition |
 | `outputPath` | String | — | S3 URI for output.json |
 | `manifestWorkName` | String | — | Maestro RB name |
 | `createdAt` | String (RFC3339) | — | Submission timestamp |
-| `updatedAt` | String (RFC3339) | — | Last update timestamp |
-| `taCompletedAt` | String (RFC3339) | — | TA Job completion timestamp |
-| `taDurationSeconds` | Number | — | TA Job execution duration |
 | `completedAt` | String (RFC3339) | — | Overall completion timestamp |
-| `durationSeconds` | Number | — | Total wall-clock duration (incl. upload) |
+| `runnerSeconds` | Number | — | Runner Job duration (startTime → completionTime) |
+| `uploadSeconds` | Number | — | Upload duration (runner completion → uploader completion) |
+| `durationSeconds` | Number | — | Total wall-clock (created → reconciler detected completion) |
 
 ### GSI: `account-index`
 

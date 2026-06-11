@@ -316,15 +316,6 @@ func (r *Reconciler) parseManifestWorkStatus(mw *workv1.ManifestWork) *jobResult
 
 	for _, resourceStatus := range mw.Status.ResourceStatus.Manifests {
 		for _, value := range resourceStatus.StatusFeedbacks.Values {
-			var intVal int64
-			if value.Value.Integer != nil {
-				intVal = *value.Value.Integer
-			}
-			r.logger.Info("feedback value",
-				"manifest_work", mw.Name,
-				"name", value.Name,
-				"integer", intVal,
-			)
 			switch value.Name {
 			case "taSucceeded":
 				if value.Value.Integer != nil && *value.Value.Integer > 0 {

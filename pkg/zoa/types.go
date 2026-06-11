@@ -126,6 +126,7 @@ type TADescribeResponse struct {
 	WriteCooldownSeconds int           `json:"write_cooldown_seconds,omitempty"`
 	DryRunAction         string        `json:"dry_run_action,omitempty"`
 	Params               []TAParameter `json:"params,omitempty"`
+	RequiredFields       []string      `json:"required_fields"`
 }
 
 // JobConfig holds boilerplate configuration for Job generation,

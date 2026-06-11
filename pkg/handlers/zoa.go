@@ -412,6 +412,7 @@ func (h *ZoaHandler) Describe(w http.ResponseWriter, r *http.Request) {
 		WriteCooldownSeconds: tmpl.WriteCooldownSeconds,
 		DryRunAction:         tmpl.DryRunAction,
 		Params:               tmpl.Params,
+		RequiredFields:       []string{"target_cluster", "jira"},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -493,7 +494,7 @@ func validateParams(tmpl *zoa.TATemplate, params map[string]string) error {
 			for _, p := range tmpl.Params {
 				names = append(names, p.Name)
 			}
-			return fmt.Errorf("unknown parameter '%s'; allowed parameters: %s", k, strings.Join(names, ", "))
+			return fmt.Errorf("unknown parameter '%s'; allowed parameters: %s. Note: 'jira' is a required field for all trusted actions (pass as top-level field, not in params)", k, strings.Join(names, ", "))
 		}
 	}
 

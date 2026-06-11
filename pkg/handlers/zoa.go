@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,8 @@ import (
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
 	"github.com/openshift/rosa-regional-platform-api/pkg/zoa"
 )
+
+var jiraTicketRegex = regexp.MustCompile(`^[A-Z][A-Z0-9]+-\d+$`)
 
 // ZoaHandler handles ZOA Trusted Action endpoints.
 type ZoaHandler struct {
@@ -90,7 +93,11 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Jira == "" {
-		h.writeError(w, http.StatusBadRequest, "missing-jira", "jira is required (e.g. ROSAENG-1234)")
+		h.writeError(w, http.StatusBadRequest, "missing-jira", "jira is required for all trusted actions (e.g. ROSAENG-1234)")
+		return
+	}
+	if !isValidJiraFormat(req.Jira) {
+		h.writeError(w, http.StatusBadRequest, "invalid-jira", "jira does not have correct format; expected PROJECT-NUMBER (e.g. ROSAENG-1234)")
 		return
 	}
 
@@ -508,6 +515,10 @@ func hasParamWithDefault(tmpl *zoa.TATemplate, name, defaultVal string) bool {
 		}
 	}
 	return false
+}
+
+func isValidJiraFormat(jira string) bool {
+	return jiraTicketRegex.MatchString(jira)
 }
 
 func extractOperator(callerARN string) string {

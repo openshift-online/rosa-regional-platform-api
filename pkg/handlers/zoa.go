@@ -86,9 +86,48 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Jira == "" {
+		h.writeError(w, http.StatusBadRequest, "missing-jira", "jira is required (e.g. ROSAENG-1234)")
+		return
+	}
+
 	if err := validateParams(tmpl, req.Params); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid-params", err.Error())
 		return
+	}
+
+	if tmpl.Type == "write" && !req.Force && !req.DryRun {
+		cooldown := tmpl.WriteCooldownSeconds
+		if cooldown == 0 {
+			cooldown = h.jobConfig.WriteCooldownSeconds
+		}
+		if cooldown > 0 {
+			if err := h.checkWriteCooldown(ctx, accountID, action, req.TargetCluster, cooldown); err != nil {
+				h.writeError(w, http.StatusTooManyRequests, "write-cooldown", err.Error())
+				return
+			}
+		}
+	}
+
+	if !req.DryRun {
+		maxConcurrent := h.jobConfig.MaxConcurrentPerTarget
+		if maxConcurrent <= 0 {
+			maxConcurrent = 10
+		}
+		if err := h.checkMaxConcurrent(ctx, accountID, req.TargetCluster, maxConcurrent); err != nil {
+			h.writeError(w, http.StatusTooManyRequests, "max-concurrent", err.Error())
+			return
+		}
+	}
+
+	if req.DryRun && tmpl.DryRunAction != "" {
+		action = tmpl.DryRunAction
+		dryTmpl, ok := h.registry.Get(action)
+		if !ok {
+			h.writeError(w, http.StatusInternalServerError, "dry-run-error", "dry_run_action '"+tmpl.DryRunAction+"' not found in registry")
+			return
+		}
+		tmpl = dryTmpl
 	}
 
 	execID := uuid.New().String()
@@ -109,6 +148,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Action:        action,
 		TargetCluster: req.TargetCluster,
 		Params:        cleanParams,
+		Jira:          req.Jira,
 		Scope:         tmpl.Scope,
 		Type:          tmpl.Type,
 		Revision:      h.jobConfig.Revision,
@@ -352,11 +392,14 @@ func (h *ZoaHandler) Describe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := &zoa.TADescribeResponse{
-		Name:        tmpl.Name,
-		Scope:       tmpl.Scope,
-		Type:        tmpl.Type,
-		Description: tmpl.Description,
-		Params:      tmpl.Params,
+		Name:                 tmpl.Name,
+		Scope:                tmpl.Scope,
+		Type:                 tmpl.Type,
+		Description:          tmpl.Description,
+		ApprovalRequired:     tmpl.ApprovalRequired,
+		WriteCooldownSeconds: tmpl.WriteCooldownSeconds,
+		DryRunAction:         tmpl.DryRunAction,
+		Params:               tmpl.Params,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -478,4 +521,48 @@ func (h *ZoaHandler) writeError(w http.ResponseWriter, status int, code, reason 
 		"code":   code,
 		"reason": reason,
 	})
+}
+
+func (h *ZoaHandler) checkWriteCooldown(ctx context.Context, accountID, action, targetCluster string, cooldownSeconds int) error {
+	since := time.Now().UTC().Add(-time.Duration(cooldownSeconds) * time.Second).Format(time.RFC3339)
+	filter := &zoa.ListFilter{
+		Action:        action,
+		TargetCluster: targetCluster,
+		Since:         since,
+	}
+	recent, err := h.store.List(ctx, accountID, 1, filter)
+	if err != nil {
+		h.logger.Error("failed to check write cooldown", "error", err)
+		return nil
+	}
+	if len(recent) > 0 {
+		return fmt.Errorf("action '%s' was executed on '%s' recently (cooldown: %ds); use force=true to bypass", action, targetCluster, cooldownSeconds)
+	}
+	return nil
+}
+
+func (h *ZoaHandler) checkMaxConcurrent(ctx context.Context, accountID, targetCluster string, maxConcurrent int) error {
+	filter := &zoa.ListFilter{
+		TargetCluster: targetCluster,
+		Status:        string(zoa.StatusRunning),
+	}
+	running, err := h.store.List(ctx, accountID, int(maxConcurrent+1), filter)
+	if err != nil {
+		h.logger.Error("failed to check max concurrent", "error", err)
+		return nil
+	}
+	pendingFilter := &zoa.ListFilter{
+		TargetCluster: targetCluster,
+		Status:        string(zoa.StatusPending),
+	}
+	pending, err := h.store.List(ctx, accountID, int(maxConcurrent+1), pendingFilter)
+	if err != nil {
+		h.logger.Error("failed to check max concurrent pending", "error", err)
+		return nil
+	}
+	active := len(running) + len(pending)
+	if active >= maxConcurrent {
+		return fmt.Errorf("target '%s' has %d active executions (max: %d); wait for some to complete", targetCluster, active, maxConcurrent)
+	}
+	return nil
 }

@@ -31,22 +31,28 @@ type Execution struct {
 	Scope            string          `dynamodbav:"scope" json:"scope"`
 	Type             string          `dynamodbav:"type" json:"type,omitempty"`
 	Params           map[string]string `dynamodbav:"params,omitempty" json:"params,omitempty"`
+	Jira             string            `dynamodbav:"jira" json:"jira"`
 	Revision         string            `dynamodbav:"revision,omitempty" json:"revision,omitempty"`
 	Status           ExecutionStatus   `dynamodbav:"status" json:"status"`
 	ManifestWorkName string          `dynamodbav:"manifestWorkName,omitempty" json:"manifest_work_name,omitempty"`
 	OutputPath       string          `dynamodbav:"outputPath,omitempty" json:"output_path,omitempty"`
 	OutputStatus     OutputStatus    `dynamodbav:"outputStatus,omitempty" json:"output_status,omitempty"`
 	CreatedAt       string `dynamodbav:"createdAt" json:"created_at"`
+	UpdatedAt       string `dynamodbav:"updatedAt,omitempty" json:"updated_at,omitempty"`
 	CompletedAt     string `dynamodbav:"completedAt,omitempty" json:"completed_at,omitempty"`
 	RunnerSeconds   int    `dynamodbav:"runnerSeconds,omitempty" json:"runner_seconds,omitempty"`
 	UploadSeconds   int    `dynamodbav:"uploadSeconds,omitempty" json:"upload_seconds,omitempty"`
 	DurationSeconds int    `dynamodbav:"durationSeconds,omitempty" json:"duration_seconds,omitempty"`
+	TTL             int64  `dynamodbav:"ttl,omitempty" json:"-"`
 }
 
 // CreateRequest is the JSON body for POST /api/v0/trusted-actions/{action}/run.
 type CreateRequest struct {
 	TargetCluster string            `json:"target_cluster"`
 	Params        map[string]string `json:"params,omitempty"`
+	Jira          string            `json:"jira"`
+	Force         bool              `json:"force,omitempty"`
+	DryRun        bool              `json:"dry_run,omitempty"`
 }
 
 // ExecutionResponse is the full response format for GET /runs/{id}.
@@ -89,14 +95,17 @@ type RBACRule struct {
 
 // TATemplate defines a Trusted Action loaded from a simplified YAML file.
 type TATemplate struct {
-	Name           string        `yaml:"name" json:"name"`
-	Scope          string        `yaml:"scope" json:"scope"`
-	Type           string        `yaml:"type" json:"type"`
-	Description    string        `yaml:"description" json:"description"`
-	TimeoutSeconds int           `yaml:"timeout_seconds,omitempty" json:"timeout_seconds,omitempty"`
-	Params         []TAParameter `yaml:"params,omitempty" json:"params,omitempty"`
-	RBAC           *TARBAC       `yaml:"rbac" json:"-"`
-	Script         string        `yaml:"script" json:"-"`
+	Name                 string        `yaml:"name" json:"name"`
+	Scope                string        `yaml:"scope" json:"scope"`
+	Type                 string        `yaml:"type" json:"type"`
+	Description          string        `yaml:"description" json:"description"`
+	TimeoutSeconds       int           `yaml:"timeout_seconds,omitempty" json:"timeout_seconds,omitempty"`
+	ApprovalRequired     bool          `yaml:"approval_required,omitempty" json:"approval_required,omitempty"`
+	WriteCooldownSeconds int           `yaml:"write_cooldown_seconds,omitempty" json:"write_cooldown_seconds,omitempty"`
+	DryRunAction         string        `yaml:"dry_run_action,omitempty" json:"dry_run_action,omitempty"`
+	Params               []TAParameter `yaml:"params,omitempty" json:"params,omitempty"`
+	RBAC                 *TARBAC       `yaml:"rbac" json:"-"`
+	Script               string        `yaml:"script" json:"-"`
 }
 
 // TAListItem is the lean response for GET /trusted-actions (catalog listing).
@@ -109,11 +118,14 @@ type TAListItem struct {
 
 // TADescribeResponse is returned by GET /trusted-actions/{action}.
 type TADescribeResponse struct {
-	Name        string        `json:"name"`
-	Scope       string        `json:"scope"`
-	Type        string        `json:"type"`
-	Description string        `json:"description"`
-	Params      []TAParameter `json:"params,omitempty"`
+	Name                 string        `json:"name"`
+	Scope                string        `json:"scope"`
+	Type                 string        `json:"type"`
+	Description          string        `json:"description"`
+	ApprovalRequired     bool          `json:"approval_required,omitempty"`
+	WriteCooldownSeconds int           `json:"write_cooldown_seconds,omitempty"`
+	DryRunAction         string        `json:"dry_run_action,omitempty"`
+	Params               []TAParameter `json:"params,omitempty"`
 }
 
 // JobConfig holds boilerplate configuration for Job generation,
@@ -130,6 +142,8 @@ type JobConfig struct {
 	EntrypointScript        string `json:"entrypoint_script"`
 	UploadTimeoutSeconds    int    `json:"upload_timeout_seconds"`
 	UploadEntrypointScript  string `json:"upload_entrypoint_script"`
+	WriteCooldownSeconds    int    `json:"write_cooldown_seconds"`
+	MaxConcurrentPerTarget  int    `json:"max_concurrent_per_target"`
 }
 
 // RenderContext holds all the data needed to generate a ManifestWork for a TA execution.

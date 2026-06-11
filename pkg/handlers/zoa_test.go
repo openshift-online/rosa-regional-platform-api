@@ -192,7 +192,7 @@ func TestZoaHandler_Create_Success(t *testing.T) {
 	mc := &zoaMockMaestroClient{}
 	handler := newTestZoaHandler(t, store, mc)
 
-	body := `{"target_cluster": "mc01"}`
+	body := `{"target_cluster": "mc01", "jira": "ROSAENG-1234"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/trusted-actions/get_nodes/run", bytes.NewBufferString(body))
 	req = mux.SetURLVars(req, map[string]string{"action": "get_nodes"})
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ContextKeyAccountID, "111222333444"))
@@ -208,11 +208,30 @@ func TestZoaHandler_Create_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "get_nodes", resp.Action)
 	assert.Equal(t, "mc01", resp.TargetCluster)
+	assert.Equal(t, "ROSAENG-1234", resp.Jira)
 	assert.Equal(t, zoa.StatusPending, resp.Status)
 	assert.Equal(t, "read", resp.Type)
 	assert.Equal(t, "kube-api", resp.Scope)
 	assert.Equal(t, "test", resp.Operator)
 	assert.NotEmpty(t, resp.ExecutionID)
+}
+
+func TestZoaHandler_Create_MissingJira(t *testing.T) {
+	store := &mockExecutionStore{}
+	mc := &zoaMockMaestroClient{}
+	handler := newTestZoaHandler(t, store, mc)
+
+	body := `{"target_cluster": "mc01"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/trusted-actions/get_nodes/run", bytes.NewBufferString(body))
+	req = mux.SetURLVars(req, map[string]string{"action": "get_nodes"})
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ContextKeyAccountID, "111222333444"))
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ContextKeyCallerARN, "arn:aws:iam::111222333444:user/test"))
+
+	rr := httptest.NewRecorder()
+	handler.Create(rr, req)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.Contains(t, rr.Body.String(), "missing-jira")
 }
 
 func TestZoaHandler_Create_UnknownAction(t *testing.T) {
@@ -361,7 +380,7 @@ func TestZoaHandler_Create_UnknownParams(t *testing.T) {
 	mc := &zoaMockMaestroClient{}
 	handler := newTestZoaHandler(t, store, mc)
 
-	body := `{"target_cluster": "mc01", "params": {"namespace": "kube-system"}}`
+	body := `{"target_cluster": "mc01", "jira": "ROSAENG-1234", "params": {"namespace": "kube-system"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/trusted-actions/get_nodes/run", bytes.NewBufferString(body))
 	req = mux.SetURLVars(req, map[string]string{"action": "get_nodes"})
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ContextKeyAccountID, "111222333444"))

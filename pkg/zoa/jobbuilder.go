@@ -70,6 +70,12 @@ func BuildManifestWork(tmpl *TATemplate, ctx RenderContext) (*workv1.ManifestWor
 	}
 	manifests = append(manifests, outputRBACManifests...)
 
+	uploaderRBACManifests, err := buildUploaderRBAC(ctx, labels)
+	if err != nil {
+		return nil, fmt.Errorf("building uploader RBAC: %w", err)
+	}
+	manifests = append(manifests, uploaderRBACManifests...)
+
 	scriptCMManifest, err := buildScriptConfigMap(tmpl, ctx, labels)
 	if err != nil {
 		return nil, fmt.Errorf("building script configmap: %w", err)
@@ -370,6 +376,69 @@ func buildOutputRBAC(ctx RenderContext, saName string, labels map[string]string)
 			{
 				"kind":      "ServiceAccount",
 				"name":      saName,
+				"namespace": ctx.Namespace,
+			},
+		},
+	}
+	bindingManifest, err := toManifest(binding)
+	if err != nil {
+		return nil, err
+	}
+
+	return []workv1.Manifest{roleManifest, bindingManifest}, nil
+}
+
+// buildUploaderRBAC grants the uploader SA scoped permission to read the output ConfigMap and watch the runner Job.
+func buildUploaderRBAC(ctx RenderContext, labels map[string]string) ([]workv1.Manifest, error) {
+	roleName := fmt.Sprintf("zoa-uploader-%s", ctx.ExecID)
+	runnerJobName := "zoa-" + ctx.ExecID
+	outputCMName := "zoa-output-" + ctx.ExecID
+
+	role := map[string]interface{}{
+		"apiVersion": "rbac.authorization.k8s.io/v1",
+		"kind":       "Role",
+		"metadata": map[string]interface{}{
+			"name":      roleName,
+			"namespace": ctx.Namespace,
+			"labels":    labels,
+		},
+		"rules": []map[string]interface{}{
+			{
+				"apiGroups":     []string{""},
+				"resources":     []string{"configmaps"},
+				"verbs":         []string{"get"},
+				"resourceNames": []string{outputCMName},
+			},
+			{
+				"apiGroups":     []string{"batch"},
+				"resources":     []string{"jobs"},
+				"verbs":         []string{"get", "list", "watch"},
+				"resourceNames": []string{runnerJobName},
+			},
+		},
+	}
+	roleManifest, err := toManifest(role)
+	if err != nil {
+		return nil, err
+	}
+
+	binding := map[string]interface{}{
+		"apiVersion": "rbac.authorization.k8s.io/v1",
+		"kind":       "RoleBinding",
+		"metadata": map[string]interface{}{
+			"name":      roleName,
+			"namespace": ctx.Namespace,
+			"labels":    labels,
+		},
+		"roleRef": map[string]interface{}{
+			"apiGroup": "rbac.authorization.k8s.io",
+			"kind":     "Role",
+			"name":     roleName,
+		},
+		"subjects": []map[string]interface{}{
+			{
+				"kind":      "ServiceAccount",
+				"name":      uploaderSAName,
 				"namespace": ctx.Namespace,
 			},
 		},

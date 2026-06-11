@@ -33,18 +33,25 @@ Execute a Trusted Action on a target cluster.
 ```json
 {
   "target_cluster": "mc-useast1-1",
+  "jira": "ROSAENG-1234",
   "params": {
     "namespace": "maestro",
+    "name": "maestro-abc-123",
     "label_selector": "app=maestro",
     "verbose": "false"
-  }
+  },
+  "force": false,
+  "dry_run": false
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `target_cluster` | string | Yes | Target management cluster identifier |
+| `jira` | string | Yes | Jira ticket reference (e.g. `ROSAENG-1234`); stored in DynamoDB for audit |
 | `params` | object | No | Key-value pairs of TA parameters (all values are strings) |
+| `force` | boolean | No | Bypass write cooldown for write TAs (default: `false`) |
+| `dry_run` | boolean | No | Execute the TA's `dry_run_action` instead (preview; default: `false`) |
 
 ### Parameter Validation
 
@@ -52,6 +59,8 @@ Parameters are validated against the TA template definition:
 
 1. **Required params**: If a TA declares a parameter as `required: true`, it must be present and non-empty
 2. **Namespace scoping**: If a TA declares both `namespace` (default: `""`) and `all_namespaces` (default: `"false"`) parameters, the API enforces that either `namespace` is provided OR `all_namespaces=true` is set
+3. **Single-resource fetch (`name`)**: All `get_*` read TAs accept an optional `name` parameter. When provided, the TA fetches a single resource instead of listing all. Cluster-scoped resources (`get_nodes`, `get_namespaces`, `get_pvs`) also support `name`. Cannot be combined with `all_namespaces=true` (enforced in TA script). Response is normalized to list format (single item in array) for consistency
+4. **Write TA resource names**: Write TAs use a standardized `name` parameter (e.g. `rollout_restart`, `delete_pod`)
 
 ### Responses
 
@@ -61,7 +70,7 @@ Execution created and dispatched to Maestro.
 
 ```json
 {
-  "execution_id": "fa65418c-f4eb-4f5c-8314-baaeb695ba7d",
+  "id": "fa65418c-f4eb-4f5c-8314-baaeb695ba7d",
   "account_id": "123456789012",
   "caller_arn": "arn:aws:sts::123456789012:assumed-role/DevAccess/slopezma",
   "operator": "slopezma",
@@ -69,12 +78,14 @@ Execution created and dispatched to Maestro.
   "target_cluster": "mc-useast1-1",
   "scope": "kube-api",
   "type": "read",
+  "jira": "ROSAENG-1234",
   "status": "pending",
   "output_status": "pending",
   "revision": "a1b2c3d",
   "output_path": "s3://bucket-name/fa65418c-.../output.json",
   "manifest_work_name": "zoa-fa65418c-...",
-  "created_at": "2026-06-10T12:00:00Z"
+  "created_at": "2026-06-10T12:00:00Z",
+  "updated_at": "2026-06-10T12:00:00Z"
 }
 ```
 
@@ -92,6 +103,7 @@ Execution created and dispatched to Maestro.
 |-----------|-----------|
 | `invalid-request` | Request body is not valid JSON |
 | `missing-target-cluster` | `target_cluster` field is empty |
+| `missing-jira` | `jira` field is empty |
 | `invalid-params` | Required parameter missing or namespace scoping violated |
 
 #### 404 Not Found
@@ -125,6 +137,31 @@ Execution created and dispatched to Maestro.
 ```
 
 Indicates Maestro gRPC call failed. The execution record exists in DynamoDB with `status: failed`.
+
+#### 429 Too Many Requests
+
+Write cooldown active or max concurrent limit reached.
+
+```json
+{
+  "kind": "Error",
+  "code": "write-cooldown",
+  "reason": "action 'rollout_restart' was executed on 'mc-useast1-1' recently (cooldown: 300s); use force=true to bypass"
+}
+```
+
+```json
+{
+  "kind": "Error",
+  "code": "max-concurrent",
+  "reason": "target 'mc-useast1-1' has 10 active executions (max: 10); wait for some to complete"
+}
+```
+
+| Error Code | Condition |
+|-----------|-----------|
+| `write-cooldown` | Write TA executed on same target within cooldown window; use `force: true` to bypass |
+| `max-concurrent` | Target cluster has reached max concurrent executions (running + pending); dry-run requests are excluded |
 
 ---
 
@@ -163,7 +200,7 @@ S3 content (output/logs) is only fetched for terminal executions (`succeeded`, `
 
 ```json
 {
-  "execution_id": "fa65418c-f4eb-4f5c-8314-baaeb695ba7d",
+  "id": "fa65418c-f4eb-4f5c-8314-baaeb695ba7d",
   "account_id": "123456789012",
   "caller_arn": "arn:aws:sts::123456789012:assumed-role/DevAccess/slopezma",
   "operator": "slopezma",
@@ -171,11 +208,13 @@ S3 content (output/logs) is only fetched for terminal executions (`succeeded`, `
   "target_cluster": "mc-useast1-1",
   "scope": "kube-api",
   "type": "read",
+  "jira": "ROSAENG-1234",
   "status": "succeeded",
   "output_status": "uploaded",
   "revision": "a1b2c3d",
-  "params": {"namespace": "maestro"},
+  "params": {"namespace": "maestro", "name": "maestro-abc-123"},
   "created_at": "2026-06-10T12:00:00Z",
+  "updated_at": "2026-06-10T12:00:29Z",
   "completed_at": "2026-06-10T12:00:29Z",
   "runner_seconds": 5,
   "upload_seconds": 12,
@@ -194,6 +233,8 @@ S3 content (output/logs) is only fetched for terminal executions (`succeeded`, `
 - `output` is the parsed JSON from `/artifacts/output.json` (structure depends on the TA)
 - `logs` is the raw text content of `execution.log` (includes both runner and upload timeline)
 - `params` records the parameters passed at submission time (audit trail)
+- `jira` records the associated Jira ticket
+- `updated_at` reflects the last status transition (create, status change, or completion)
 - `output` and `logs` are only fetched when `output_status` is `"uploaded"`
 - If `output_status` is `"pending"` or `"failed"`, these fields are omitted
 - If S3 fetch fails for output/logs, the field is omitted (not an error response)
@@ -251,16 +292,18 @@ Filters are applied at DynamoDB level:
 {
   "items": [
     {
-      "execution_id": "fa65418c-...",
+      "id": "fa65418c-...",
       "action": "get_pods",
       "operator": "slopezma",
       "target_cluster": "mc-useast1-1",
       "scope": "kube-api",
       "type": "read",
+      "jira": "ROSAENG-1234",
       "status": "succeeded",
       "output_status": "uploaded",
       "params": {"namespace": "maestro"},
       "created_at": "2026-06-10T12:00:00Z",
+      "updated_at": "2026-06-10T12:00:29Z",
       "completed_at": "2026-06-10T12:00:29Z",
       "runner_seconds": 5,
       "upload_seconds": 12,
@@ -342,6 +385,9 @@ Describe a specific Trusted Action — includes full parameter definitions.
   "scope": "kube-api",
   "type": "read",
   "description": "List pods with status, restarts, age, and node placement",
+  "approval_required": false,
+  "write_cooldown_seconds": 0,
+  "dry_run_action": "",
   "params": [
     {
       "name": "namespace",
@@ -354,6 +400,12 @@ Describe a specific Trusted Action — includes full parameter definitions.
       "required": false,
       "default": "false",
       "description": "List pods across all namespaces"
+    },
+    {
+      "name": "name",
+      "required": false,
+      "default": "",
+      "description": "Specific pod name (omit to list all; cannot combine with all_namespaces)"
     },
     {
       "name": "label_selector",
@@ -370,6 +422,14 @@ Describe a specific Trusted Action — includes full parameter definitions.
   ]
 }
 ```
+
+**Template metadata fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `approval_required` | boolean | `false` | Whether peer approval is required (exposed for future workflow integration; not enforced yet) |
+| `write_cooldown_seconds` | integer | `0` (uses global default) | Per-TA write cooldown override in seconds |
+| `dry_run_action` | string | `""` | Name of a read TA to execute when `dry_run: true` is set in the request |
 
 #### 404 Not Found
 
@@ -401,11 +461,15 @@ All errors follow a consistent structure:
 |-------------|------|------|
 | 400 | `invalid-request` | Request body is not valid JSON |
 | 400 | `missing-target-cluster` | `target_cluster` not provided |
+| 400 | `missing-jira` | `jira` not provided |
 | 400 | `invalid-params` | Parameter validation failed |
 | 404 | `unknown-action` | TA name not found in registry |
 | 404 | `not-found` | Execution ID not found in DynamoDB |
+| 429 | `write-cooldown` | Write TA cooldown active on target (use `force: true` to bypass) |
+| 429 | `max-concurrent` | Target cluster at max concurrent executions |
 | 500 | `store-error` | DynamoDB operation failed |
 | 500 | `render-error` | ManifestWork generation failed |
+| 500 | `dry-run-error` | `dry_run_action` references unknown TA |
 | 502 | `maestro-error` | Maestro gRPC call failed |
 
 ---
@@ -443,12 +507,48 @@ pending → uploaded    (uploader Job succeeded)
 | Field | Set When | Meaning |
 |-------|----------|---------|
 | `created_at` | On POST (submission) | When the execution was requested |
+| `updated_at` | On every status transition | Last time the execution record changed (create, pending→running, completion) |
 | `completed_at` | On overall completion | When the reconciler detected both Jobs done |
 | `runner_seconds` | On overall completion | Runner Job wall-clock time (from K8s `.status.startTime` to `.status.completionTime`) |
 | `upload_seconds` | On overall completion | Time from runner completion to uploader completion (wait + configmap + decode + S3 upload) |
 | `duration_seconds` | On overall completion | Total wall-clock: `completed_at - created_at` (includes Maestro dispatch overhead) |
 
 **Derived metric** (not stored): `dispatch_overhead = duration_seconds - runner_seconds - upload_seconds`
+
+---
+
+## Rate Limiting and Safety Controls
+
+### Write Cooldown
+
+Write TAs enforce a cooldown period between executions of the same action on the same target cluster:
+
+- **Global default**: 300 seconds (configured via `write_cooldown_seconds` in `zoa-job-config` ConfigMap)
+- **Per-TA override**: `write_cooldown_seconds` in the TA template YAML (e.g. `delete_pod` uses 60s)
+- **Bypass**: Set `force: true` in the request body
+- **Scope**: Checks recent successful/pending/running executions of the same action on the same target within the cooldown window
+- **Dry-run**: Cooldown is not enforced when `dry_run: true`
+
+Returns HTTP 429 with code `write-cooldown` when active.
+
+### Max Concurrent Per Target
+
+Limits the number of in-flight executions per target cluster:
+
+- **Global default**: 10 (configured via `max_concurrent_per_target` in `zoa-job-config` ConfigMap)
+- **Counts**: Running + pending executions for the target cluster (scoped to caller's account)
+- **Excludes**: Dry-run executions (`dry_run: true` skips this check entirely)
+
+Returns HTTP 429 with code `max-concurrent` when the limit is reached.
+
+### Dry-Run Preview
+
+Write TAs can specify a `dry_run_action` (name of a read TA) for preview:
+
+- Request body: `"dry_run": true`
+- Executes the referenced read TA instead (e.g. `get_deployments` before `rollout_restart`)
+- The execution record stores the substituted read action name and type
+- Write cooldown and max-concurrent checks are bypassed for dry-run requests
 
 ---
 
@@ -467,16 +567,19 @@ pending → uploaded    (uploader Job succeeded)
 | `scope` | String | — | `kube-api` or `aws-api` |
 | `type` | String | — | `read` or `write` |
 | `params` | Map | — | Execution parameters (audit trail) |
+| `jira` | String | — | Associated Jira ticket |
 | `status` | String | — | Current status |
 | `outputStatus` | String | — | `pending`, `uploaded`, or `failed` |
 | `revision` | String | — | Git SHA of TA definition |
 | `outputPath` | String | — | S3 URI for output.json |
 | `manifestWorkName` | String | — | Maestro RB name |
 | `createdAt` | String (RFC3339) | — | Submission timestamp |
+| `updatedAt` | String (RFC3339) | — | Last status transition timestamp |
 | `completedAt` | String (RFC3339) | — | Overall completion timestamp |
 | `runnerSeconds` | Number | — | Runner Job duration (startTime → completionTime) |
 | `uploadSeconds` | Number | — | Upload duration (runner completion → uploader completion) |
 | `durationSeconds` | Number | — | Total wall-clock (created → reconciler detected completion) |
+| `ttl` | Number (epoch seconds) | — | DynamoDB TTL for auto-expiry (365 days; not exposed in API responses) |
 
 ### GSI: `account-index`
 
@@ -496,6 +599,8 @@ Projection: ALL
 
 Projection: ALL
 
+**TTL**: Execution records auto-expire after 365 days via DynamoDB TTL on the `ttl` attribute (set at creation). The `ttl` field is internal and not returned in API responses.
+
 ---
 
 ## Usage Examples
@@ -504,7 +609,7 @@ Projection: ALL
 
 ```bash
 # CLI wraps: POST + poll GET /runs/{id}?fields=none + final GET /runs/{id}?fields=output
-$ zoa run get_pods -t mc-useast1-1 -n maestro
+$ zoa run get_pods -t mc-useast1-1 -n maestro --jira ROSAENG-1234
 ```
 
 ### Execute (raw curl)
@@ -515,7 +620,18 @@ curl -X POST "$ZOA_API/api/v0/trusted-actions/get_pods/run" \
   --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
   -H "x-amz-security-token: $AWS_SESSION_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"target_cluster": "mc-useast1-1", "params": {"namespace": "maestro"}}'
+  -d '{"target_cluster": "mc-useast1-1", "jira": "ROSAENG-1234", "params": {"namespace": "maestro"}}'
+```
+
+### Dry-run preview before a write action
+
+```bash
+curl -X POST "$ZOA_API/api/v0/trusted-actions/rollout_restart/run" \
+  --aws-sigv4 "aws:amz:us-east-1:execute-api" \
+  --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+  -H "x-amz-security-token: $AWS_SESSION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"target_cluster": "mc-useast1-1", "jira": "ROSAENG-1234", "dry_run": true, "params": {"namespace": "maestro", "name": "maestro"}}'
 ```
 
 ### Poll execution status

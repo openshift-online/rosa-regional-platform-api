@@ -17,14 +17,15 @@ type Config struct {
 }
 
 type ZoaConfig struct {
-	Enabled      bool
-	TableName    string
-	BucketName   string
-	JobRoleARN   string
-	AWSRegion    string
-	TemplatesDir string
-	JobConfigDir string
-	PollInterval time.Duration
+	Enabled        bool
+	TableName      string
+	AuditTableName string
+	BucketName     string
+	JobRoleARN     string
+	AWSRegion      string
+	TemplatesDir   string
+	JobConfigDir   string
+	PollInterval   time.Duration
 }
 
 type ServerConfig struct {

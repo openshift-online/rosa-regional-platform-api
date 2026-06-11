@@ -220,6 +220,12 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 
 		zoaStore := zoa.NewDynamoExecutionStore(cfg.Zoa.TableName, zoaDynamoClient, logger)
 
+		var auditStore zoa.AuditStore
+		if cfg.Zoa.AuditTableName != "" {
+			auditStore = zoa.NewDynamoAuditStore(cfg.Zoa.AuditTableName, zoaDynamoClient, logger)
+			logger.Info("ZOA audit logging enabled", "table", cfg.Zoa.AuditTableName)
+		}
+
 		zoaRegistry := zoa.NewTemplateRegistry(logger)
 		if err := zoaRegistry.LoadFromDir(cfg.Zoa.TemplatesDir); err != nil {
 			return nil, fmt.Errorf("failed to load ZOA templates from %s: %w", cfg.Zoa.TemplatesDir, err)
@@ -239,6 +245,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		zoaHandler := apphandlers.NewZoaHandler(zoaStore, zoaRegistry, maestroClient, s3Client, apphandlers.ZoaConfig{
 			BucketName: cfg.Zoa.BucketName,
 			JobConfig:  jobConfig,
+			AuditStore: auditStore,
 		}, logger)
 
 		zoaRouter := apiRouter.PathPrefix("/api/v0/trusted-actions").Subrouter()
@@ -247,6 +254,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		} else {
 			zoaRouter.Use(authMiddleware.RequireAllowedAccount)
 		}
+		zoaRouter.HandleFunc("/audit", zoaHandler.AuditList).Methods(http.MethodGet)
 		zoaRouter.HandleFunc("/runs", zoaHandler.List).Methods(http.MethodGet)
 		zoaRouter.HandleFunc("/runs/{id}", zoaHandler.Get).Methods(http.MethodGet)
 		zoaRouter.HandleFunc("/{action}/run", zoaHandler.Create).Methods(http.MethodPost)

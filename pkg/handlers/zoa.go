@@ -23,6 +23,7 @@ import (
 // ZoaHandler handles ZOA Trusted Action endpoints.
 type ZoaHandler struct {
 	store         zoa.ExecutionStore
+	auditStore    zoa.AuditStore
 	registry      *zoa.TemplateRegistry
 	maestroClient maestro.ClientInterface
 	s3Client      S3Client
@@ -40,6 +41,7 @@ type S3Client interface {
 type ZoaConfig struct {
 	BucketName string
 	JobConfig  *zoa.JobConfig
+	AuditStore zoa.AuditStore
 }
 
 // NewZoaHandler creates a new ZoaHandler.
@@ -53,6 +55,7 @@ func NewZoaHandler(
 ) *ZoaHandler {
 	return &ZoaHandler{
 		store:         store,
+		auditStore:    cfg.AuditStore,
 		registry:      registry,
 		maestroClient: maestroClient,
 		s3Client:      s3Client,
@@ -207,6 +210,8 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"scope", tmpl.Scope,
 		"type", tmpl.Type,
 	)
+
+	h.recordAudit(ctx, r, accountID, callerARN, operator, action, req.TargetCluster, http.StatusAccepted)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
@@ -566,3 +571,72 @@ func (h *ZoaHandler) checkMaxConcurrent(ctx context.Context, accountID, targetCl
 	}
 	return nil
 }
+
+func (h *ZoaHandler) recordAudit(ctx context.Context, r *http.Request, accountID, callerARN, operator, action, targetCluster string, statusCode int) {
+	if h.auditStore == nil {
+		return
+	}
+	entry := &zoa.AuditEntry{
+		AccountID:     accountID,
+		CallerARN:     callerARN,
+		Operator:      operator,
+		Method:        r.Method,
+		Path:          r.URL.Path,
+		Action:        action,
+		TargetCluster: targetCluster,
+		StatusCode:    statusCode,
+	}
+	if err := h.auditStore.Record(ctx, entry); err != nil {
+		h.logger.Error("failed to record audit entry", "error", err)
+	}
+}
+
+// AuditList handles GET /api/v0/trusted-actions/audit
+func (h *ZoaHandler) AuditList(w http.ResponseWriter, r *http.Request) {
+	if h.auditStore == nil {
+		h.writeError(w, http.StatusNotFound, "audit-disabled", "Audit logging is not enabled")
+		return
+	}
+
+	ctx := r.Context()
+	accountID := middleware.GetAccountID(ctx)
+
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 200 {
+			limit = parsed
+		}
+	}
+
+	sinceStr := ""
+	if s := r.URL.Query().Get("since"); s != "" {
+		parsed, err := parseSince(s)
+		if err == nil {
+			sinceStr = parsed
+		}
+	}
+
+	filter := &zoa.AuditFilter{
+		Action:        r.URL.Query().Get("action"),
+		Operator:      r.URL.Query().Get("operator"),
+		TargetCluster: r.URL.Query().Get("target"),
+		Method:        r.URL.Query().Get("method"),
+		Since:         sinceStr,
+	}
+
+	entries, err := h.auditStore.List(ctx, accountID, limit, filter)
+	if err != nil {
+		h.logger.Error("failed to list audit entries", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "store-error", "Failed to list audit log")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"kind":  "AuditList",
+		"items": entries,
+		"total": len(entries),
+	})
+}
+

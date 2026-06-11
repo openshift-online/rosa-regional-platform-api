@@ -255,6 +255,7 @@ func (h *ZoaHandler) List(w http.ResponseWriter, r *http.Request) {
 		Operator:      query.Get("operator"),
 		Scope:         query.Get("scope"),
 		Type:          query.Get("type"),
+		OutputStatus:  query.Get("output_status"),
 	}
 
 	if since := query.Get("since"); since != "" {
@@ -420,12 +421,24 @@ func parseFields(raw string) fieldsSelection {
 }
 
 func validateParams(tmpl *zoa.TATemplate, params map[string]string) error {
+	allowed := make(map[string]bool, len(tmpl.Params))
 	for _, p := range tmpl.Params {
+		allowed[p.Name] = true
 		if p.Required {
 			val, ok := params[p.Name]
 			if !ok || val == "" {
 				return fmt.Errorf("required parameter '%s' is missing", p.Name)
 			}
+		}
+	}
+
+	for k := range params {
+		if !allowed[k] {
+			names := make([]string, 0, len(tmpl.Params))
+			for _, p := range tmpl.Params {
+				names = append(names, p.Name)
+			}
+			return fmt.Errorf("unknown parameter '%s'; allowed parameters: %s", k, strings.Join(names, ", "))
 		}
 	}
 

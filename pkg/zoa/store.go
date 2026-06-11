@@ -23,6 +23,7 @@ type ListFilter struct {
 	Operator      string
 	Scope         string
 	Type          string
+	OutputStatus  string
 	Since         string // RFC3339 timestamp
 }
 
@@ -139,6 +140,11 @@ func (s *DynamoExecutionStore) List(ctx context.Context, accountID string, limit
 			filterParts = append(filterParts, "#fld_type = :ftype")
 			exprNames["#fld_type"] = "type"
 			exprValues[":ftype"] = &types.AttributeValueMemberS{Value: filter.Type}
+		}
+		if filter.OutputStatus != "" {
+			filterParts = append(filterParts, "#fld_output_status = :foutput_status")
+			exprNames["#fld_output_status"] = "outputStatus"
+			exprValues[":foutput_status"] = &types.AttributeValueMemberS{Value: filter.OutputStatus}
 		}
 		if filter.Since != "" {
 			keyCondition += " AND #fld_created >= :fsince"

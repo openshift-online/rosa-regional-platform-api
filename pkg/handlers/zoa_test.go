@@ -355,3 +355,27 @@ func TestZoaHandler_Catalog(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, float64(1), resp["total"])
 }
+
+func TestZoaHandler_Create_UnknownParams(t *testing.T) {
+	store := &mockExecutionStore{}
+	mc := &zoaMockMaestroClient{}
+	handler := newTestZoaHandler(t, store, mc)
+
+	body := `{"target_cluster": "mc01", "params": {"namespace": "kube-system"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/trusted-actions/get_nodes/run", bytes.NewBufferString(body))
+	req = mux.SetURLVars(req, map[string]string{"action": "get_nodes"})
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ContextKeyAccountID, "111222333444"))
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ContextKeyCallerARN, "arn:aws:iam::111222333444:user/test"))
+
+	rr := httptest.NewRecorder()
+	handler.Create(rr, req)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+
+	var errResp map[string]interface{}
+	err := json.NewDecoder(rr.Body).Decode(&errResp)
+	require.NoError(t, err)
+	assert.Equal(t, "invalid-params", errResp["code"])
+	assert.Contains(t, errResp["reason"], "unknown parameter 'namespace'")
+	assert.Contains(t, errResp["reason"], "node_selector")
+}

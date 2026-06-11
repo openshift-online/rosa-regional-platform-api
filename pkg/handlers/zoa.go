@@ -94,7 +94,14 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := validateParams(tmpl, req.Params); err != nil {
+	cleanParams := make(map[string]string, len(req.Params))
+	for k, v := range req.Params {
+		if k != "" {
+			cleanParams[k] = v
+		}
+	}
+
+	if err := validateParams(tmpl, cleanParams); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid-params", err.Error())
 		return
 	}
@@ -135,13 +142,6 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	execID := uuid.New().String()
 	operator := extractOperator(callerARN)
-
-	cleanParams := make(map[string]string, len(req.Params))
-	for k, v := range req.Params {
-		if k != "" {
-			cleanParams[k] = v
-		}
-	}
 
 	exec := &zoa.Execution{
 		ExecutionID:   execID,

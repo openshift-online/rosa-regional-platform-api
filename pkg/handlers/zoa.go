@@ -94,6 +94,13 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 	execID := uuid.New().String()
 	operator := extractOperator(callerARN)
 
+	cleanParams := make(map[string]string, len(req.Params))
+	for k, v := range req.Params {
+		if k != "" {
+			cleanParams[k] = v
+		}
+	}
+
 	exec := &zoa.Execution{
 		ExecutionID:   execID,
 		AccountID:     accountID,
@@ -101,7 +108,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Operator:      operator,
 		Action:        action,
 		TargetCluster: req.TargetCluster,
-		Params:        req.Params,
+		Params:        cleanParams,
 		Scope:         tmpl.Scope,
 		Type:          tmpl.Type,
 		Revision:      h.jobConfig.Revision,

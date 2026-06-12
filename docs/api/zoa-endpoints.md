@@ -13,6 +13,7 @@
 | `POST` | `/{action}/run` | `Create` | Execute a Trusted Action |
 | `GET` | `/runs/{id}` | `Get` | Retrieve execution details |
 | `GET` | `/runs` | `List` | List executions (filtered, paginated) |
+| `GET` | `/audit` | `AuditList` | List API call audit log entries |
 | `GET` | `/` | `Catalog` | List all available Trusted Actions |
 | `GET` | `/{action}` | `Describe` | Describe a specific Trusted Action |
 
@@ -329,6 +330,68 @@ Filters are applied at DynamoDB level:
 
 ---
 
+## GET /audit
+
+List API call audit log entries for the authenticated account. Every API call (POST, GET) is recorded in a separate DynamoDB audit table for compliance.
+
+**Prerequisite**: Audit logging must be enabled (`ZOA_AUDIT_TABLE_NAME` configured). If not enabled, returns 404 with `audit-disabled`.
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | integer (1-200) | 50 | Max results per page |
+| `action` | string | — | Filter by TA name |
+| `target` | string | — | Filter by target cluster |
+| `operator` | string | — | Filter by operator name |
+| `method` | string | — | Filter by HTTP method: `GET`, `POST` |
+| `since` | string | — | Time filter (duration shorthand or RFC3339) |
+
+### Responses
+
+#### 200 OK
+
+```json
+{
+  "kind": "AuditList",
+  "items": [
+    {
+      "id": "e2f91a3b-...",
+      "account_id": "123456789012",
+      "caller_arn": "arn:aws:sts::123456789012:assumed-role/DevAccess/slopezma",
+      "operator": "slopezma",
+      "method": "POST",
+      "path": "/api/v0/trusted-actions/get_pods/run",
+      "action": "get_pods",
+      "target_cluster": "mc-useast1-1",
+      "status_code": 202,
+      "timestamp": "2026-06-12T10:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+**Notes:**
+
+- Audit entries are scoped to the caller's account (same as runs)
+- Sorted by `timestamp` descending (most recent first)
+- TTL: Entries auto-expire after 365 days
+
+#### 404 Not Found
+
+```json
+{
+  "kind": "Error",
+  "code": "audit-disabled",
+  "reason": "Audit logging is not enabled"
+}
+```
+
+Returned when `ZOA_AUDIT_TABLE_NAME` is not configured in the deployment.
+
+---
+
 ## GET /
 
 List all available Trusted Actions (catalog).
@@ -467,6 +530,7 @@ All errors follow a consistent structure:
 | 400 | `invalid-request` | Request body is not valid JSON |
 | 400 | `missing-target-cluster` | `target_cluster` not provided |
 | 400 | `missing-jira` | `jira` not provided |
+| 400 | `invalid-jira` | `jira` format invalid (expected `PROJECT-NUMBER`, e.g. `ROSAENG-1234`) |
 | 400 | `invalid-params` | Parameter validation failed |
 | 404 | `unknown-action` | TA name not found in registry |
 | 404 | `not-found` | Execution ID not found in DynamoDB |
@@ -476,6 +540,7 @@ All errors follow a consistent structure:
 | 500 | `render-error` | ManifestWork generation failed |
 | 500 | `dry-run-error` | `dry_run_action` references unknown TA |
 | 502 | `maestro-error` | Maestro gRPC call failed |
+| 404 | `audit-disabled` | Audit logging not configured (GET /audit only) |
 
 ---
 
@@ -618,6 +683,26 @@ Projection: ALL
 Projection: ALL
 
 **TTL**: Execution records auto-expire after 365 days via DynamoDB TTL on the `ttl` attribute (set at creation). The `ttl` field is internal and not returned in API responses.
+
+### Table: `<env>-regional-zoa-audit-log`
+
+| Attribute | Type | Key | Description |
+|-----------|------|-----|-------------|
+| `accountId` | String | PK | AWS account ID of caller |
+| `timestamp` | String (RFC3339) | SK | When the API call was made |
+| `id` | String (UUID) | — | Unique audit entry ID |
+| `callerArn` | String | — | Full ARN of STS caller |
+| `operator` | String | — | Extracted operator name |
+| `method` | String | — | HTTP method (`GET`, `POST`) |
+| `path` | String | — | Request path (e.g. `/api/v0/trusted-actions/get_pods/run`) |
+| `action` | String | — | TA name (if applicable) |
+| `targetCluster` | String | — | Target cluster (if applicable) |
+| `statusCode` | Number | — | HTTP response status code |
+| `ttl` | Number (epoch seconds) | — | DynamoDB TTL for auto-expiry (365 days) |
+
+**Key design**: Uses `accountId` as PK and `timestamp` as SK, enabling efficient time-range queries per account without a GSI. Sorted by timestamp descending.
+
+**TTL**: Audit entries auto-expire after 365 days.
 
 ---
 

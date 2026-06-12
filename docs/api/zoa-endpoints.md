@@ -80,6 +80,7 @@ Execution created and dispatched to Maestro.
   "scope": "kube-api",
   "type": "read",
   "jira": "ROSAENG-1234",
+  "approval_state": "not_required",
   "status": "pending",
   "output_status": "pending",
   "revision": "a1b2c3d",
@@ -89,6 +90,15 @@ Execution created and dispatched to Maestro.
   "updated_at": "2026-06-10T12:00:00Z"
 }
 ```
+
+**Approval state values:**
+
+| Value | Meaning |
+|-------|---------|
+| `not_required` | TA policy is `authorization.approval: none` — no approval needed |
+| `pending` | Approval required but not yet obtained (execution blocked) |
+| `approved` | Required approvals received — execution authorized |
+| `rejected` | Approval explicitly denied — execution will not proceed |
 
 #### 400 Bad Request
 
@@ -208,6 +218,7 @@ S3 content (output/logs) is only fetched for terminal executions (`succeeded`, `
   "scope": "kube-api",
   "type": "read",
   "jira": "ROSAENG-1234",
+  "approval_state": "not_required",
   "status": "succeeded",
   "output_status": "uploaded",
   "revision": "a1b2c3d",
@@ -301,6 +312,7 @@ Filters are applied at DynamoDB level:
       "scope": "kube-api",
       "type": "read",
       "jira": "ROSAENG-1234",
+      "approval_state": "not_required",
       "status": "succeeded",
       "output_status": "uploaded",
       "params": {"namespace": "maestro"},
@@ -491,7 +503,9 @@ Describe a specific Trusted Action — includes full parameter definitions.
   "scope": "kube-api",
   "type": "read",
   "description": "List pods with status, restarts, age, and node placement",
-  "approval_required": false,
+  "authorization": {
+    "approval": "none"
+  },
   "write_cooldown_seconds": 0,
   "dry_run_action": "",
   "params": [
@@ -533,7 +547,7 @@ Describe a specific Trusted Action — includes full parameter definitions.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `approval_required` | boolean | `false` | Whether peer approval is required (exposed for future workflow integration; not enforced yet) |
+| `authorization` | object | `{"approval": "none"}` | Authorization policy for this TA. `approval` is `"none"` (no approval needed) or a structured object defining approval requirements (min_count, ttl, approver rules). See authorization design. |
 | `write_cooldown_seconds` | integer | `0` (uses global default) | Per-TA write cooldown override in seconds |
 | `dry_run_action` | string | `""` | Name of a read TA to execute when `dry_run: true` is set in the request |
 

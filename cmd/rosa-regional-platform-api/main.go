@@ -155,8 +155,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 		if auditTable := os.Getenv("ZOA_AUDIT_TABLE_NAME"); auditTable != "" {
 			cfg.Zoa.AuditTableName = auditTable
-		} else if cfg.Zoa.TableName != "" {
-			cfg.Zoa.AuditTableName = strings.Replace(cfg.Zoa.TableName, "-zoa-executions", "-zoa-audit-log", 1)
 		}
 		logger.Info("ZOA trusted actions enabled",
 			"table", cfg.Zoa.TableName,

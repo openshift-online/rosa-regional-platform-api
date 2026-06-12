@@ -261,7 +261,7 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	h.recordAudit(ctx, r, accountID, callerARN, operator, http.StatusOK, "", "", execID, "")
 
-	fields := parseFields(r.URL.Query().Get("fields"))
+	fields := parseInclude(r.URL.Query().Get("include"))
 
 	response := &zoa.ExecutionResponse{
 		Execution: exec,
@@ -269,7 +269,7 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	if exec.Status == zoa.StatusSucceeded || exec.Status == zoa.StatusFailed || exec.Status == zoa.StatusTimedOut {
 		if exec.OutputStatus == zoa.OutputStatusUploaded {
-			if fields.includeOutput {
+			if fields.output {
 				outputURI := exec.OutputPath
 				if outputURI == "" {
 					outputURI = exec.ExecutionID + "/output.json"
@@ -287,7 +287,7 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			if fields.includeLogs {
+			if fields.logs {
 				logsURI := strings.Replace(exec.OutputPath, "/output.json", "/execution.log", 1)
 				if exec.OutputPath == "" {
 					logsURI = exec.ExecutionID + "/execution.log"
@@ -486,27 +486,23 @@ func parseS3URI(uri string) (bucket, key string) {
 	return path[:idx], path[idx+1:]
 }
 
-type fieldsSelection struct {
-	includeOutput bool
-	includeLogs   bool
+type includeSelection struct {
+	output bool
+	logs   bool
 }
 
-func parseFields(raw string) fieldsSelection {
+func parseInclude(raw string) includeSelection {
 	if raw == "" {
-		return fieldsSelection{includeOutput: true}
+		return includeSelection{}
 	}
 
-	if raw == "all" {
-		return fieldsSelection{includeOutput: true, includeLogs: true}
-	}
-
-	sel := fieldsSelection{}
+	sel := includeSelection{}
 	for _, f := range strings.Split(raw, ",") {
 		switch strings.TrimSpace(f) {
 		case "output":
-			sel.includeOutput = true
+			sel.output = true
 		case "logs":
-			sel.includeLogs = true
+			sel.logs = true
 		}
 	}
 

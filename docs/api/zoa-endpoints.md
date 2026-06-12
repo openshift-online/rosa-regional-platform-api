@@ -180,20 +180,18 @@ Retrieve an execution's metadata and optionally its output/logs.
 
 | Parameter | Values | Default | Description |
 |-----------|--------|---------|-------------|
-| `fields` | `output`, `logs`, `all`, `none`, or comma-separated combination | `output` | Controls which S3 content is included |
+| `include` | `output`, `logs`, or comma-separated combination | (none) | Opt-in: which S3 content to include alongside metadata |
 
-**Field selection behavior:**
+**Content selection behavior:**
 
-| `fields` Value | Metadata | Output | Logs |
-|----------------|----------|--------|------|
-| (empty/omitted) | Yes | Yes | No |
+| `include` Value | Metadata | Output | Logs |
+|-----------------|----------|--------|------|
+| (empty/omitted) | Yes | No | No |
 | `output` | Yes | Yes | No |
 | `logs` | Yes | No | Yes |
 | `output,logs` | Yes | Yes | Yes |
-| `all` | Yes | Yes | Yes |
-| `none` | Yes | No | No |
 
-S3 content (output/logs) is only fetched for terminal executions (`succeeded`, `failed`, `timed_out`). For `pending` or `running` executions, only metadata is returned regardless of `fields`.
+S3 content (output/logs) is only fetched for terminal executions (`succeeded`, `failed`, `timed_out`). For `pending` or `running` executions, only metadata is returned regardless of `include`.
 
 ### Responses
 
@@ -326,7 +324,7 @@ Filters are applied at DynamoDB level:
 **Notes:**
 
 - List responses do NOT include `output` or `logs` (metadata only)
-- Use `GET /runs/{id}` with `fields` parameter for full content
+- Use `GET /runs/{id}` with `include` parameter for full content
 
 ---
 
@@ -380,7 +378,7 @@ All audited calls record consistent fields; fields not applicable to a given cal
       "caller_arn": "arn:aws:sts::123456789012:assumed-role/DevAccess/slopezma",
       "operator": "slopezma",
       "method": "GET",
-      "path": "/api/v0/trusted-actions/runs/1a2cc9ec-fac0-43eb-ba2b-b3f1124f6aea?fields=output",
+      "path": "/api/v0/trusted-actions/runs/1a2cc9ec-fac0-43eb-ba2b-b3f1124f6aea?include=output",
       "action": "",
       "target_cluster": "",
       "execution_id": "1a2cc9ec-fac0-43eb-ba2b-b3f1124f6aea",
@@ -766,7 +764,7 @@ Projection: ALL
 ### Execute a Trusted Action (synchronous via CLI)
 
 ```bash
-# CLI wraps: POST + poll GET /runs/{id}?fields=none + final GET /runs/{id}?fields=output
+# CLI wraps: POST + poll GET /runs/{id} (metadata) + final GET /runs/{id}?include=output
 $ zoa run get_pods -t mc-useast1-1 -n maestro --jira ROSAENG-1234
 ```
 
@@ -795,7 +793,7 @@ curl -X POST "$ZOA_API/api/v0/trusted-actions/rollout_restart/run" \
 ### Poll execution status
 
 ```bash
-curl "$ZOA_API/api/v0/trusted-actions/runs/fa65418c-...?fields=none" \
+curl "$ZOA_API/api/v0/trusted-actions/runs/fa65418c-..." \
   --aws-sigv4 "aws:amz:us-east-1:execute-api" \
   --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
   -H "x-amz-security-token: $AWS_SESSION_TOKEN"
@@ -804,7 +802,7 @@ curl "$ZOA_API/api/v0/trusted-actions/runs/fa65418c-...?fields=none" \
 ### Retrieve output
 
 ```bash
-curl "$ZOA_API/api/v0/trusted-actions/runs/fa65418c-...?fields=output" \
+curl "$ZOA_API/api/v0/trusted-actions/runs/fa65418c-...?include=output" \
   --aws-sigv4 "aws:amz:us-east-1:execute-api" \
   --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
   -H "x-amz-security-token: $AWS_SESSION_TOKEN"

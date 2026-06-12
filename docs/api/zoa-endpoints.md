@@ -1,6 +1,6 @@
 # ZOA API — Endpoint Reference
 
-**Last Updated Date**: 2026-06-11
+**Last Updated Date**: 2026-06-12
 
 **Base Path**: `/api/v0/trusted-actions`
 
@@ -161,7 +161,7 @@ Write cooldown active or max concurrent limit reached.
 | Error Code | Condition |
 |-----------|-----------|
 | `write-cooldown` | Write TA executed on same target within cooldown window; use `force: true` to bypass |
-| `max-concurrent` | Target cluster has reached max concurrent executions (running + pending); dry-run requests are excluded |
+| `max-concurrent` | Target cluster has reached max concurrent executions (running + pending); dry-run and force requests are excluded |
 
 ---
 
@@ -266,6 +266,9 @@ List executions for the authenticated account, with filtering and pagination.
 | `operator` | string | — | Filter by operator name (exact match) |
 | `scope` | string | — | Filter by scope: `kube-api`, `aws-api` |
 | `type` | string | — | Filter by type: `read`, `write` |
+| `output_status` | string | — | Filter by output status: `pending`, `uploaded`, `failed` |
+| `dry_run` | string | — | Filter by dry-run flag: `true` or `false` |
+| `force` | string | — | Filter by force flag: `true` or `false` |
 | `since` | string | — | Time filter (see below) |
 
 **`since` format:**
@@ -307,7 +310,9 @@ Filters are applied at DynamoDB level:
       "completed_at": "2026-06-10T12:00:29Z",
       "runner_seconds": 5,
       "upload_seconds": 12,
-      "duration_seconds": 29
+      "duration_seconds": 29,
+      "dry_run": false,
+      "force": false
     }
   ],
   "total": 1,
@@ -466,7 +471,7 @@ All errors follow a consistent structure:
 | 404 | `unknown-action` | TA name not found in registry |
 | 404 | `not-found` | Execution ID not found in DynamoDB |
 | 429 | `write-cooldown` | Write TA cooldown active on target (use `force: true` to bypass) |
-| 429 | `max-concurrent` | Target cluster at max concurrent executions |
+| 429 | `max-concurrent` | Target cluster at max concurrent executions (use `force: true` to bypass) |
 | 500 | `store-error` | DynamoDB operation failed |
 | 500 | `render-error` | ManifestWork generation failed |
 | 500 | `dry-run-error` | `dry_run_action` references unknown TA |
@@ -538,6 +543,7 @@ Limits the number of in-flight executions per target cluster:
 - **Global default**: 10 (configured via `max_concurrent_per_target` in `zoa-job-config` ConfigMap)
 - **Counts**: Running + pending executions for the target cluster (scoped to caller's account)
 - **Excludes**: Dry-run executions (`dry_run: true` skips this check entirely)
+- **Bypass**: Set `force: true` in the request body (same as write cooldown)
 
 Returns HTTP 429 with code `max-concurrent` when the limit is reached.
 
@@ -547,8 +553,17 @@ Write TAs can specify a `dry_run_action` (name of a read TA) for preview:
 
 - Request body: `"dry_run": true`
 - Executes the referenced read TA instead (e.g. `get_deployments` before `rollout_restart`)
-- The execution record stores the substituted read action name and type
+- The execution record stores: original `action` (what was requested), `executed_action` (what actually ran), and `dry_run: true`
 - Write cooldown and max-concurrent checks are bypassed for dry-run requests
+
+### Force Bypass
+
+The `force: true` flag bypasses both safety controls:
+
+- **Write cooldown**: Skipped entirely
+- **Max concurrent**: Skipped entirely
+- The `force` flag is recorded in the execution record for audit purposes
+- Queryable via `GET /runs?force=true` to find all forced executions
 
 ---
 
@@ -572,6 +587,9 @@ Write TAs can specify a `dry_run_action` (name of a read TA) for preview:
 | `outputStatus` | String | — | `pending`, `uploaded`, or `failed` |
 | `revision` | String | — | Git SHA of TA definition |
 | `outputPath` | String | — | S3 URI for output.json |
+| `executedAction` | String | — | Substituted action name (dry-run only) |
+| `dryRun` | Boolean | — | Whether this was a dry-run execution |
+| `force` | Boolean | — | Whether safety checks were bypassed |
 | `manifestWorkName` | String | — | Maestro RB name |
 | `createdAt` | String (RFC3339) | — | Submission timestamp |
 | `updatedAt` | String (RFC3339) | — | Last status transition timestamp |
@@ -656,6 +674,24 @@ curl "$ZOA_API/api/v0/trusted-actions/runs/fa65418c-...?fields=output" \
 
 ```bash
 curl "$ZOA_API/api/v0/trusted-actions/runs?status=failed&since=24h&limit=50" \
+  --aws-sigv4 "aws:amz:us-east-1:execute-api" \
+  --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+  -H "x-amz-security-token: $AWS_SESSION_TOKEN"
+```
+
+### List forced executions in the last 7 days
+
+```bash
+curl "$ZOA_API/api/v0/trusted-actions/runs?force=true&since=7d" \
+  --aws-sigv4 "aws:amz:us-east-1:execute-api" \
+  --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+  -H "x-amz-security-token: $AWS_SESSION_TOKEN"
+```
+
+### List dry-run executions
+
+```bash
+curl "$ZOA_API/api/v0/trusted-actions/runs?dry_run=true&since=24h" \
   --aws-sigv4 "aws:amz:us-east-1:execute-api" \
   --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
   -H "x-amz-security-token: $AWS_SESSION_TOKEN"

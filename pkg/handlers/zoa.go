@@ -126,7 +126,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if !req.DryRun {
+	if !req.DryRun && !req.Force {
 		maxConcurrent := h.jobConfig.MaxConcurrentPerTarget
 		if maxConcurrent <= 0 {
 			maxConcurrent = 10
@@ -163,6 +163,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Action:         originalAction,
 		ExecutedAction: executedAction,
 		DryRun:         req.DryRun,
+		Force:          req.Force,
 		TargetCluster:  req.TargetCluster,
 		Params:         cleanParams,
 		Jira:           req.Jira,

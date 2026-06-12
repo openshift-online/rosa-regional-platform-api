@@ -29,6 +29,7 @@ type Execution struct {
 	Action           string          `dynamodbav:"action" json:"action"`
 	ExecutedAction   string          `dynamodbav:"executedAction,omitempty" json:"executed_action,omitempty"`
 	DryRun           bool            `dynamodbav:"dryRun,omitempty" json:"dry_run,omitempty"`
+	Force            bool            `dynamodbav:"force,omitempty" json:"force,omitempty"`
 	TargetCluster    string          `dynamodbav:"targetCluster" json:"target_cluster"`
 	Scope            string          `dynamodbav:"scope" json:"scope"`
 	Type             string          `dynamodbav:"type" json:"type,omitempty"`

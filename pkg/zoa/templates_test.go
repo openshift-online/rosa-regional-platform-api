@@ -179,7 +179,7 @@ func TestBuildManifestWork_NamespaceScoped(t *testing.T) {
 func TestBuildManifestWork_AWSScope_NoSAManifest(t *testing.T) {
 	tmpl := &TATemplate{
 		Name:  "describe_instance",
-		Scope: "aws",
+		Scope: "aws-api",
 		Type:  "read",
 		RBAC:  nil,
 		Script: "aws ec2 describe-instances > /artifacts/output.json\n",
@@ -194,7 +194,7 @@ func TestBuildManifestWork_AWSScope_NoSAManifest(t *testing.T) {
 		Operator:      "slopezma",
 		Revision:      "abc",
 		Type:          "read",
-		Scope:         "aws",
+		Scope:         "aws-api",
 		Params:        nil,
 		Config: JobConfig{
 			Image:            "quay.io/test/zoa-tools:latest",
@@ -268,7 +268,7 @@ func TestTemplateRegistry_List(t *testing.T) {
 func TestTemplateRegistry_ListAll(t *testing.T) {
 	registry := NewTemplateRegistry(templateTestLogger())
 	registry.templates["action_a"] = &TATemplate{Name: "action_a", Scope: "kube-api", Script: "echo a"}
-	registry.templates["action_b"] = &TATemplate{Name: "action_b", Scope: "aws", Script: "echo b"}
+	registry.templates["action_b"] = &TATemplate{Name: "action_b", Scope: "aws-api", Script: "echo b"}
 
 	all := registry.ListAll()
 	assert.Len(t, all, 2)
@@ -278,7 +278,7 @@ func TestIsRunnerSADynamic(t *testing.T) {
 	assert.True(t, isRunnerSADynamic("kube-api"))
 	assert.True(t, isRunnerSADynamic("custom"))
 	assert.True(t, isRunnerSADynamic(""))
-	assert.False(t, isRunnerSADynamic("aws"))
+	assert.False(t, isRunnerSADynamic("aws-api"))
 }
 
 func TestScopeTypeToRunnerSA(t *testing.T) {
@@ -291,8 +291,8 @@ func TestScopeTypeToRunnerSA(t *testing.T) {
 	}{
 		{"kube-api read uses per-exec SA", "kube-api", "read", "abc123", "zoa-runner-abc123"},
 		{"kube-api write uses per-exec SA", "kube-api", "write", "def456", "zoa-runner-def456"},
-		{"aws read uses static SA", "aws", "read", "xyz789", "zoa-aws-read"},
-		{"aws write uses static SA", "aws", "write", "xyz789", "zoa-aws-write"},
+		{"aws-api read uses static SA", "aws-api", "read", "xyz789", "zoa-aws-read"},
+		{"aws-api write uses static SA", "aws-api", "write", "xyz789", "zoa-aws-write"},
 		{"unknown scope uses per-exec SA", "custom", "read", "abc123", "zoa-runner-abc123"},
 	}
 

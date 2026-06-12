@@ -470,9 +470,21 @@ List all available Trusted Actions (catalog).
       "scope": "kube-api",
       "type": "write",
       "description": "Perform a rolling restart of a deployment"
+    },
+    {
+      "name": "list_eks_clusters",
+      "scope": "aws-api",
+      "type": "read",
+      "description": "List all EKS clusters in the target account region"
+    },
+    {
+      "name": "list_vpc_endpoints",
+      "scope": "aws-api",
+      "type": "read",
+      "description": "List all VPC endpoints in the target account region (compact summary)"
     }
   ],
-  "total": 15
+  "total": 22
 }
 ```
 

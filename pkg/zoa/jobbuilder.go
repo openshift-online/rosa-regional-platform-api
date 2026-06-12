@@ -173,7 +173,7 @@ func buildLabels(ctx RenderContext) map[string]string {
 // For kube-api TAs, a per-execution SA is created. For AWS TAs, static SAs are used.
 func scopeTypeToRunnerSA(scope, taType, execID string) string {
 	switch scope {
-	case "aws":
+	case "aws-api":
 		if taType == "write" {
 			return "zoa-aws-write"
 		}
@@ -184,9 +184,9 @@ func scopeTypeToRunnerSA(scope, taType, execID string) string {
 }
 
 // isRunnerSADynamic returns true when the runner SA is per-execution (created and
-// destroyed with the ManifestWork). Static SAs (aws scope) are pre-provisioned.
+// destroyed with the ManifestWork). Static SAs (aws-api scope) are pre-provisioned.
 func isRunnerSADynamic(scope string) bool {
-	return scope != "aws"
+	return scope != "aws-api"
 }
 
 func buildServiceAccount(saName string, ctx RenderContext, labels map[string]string) (workv1.Manifest, error) {

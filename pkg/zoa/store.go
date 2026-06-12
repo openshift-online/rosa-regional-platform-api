@@ -24,6 +24,8 @@ type ListFilter struct {
 	Scope         string
 	Type          string
 	OutputStatus  string
+	DryRun        *bool
+	Force         *bool
 	Since         string // RFC3339 timestamp
 }
 
@@ -147,6 +149,16 @@ func (s *DynamoExecutionStore) List(ctx context.Context, accountID string, limit
 			filterParts = append(filterParts, "#fld_output_status = :foutput_status")
 			exprNames["#fld_output_status"] = "outputStatus"
 			exprValues[":foutput_status"] = &types.AttributeValueMemberS{Value: filter.OutputStatus}
+		}
+		if filter.DryRun != nil {
+			filterParts = append(filterParts, "#fld_dryrun = :fdryrun")
+			exprNames["#fld_dryrun"] = "dryRun"
+			exprValues[":fdryrun"] = &types.AttributeValueMemberBOOL{Value: *filter.DryRun}
+		}
+		if filter.Force != nil {
+			filterParts = append(filterParts, "#fld_force = :fforce")
+			exprNames["#fld_force"] = "force"
+			exprValues[":fforce"] = &types.AttributeValueMemberBOOL{Value: *filter.Force}
 		}
 		if filter.Since != "" {
 			keyCondition += " AND #fld_created >= :fsince"

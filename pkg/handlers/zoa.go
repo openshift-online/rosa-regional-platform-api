@@ -317,6 +317,20 @@ func (h *ZoaHandler) List(w http.ResponseWriter, r *http.Request) {
 		Type:          query.Get("type"),
 		OutputStatus:  query.Get("output_status"),
 	}
+	if v := query.Get("dry_run"); v == "true" {
+		b := true
+		filter.DryRun = &b
+	} else if v == "false" {
+		b := false
+		filter.DryRun = &b
+	}
+	if v := query.Get("force"); v == "true" {
+		b := true
+		filter.Force = &b
+	} else if v == "false" {
+		b := false
+		filter.Force = &b
+	}
 
 	if since := query.Get("since"); since != "" {
 		if ts, err := parseSince(since); err == nil {

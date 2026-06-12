@@ -88,15 +88,18 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.TargetCluster == "" {
+		h.recordAudit(ctx, r, accountID, callerARN, extractOperator(callerARN), http.StatusBadRequest, action, "", "", "")
 		h.writeError(w, http.StatusBadRequest, "missing-target-cluster", "target_cluster is required")
 		return
 	}
 
 	if req.Jira == "" {
+		h.recordAudit(ctx, r, accountID, callerARN, extractOperator(callerARN), http.StatusBadRequest, action, req.TargetCluster, "", "")
 		h.writeError(w, http.StatusBadRequest, "missing-jira", "jira is required for all trusted actions (e.g. ROSAENG-1234)")
 		return
 	}
 	if !isValidJiraFormat(req.Jira) {
+		h.recordAudit(ctx, r, accountID, callerARN, extractOperator(callerARN), http.StatusBadRequest, action, req.TargetCluster, "", req.Jira)
 		h.writeError(w, http.StatusBadRequest, "invalid-jira", "jira does not have correct format; expected PROJECT-NUMBER (e.g. ROSAENG-1234)")
 		return
 	}
@@ -109,6 +112,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validateParams(tmpl, cleanParams); err != nil {
+		h.recordAudit(ctx, r, accountID, callerARN, extractOperator(callerARN), http.StatusBadRequest, action, req.TargetCluster, "", req.Jira)
 		h.writeError(w, http.StatusBadRequest, "invalid-params", err.Error())
 		return
 	}
@@ -120,6 +124,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 		if cooldown > 0 {
 			if err := h.checkWriteCooldown(ctx, accountID, action, req.TargetCluster, cooldown); err != nil {
+				h.recordAudit(ctx, r, accountID, callerARN, extractOperator(callerARN), http.StatusTooManyRequests, action, req.TargetCluster, "", req.Jira)
 				h.writeError(w, http.StatusTooManyRequests, "write-cooldown", err.Error())
 				return
 			}
@@ -132,6 +137,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 			maxConcurrent = 10
 		}
 		if err := h.checkMaxConcurrent(ctx, accountID, req.TargetCluster, maxConcurrent); err != nil {
+			h.recordAudit(ctx, r, accountID, callerARN, extractOperator(callerARN), http.StatusTooManyRequests, action, req.TargetCluster, "", req.Jira)
 			h.writeError(w, http.StatusTooManyRequests, "max-concurrent", err.Error())
 			return
 		}
@@ -226,7 +232,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"type", tmpl.Type,
 	)
 
-	h.recordAudit(ctx, r, accountID, callerARN, operator, action, req.TargetCluster, http.StatusAccepted)
+	h.recordAudit(ctx, r, accountID, callerARN, operator, http.StatusAccepted, originalAction, req.TargetCluster, execID, req.Jira)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
@@ -236,6 +242,9 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Get handles GET /api/v0/trusted-actions/runs/{id}
 func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	accountID := middleware.GetAccountID(ctx)
+	callerARN := middleware.GetCallerARN(ctx)
+	operator := extractOperator(callerARN)
 	execID := mux.Vars(r)["id"]
 
 	exec, err := h.store.Get(ctx, execID)
@@ -249,6 +258,8 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotFound, "not-found", "Execution not found")
 		return
 	}
+
+	h.recordAudit(ctx, r, accountID, callerARN, operator, http.StatusOK, "", "", execID, "")
 
 	fields := parseFields(r.URL.Query().Get("fields"))
 
@@ -352,6 +363,10 @@ func (h *ZoaHandler) List(w http.ResponseWriter, r *http.Request) {
 		Limit:   limit,
 		HasMore: len(executions) >= limit,
 	}
+
+	callerARN := middleware.GetCallerARN(ctx)
+	operator := extractOperator(callerARN)
+	h.recordAudit(ctx, r, accountID, callerARN, operator, http.StatusOK, "", "", "", "")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -606,7 +621,7 @@ func (h *ZoaHandler) checkMaxConcurrent(ctx context.Context, accountID, targetCl
 	return nil
 }
 
-func (h *ZoaHandler) recordAudit(ctx context.Context, r *http.Request, accountID, callerARN, operator, action, targetCluster string, statusCode int) {
+func (h *ZoaHandler) recordAudit(ctx context.Context, r *http.Request, accountID, callerARN, operator string, statusCode int, action, targetCluster, executionID, jira string) {
 	if h.auditStore == nil {
 		return
 	}
@@ -615,9 +630,11 @@ func (h *ZoaHandler) recordAudit(ctx context.Context, r *http.Request, accountID
 		CallerARN:     callerARN,
 		Operator:      operator,
 		Method:        r.Method,
-		Path:          r.URL.Path,
+		Path:          r.URL.RequestURI(),
 		Action:        action,
 		TargetCluster: targetCluster,
+		ExecutionID:   executionID,
+		Jira:          jira,
 		StatusCode:    statusCode,
 	}
 	if err := h.auditStore.Record(ctx, entry); err != nil {
@@ -664,6 +681,10 @@ func (h *ZoaHandler) AuditList(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "store-error", "Failed to list audit log")
 		return
 	}
+
+	callerARN := middleware.GetCallerARN(ctx)
+	operator := extractOperator(callerARN)
+	h.recordAudit(ctx, r, accountID, callerARN, operator, http.StatusOK, "", "", "", "")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

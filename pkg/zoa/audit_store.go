@@ -22,8 +22,10 @@ type AuditEntry struct {
 	Operator      string `dynamodbav:"operator" json:"operator"`
 	Method        string `dynamodbav:"method" json:"method"`
 	Path          string `dynamodbav:"path" json:"path"`
-	Action        string `dynamodbav:"action,omitempty" json:"action,omitempty"`
-	TargetCluster string `dynamodbav:"targetCluster,omitempty" json:"target_cluster,omitempty"`
+	Action        string `dynamodbav:"action" json:"action"`
+	TargetCluster string `dynamodbav:"targetCluster" json:"target_cluster"`
+	ExecutionID   string `dynamodbav:"executionId" json:"execution_id"`
+	Jira          string `dynamodbav:"jira" json:"jira"`
 	StatusCode    int    `dynamodbav:"statusCode" json:"status_code"`
 	Timestamp     string `dynamodbav:"timestamp" json:"timestamp"`
 	TTL           int64  `dynamodbav:"ttl,omitempty" json:"-"`

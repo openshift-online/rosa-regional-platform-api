@@ -153,12 +153,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 		} else {
 			cfg.Zoa.JobConfigDir = "/etc/zoa/job-config"
 		}
+		if auditTable := os.Getenv("ZOA_AUDIT_TABLE_NAME"); auditTable != "" {
+			cfg.Zoa.AuditTableName = auditTable
+		}
 		logger.Info("ZOA trusted actions enabled",
 			"table", cfg.Zoa.TableName,
 			"bucket", cfg.Zoa.BucketName,
 			"region", cfg.Zoa.AWSRegion,
 			"templates_dir", cfg.Zoa.TemplatesDir,
 			"job_config_dir", cfg.Zoa.JobConfigDir,
+			"audit_table", cfg.Zoa.AuditTableName,
 		)
 	}
 

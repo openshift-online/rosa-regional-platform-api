@@ -332,7 +332,12 @@ Filters are applied at DynamoDB level:
 
 ## GET /audit
 
-List API call audit log entries for the authenticated account. Every API call (POST, GET) is recorded in a separate DynamoDB audit table for compliance.
+List API call audit log entries for the authenticated account.
+
+**Audited endpoints**: `POST /{action}/run`, `GET /runs/{id}`, `GET /runs`, `GET /audit`.
+**Not audited**: `GET /` (catalog), `GET /{action}` (describe) — public metadata, no sensitive data.
+
+All audited calls record consistent fields; fields not applicable to a given call type are stored as empty strings.
 
 **Prerequisite**: Audit logging must be enabled (`ZOA_AUDIT_TABLE_NAME` configured). If not enabled, returns 404 with `audit-disabled`.
 
@@ -364,11 +369,41 @@ List API call audit log entries for the authenticated account. Every API call (P
       "path": "/api/v0/trusted-actions/get_pods/run",
       "action": "get_pods",
       "target_cluster": "mc-useast1-1",
+      "execution_id": "1a2cc9ec-fac0-43eb-ba2b-b3f1124f6aea",
+      "jira": "ROSAENG-1234",
       "status_code": 202,
       "timestamp": "2026-06-12T10:00:00Z"
+    },
+    {
+      "id": "f3a82b4c-...",
+      "account_id": "123456789012",
+      "caller_arn": "arn:aws:sts::123456789012:assumed-role/DevAccess/slopezma",
+      "operator": "slopezma",
+      "method": "GET",
+      "path": "/api/v0/trusted-actions/runs/1a2cc9ec-fac0-43eb-ba2b-b3f1124f6aea?fields=output",
+      "action": "",
+      "target_cluster": "",
+      "execution_id": "1a2cc9ec-fac0-43eb-ba2b-b3f1124f6aea",
+      "jira": "",
+      "status_code": 200,
+      "timestamp": "2026-06-12T10:00:30Z"
+    },
+    {
+      "id": "a7c42d5e-...",
+      "account_id": "123456789012",
+      "caller_arn": "arn:aws:sts::123456789012:assumed-role/DevAccess/slopezma",
+      "operator": "slopezma",
+      "method": "GET",
+      "path": "/api/v0/trusted-actions/runs?limit=20&since=1h",
+      "action": "",
+      "target_cluster": "",
+      "execution_id": "",
+      "jira": "",
+      "status_code": 200,
+      "timestamp": "2026-06-12T10:01:00Z"
     }
   ],
-  "total": 1
+  "total": 3
 }
 ```
 
@@ -376,6 +411,11 @@ List API call audit log entries for the authenticated account. Every API call (P
 
 - Audit entries are scoped to the caller's account (same as runs)
 - Sorted by `timestamp` descending (most recent first)
+- All entries have the same schema; fields not applicable to a call type are empty strings
+- `execution_id` is populated for `POST /run` (created ID) and `GET /runs/{id}` (accessed ID)
+- `jira` and `action`/`target_cluster` are populated only for `POST /run` calls
+- `path` includes the full request URI (path + query parameters) for GET requests
+- Rejected POST requests (400/429) are also audited with available context
 - TTL: Entries auto-expire after 365 days
 
 #### 404 Not Found
@@ -694,13 +734,28 @@ Projection: ALL
 | `callerArn` | String | — | Full ARN of STS caller |
 | `operator` | String | — | Extracted operator name |
 | `method` | String | — | HTTP method (`GET`, `POST`) |
-| `path` | String | — | Request path (e.g. `/api/v0/trusted-actions/get_pods/run`) |
-| `action` | String | — | TA name (if applicable) |
-| `targetCluster` | String | — | Target cluster (if applicable) |
+| `path` | String | — | Full request URI (path + query string) |
+| `action` | String | — | TA name (populated for POST /run) |
+| `targetCluster` | String | — | Target cluster (populated for POST /run) |
+| `executionId` | String | — | Execution ID (POST /run: created ID; GET /runs/{id}: accessed ID) |
+| `jira` | String | — | Jira ticket (populated for POST /run) |
 | `statusCode` | Number | — | HTTP response status code |
 | `ttl` | Number (epoch seconds) | — | DynamoDB TTL for auto-expiry (365 days) |
 
 **Key design**: Uses `accountId` as PK and `timestamp` as SK, enabling efficient time-range queries per account without a GSI. Sorted by timestamp descending.
+
+**Field consistency**: All entries have the same fields. Fields not applicable to a given endpoint are stored as empty strings, ensuring uniform schema for querying and reporting.
+
+**Audited endpoints and field population**:
+
+| Endpoint | `action` | `target_cluster` | `execution_id` | `jira` |
+|----------|----------|-------------------|-----------------|--------|
+| `POST /{action}/run` | TA name | target cluster | created exec ID | ticket |
+| `GET /runs/{id}` | — | — | accessed exec ID | — |
+| `GET /runs` | — | — | — | — |
+| `GET /audit` | — | — | — | — |
+
+**Rejected requests**: POST requests rejected by validation (400) or rate limits (429) are also audited with whatever context is available at the point of rejection.
 
 **TTL**: Audit entries auto-expire after 365 days.
 

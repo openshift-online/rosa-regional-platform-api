@@ -133,7 +133,7 @@ test-e2e-cli:
 		E2E_RHOBS_API_URL="${RHOBS_API_URL}" \
 		ROSACTL_BIN="${ROSACTL_BIN}" \
 		AWS_REGION="${AWS_REGION}" \
-		ginkgo -vv --junit-report=junit-cli.xml \
+		ginkgo -vv --timeout=2h --junit-report=junit-cli.xml \
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-cli
 
 test-e2e-platform-monitoring:

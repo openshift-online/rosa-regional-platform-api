@@ -195,11 +195,11 @@ make test-e2e-container \
 - Set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` directly, OR
 - Ensure your credentials file contains all necessary settings
 
-**Or use Docker/Podman directly**:
+**Or use Podman/Docker directly**:
 
 Standard approach (mounts entire `~/.aws` directory):
 ```bash
-docker run --rm \
+podman run --rm \
   -e E2E_BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod" \
   -e E2E_ACCOUNT_ID="123456789012" \
   -e AWS_PROFILE="my-aws-profile" \
@@ -212,7 +212,7 @@ docker run --rm \
 
 With a custom credentials directory:
 ```bash
-docker run --rm \
+podman run --rm \
   -e E2E_BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod" \
   -e AWS_PROFILE="my-profile" \
   -e AWS_REGION="us-east-2" \
@@ -261,16 +261,9 @@ make test-e2e-container \
 make test-e2e-container BASE_URL="${API_URL}"
 ```
 
-**Using Podman instead of Docker**:
+**Using Docker instead of Podman**:
 ```bash
-# Replace 'docker' with 'podman' in any command
-podman run --rm \
-  -e E2E_BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod" \
-  -e AWS_PROFILE="my-profile" \
-  -e AWS_SDK_LOAD_CONFIG=1 \
-  -v $(pwd)/test-results:/app/test-results \
-  -v ~/.aws:/root/.aws:ro \
-  quay.io/openshift-online/rosa-regional-platform-api-e2e:latest
+# Replace 'podman' with 'docker' in any command, or set CONTAINER_ENGINE=docker for make targets
 ```
 
 #### Troubleshooting AWS Credentials
@@ -341,7 +334,7 @@ Or, get temporary credentials from your credential process locally and pass them
 aws configure export-credentials --profile rrp-chris-regional_cluster --format env
 
 # Then use the output to set env vars and run without mounting credentials
-docker run --rm \
+podman run --rm \
   -e E2E_BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod" \
   -e AWS_ACCESS_KEY_ID="..." \
   -e AWS_SECRET_ACCESS_KEY="..." \

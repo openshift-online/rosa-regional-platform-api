@@ -24,6 +24,9 @@ CI_IMAGE_TAG ?= latest
 REPO_URL ?= https://github.com/openshift-online/rosa-regional-platform-api
 GIT_REF ?= main
 
+# Container engine: prefer podman, fall back to docker
+CONTAINER_ENGINE ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
+
 # Detect host platform for native builds
 HOST_OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 HOST_ARCH := $(shell uname -m)
@@ -69,8 +72,8 @@ help:
 	@echo "  verify              - Verify go.mod is tidy"
 	@echo ""
 	@echo "Docker:"
-	@echo "  image                    - Build Docker image"
-	@echo "  image-push               - Push Docker image"
+	@echo "  image                    - Build container image"
+	@echo "  image-push               - Push container image"
 	@echo "  image-e2e                - Build E2E test container (single platform)"
 	@echo "  image-e2e-multiarch      - Build E2E test container (multiarch)"
 	@echo "  image-e2e-push-multiarch - Build and push E2E test container (multiarch)"
@@ -186,9 +189,9 @@ lint:
 # Run linter in CI container with fresh clone (reproduces Prow CI exactly)
 lint-ci-container:
 	@echo "Building CI container image..."
-	docker build -f ci/Containerfile -t $(CI_IMAGE_REPO):$(CI_IMAGE_TAG) .
+	$(CONTAINER_ENGINE) build -f ci/Containerfile -t $(CI_IMAGE_REPO):$(CI_IMAGE_TAG) .
 	@echo "Running linter in CI container with fresh clone from $(REPO_URL)@$(GIT_REF)..."
-	docker run --rm \
+	$(CONTAINER_ENGINE) run --rm \
 		$(CI_IMAGE_REPO):$(CI_IMAGE_TAG) \
 		bash -c "git clone $(REPO_URL) /tmp/repo && cd /tmp/repo && git checkout $(GIT_REF) && ./ci/lint.sh"
 
@@ -197,21 +200,21 @@ clean:
 	rm -f $(BINARY_NAME)
 	rm -f coverage.out coverage.html
 
-# Build Docker image
+# Build container image
 image:
-	docker build --platform $(GOOS)/$(GOARCH) -t $(IMAGE_REPO):$(IMAGE_TAG) .
-	docker tag $(IMAGE_REPO):$(IMAGE_TAG) $(IMAGE_REPO):$(GIT_SHA)
+	$(CONTAINER_ENGINE) build --platform $(GOOS)/$(GOARCH) -t $(IMAGE_REPO):$(IMAGE_TAG) .
+	$(CONTAINER_ENGINE) tag $(IMAGE_REPO):$(IMAGE_TAG) $(IMAGE_REPO):$(GIT_SHA)
 
 # Build E2E test container (single platform)
 image-e2e:
-	docker build -f Containerfile.e2e \
+	$(CONTAINER_ENGINE) build -f Containerfile.e2e \
 		--platform $(GOOS)/$(GOARCH) \
 		-t $(IMAGE_REPO)-e2e:$(IMAGE_TAG) .
-	docker tag $(IMAGE_REPO)-e2e:$(IMAGE_TAG) $(IMAGE_REPO)-e2e:$(GIT_SHA)
+	$(CONTAINER_ENGINE) tag $(IMAGE_REPO)-e2e:$(IMAGE_TAG) $(IMAGE_REPO)-e2e:$(GIT_SHA)
 
 # Build E2E test container for multiple architectures
 image-e2e-multiarch:
-	docker buildx build -f Containerfile.e2e \
+	$(CONTAINER_ENGINE) buildx build -f Containerfile.e2e \
 		--platform $(PLATFORMS) \
 		-t $(IMAGE_REPO)-e2e:$(IMAGE_TAG) \
 		-t $(IMAGE_REPO)-e2e:$(GIT_SHA) \
@@ -219,7 +222,7 @@ image-e2e-multiarch:
 
 # Build and push E2E test container for multiple architectures
 image-e2e-push-multiarch:
-	docker buildx build -f Containerfile.e2e \
+	$(CONTAINER_ENGINE) buildx build -f Containerfile.e2e \
 		--platform $(PLATFORMS) \
 		-t $(IMAGE_REPO)-e2e:$(IMAGE_TAG) \
 		-t $(IMAGE_REPO)-e2e:$(GIT_SHA) \
@@ -240,7 +243,7 @@ GINKGO_CMD += --junit-report=junit.xml --output-dir=/app/test-results ./test/e2e
 test-e2e-container: image-e2e-multiarch
 	@echo "✅ Exporting static credentials from profile $(AWS_PROFILE)..."
 	@eval "$$(aws configure export-credentials --profile $(AWS_PROFILE) --format env-no-export)" && \
-	docker run --rm \
+	$(CONTAINER_ENGINE) run --rm \
 		-e E2E_BASE_URL="$(BASE_URL)" \
 		-e E2E_ACCOUNT_ID="$(E2E_ACCOUNT_ID)" \
 		-e AWS_ACCESS_KEY_ID="$$AWS_ACCESS_KEY_ID" \
@@ -251,10 +254,10 @@ test-e2e-container: image-e2e-multiarch
 		$(IMAGE_REPO)-e2e:$(IMAGE_TAG) \
 		$(GINKGO_CMD)
 
-# Push Docker image
+# Push container image
 image-push: image
-	docker push $(IMAGE_REPO):$(IMAGE_TAG)
-	docker push $(IMAGE_REPO):$(GIT_SHA)
+	$(CONTAINER_ENGINE) push $(IMAGE_REPO):$(IMAGE_TAG)
+	$(CONTAINER_ENGINE) push $(IMAGE_REPO):$(GIT_SHA)
 
 # Run locally
 run: build

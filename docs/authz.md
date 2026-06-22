@@ -20,7 +20,7 @@ Identity is global: AWS IAM credentials identify the principal and AWS account, 
 flowchart TD
     A[Incoming API Request] --> B[Extract Identity<br/><i>AWS IAM credentials → principal ARN + AWS account</i>]
 
-    B --> C{Is the AWS account<br/>linked to an RH org?}
+    B --> C{Is the AWS account<br/>linked to a RH org?}
 
     C -->|No| D[If the request includes an RH token<br/>with Org Admin or an OCM role<br/>e.g. ROSAAdmin, the AWS account<br/>can be linked]
 

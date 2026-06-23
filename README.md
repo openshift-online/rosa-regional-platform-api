@@ -22,12 +22,15 @@ flowchart LR
         AuthMW["Auth Middleware"] --> Handler["Handlers"]
         Handler --> HCP["HCP Management"]
         Handler --> AuthzMgmt["Authz Management\n(Policies, Groups,\nAttachments, Admins)"]
+        Handler --> ZOA["ZOA Trusted Actions\n(FedRAMP Service Delivery)"]
     end
 
     AuthMW -->|"account & group\nlookup"| DDB[("DynamoDB")]
     AuthMW -->|policy evaluation| AVP["Amazon Verified\nPermissions (Cedar)"]
     AuthzMgmt --> DDB
     AuthzMgmt --> AVP
+    ZOA --> DDB
+    ZOA --> S3[("S3\n(Artifacts)")]
 ```
 
 ## API Documentation
@@ -44,6 +47,14 @@ flowchart LR
 | `--hyperfleet-url`  | `http://hyperfleet-api.hyperfleet-system:8000`   | Hyperfleet API base URL  |
 | `--dynamodb-table`  | `rosa-customer-accounts`                         | DynamoDB table           |
 | `--dynamodb-region` | `us-east-1`                                      | AWS region               |
+| `--zoa.enabled`     | `false`                                            | Enable ZOA Trusted Actions |
+| `--zoa.table-name`  | `rosa-zoa-actions`                                 | ZOA DynamoDB table       |
+| `--zoa.audit-table-name` | `rosa-zoa-audit`                              | ZOA audit log table      |
+| `--zoa.bucket-name` | `rosa-zoa-artifacts`                               | ZOA S3 artifacts bucket  |
+| `--zoa.aws-region`  | `us-east-1`                                        | ZOA AWS region           |
+| `--zoa.templates-dir` | `/etc/zoa/templates`                             | ZOA action templates dir |
+| `--zoa.job-config-dir` | `/etc/zoa/jobs`                                 | ZOA job configuration dir |
+| `--zoa.poll-interval` | `30s`                                            | ZOA job poll interval    |
 
 ## Build
 

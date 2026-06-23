@@ -21,6 +21,7 @@ make clean           # Remove build artifacts
 ```
 
 ### Integration & E2E Tests
+
 ```bash
 make e2e-init-db         # Initialize test database
 make e2e-authz-infra-up  # Start authorization test infrastructure
@@ -33,6 +34,11 @@ make e2e-authz-infra-down # Stop authorization test infrastructure
 - **pkg/**: Core application code
   - API handlers, services, and data access
   - gRPC and REST server implementations
+  - `pkg/zoa/` — ZOA Trusted Actions handlers for FedRAMP-compliant service delivery operations
+- **internal/**: Internal packages (not importable by external modules)
+- **docs/**: API documentation and design references
+- **scripts/**: Development and operational scripts
+- **ci/**: CI job definitions and test infrastructure
 - **openapi/**: OpenAPI/Swagger specifications
 - **deployment/**: Kubernetes deployment manifests
 - **test/**: Integration and E2E test suites
@@ -43,4 +49,4 @@ make e2e-authz-infra-down # Stop authorization test infrastructure
 - Module path: `github.com/openshift/rosa-regional-platform-api`
 - Uses Ginkgo/Gomega for testing
 - OpenAPI-first API design
-- PostgreSQL for data persistence
+- DynamoDB for data persistence

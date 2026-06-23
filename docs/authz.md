@@ -12,7 +12,7 @@ The authorization service provides fine-grained access control for ROSA operatio
 - **Cedar** as the policy language
 - **DynamoDB** for storing account linkage
 
-Identity is global: AWS IAM credentials identify the principal and AWS account, and each AWS account is linked to exactly one Red Hat organization. Authorization is regional: the tenancy boundary is **(AWS account, region)**, and Cedar policies and their attachments to principals are scoped to that boundary. A principal may have different permissions in different regions.
+Identity is global: AWS IAM credentials identify the principal and AWS account, and each AWS account is linked to exactly one Red Hat organization. Policies and attachments are global: they are defined once and apply across all regions. Policy evaluation is regional: each region maintains its own AVP policy store, synced from the global source of truth. Policies can use `context.region` to restrict which regions they take effect in.
 
 ## Authorization Flow
 
@@ -77,14 +77,16 @@ Admin access grants full permissions within the linked AWS account, including po
 
 ## Tenancy and Scoping
 
-The authorization tenancy boundary is **(AWS account, region)**. Since each AWS account maps to exactly one Red Hat organization (many-to-one: one RH org can have many AWS accounts), the RH org is implicit in the AWS account and does not need to appear separately in the tenancy tuple.
-
-All resources, policies, and attachments within the API are scoped to this boundary — a principal operating in one AWS account and region cannot see or affect resources in a different account or region.
+Since each AWS account maps to exactly one Red Hat organization (many-to-one: one RH org can have many AWS accounts), the RH org is implicit in the AWS account.
 
 | Scope | What |
 | --- | --- |
-| **Global** | AWS IAM identity, AWS account → RH org mapping, RH Org Admin status, RBAC role assignments (regional scoping for RBAC roles is under evaluation) |
-| **Regional (per AWS account, per region)** | Cedar policies, policy attachments, policy stores, ROSA resources (clusters, node pools, access entries). Each region has its own independent policy store. A principal may have different permissions in different regions. |
+| **Global** | AWS IAM identity, AWS account → RH org mapping, RH Org Admin status, RBAC role assignments, Cedar policies, policy attachments |
+| **Regional (per AWS account, per region)** | Policy evaluation (AVP policy stores), ROSA resources (clusters, node pools, access entries) |
+
+Policies and attachments are defined globally — a policy created from any region is available everywhere. Each region maintains its own AVP policy store, synced from the global source of truth via DynamoDB Global Tables and DynamoDB Streams. To restrict a policy to specific regions, use `context.region` conditions in Cedar (see [Policy Examples](#policy-examples)).
+
+Resources are regional — a cluster in `us-east-1` is not visible in `eu-west-1`. A principal operating in one AWS account cannot see or affect resources in a different AWS account.
 
 ## Policy Evaluation Semantics
 
@@ -110,7 +112,7 @@ Quotas are scoped to the same **(AWS account, region)** tenancy boundary as poli
 
 - Maximum number of clusters per AWS account per region
 - Maximum number of node pools per cluster
-- Maximum number of policies or attachments per AWS account per region
+- Maximum number of policies or attachments per AWS account (global)
 
 Quota limits, defaults, and override mechanisms are TBD.
 
@@ -118,12 +120,12 @@ Quota limits, defaults, and override mechanisms are TBD.
 
 | Entity | Storage | Scope |
 | --- | --- | --- |
-| AWS account → RH org mapping | DynamoDB | Global |
-| Policy templates | AVP | Regional (per AWS account, per region) |
-| Attachments (template-linked policies) | AVP | Regional (per AWS account, per region) |
+| AWS account → RH org mapping | DynamoDB Global Tables | Global |
+| Policy templates | DynamoDB Global Tables | Global |
+| Attachments | DynamoDB Global Tables | Global |
 | Policy evaluation | AVP IsAuthorized API | Regional (per AWS account, per region) |
 
-Policy templates and attachments live entirely in AVP — they are never stored in DynamoDB. Each AWS account has its own AVP policy store per region.
+DynamoDB Global Tables are the source of truth for policies and attachments, replicated across all regions. Each region runs a sync worker (triggered by DynamoDB Streams) that resolves policy templates and pushes them to the local AVP policy store. AVP is used only for evaluation — it is a regional cache, not the source of truth.
 
 ## API Endpoints
 
@@ -331,6 +333,20 @@ when { context.requestTime.dayOfWeek >= 1 && context.requestTime.dayOfWeek <= 5 
 when { context.requestTime.hour >= 9 && context.requestTime.hour < 17 };
 ```
 
+**Region restriction** — since policies are global, use `context.region` to restrict which regions they apply in. Equivalent to IAM's `aws:RequestedRegion` condition.
+
+```cedar
+// Allow all actions, but only in us-east-1 and us-west-2
+permit(?principal, action, resource)
+when { context.region in ["us-east-1", "us-west-2"] };
+```
+
+```cedar
+// Deny all actions outside approved regions
+forbid(?principal, action, resource)
+unless { context.region in ["us-east-1", "us-west-2"] };
+```
+
 **NodePool scaling only** — permits scaling node pools without allowing creation, deletion, or other modifications.
 
 ```cedar
@@ -381,6 +397,7 @@ Context attributes are passed alongside each AVP authorization request and can b
 
 | Attribute | Type | Description |
 | --- | --- | --- |
+| `region` | String | AWS region where the request is being evaluated (e.g., `us-east-1`) |
 | `principalArn` | String | Full ARN of the calling IAM principal |
 | `accountId` | String | AWS account ID of the caller |
 | `sourceIp` | String | Source IP address of the request |

@@ -40,21 +40,21 @@ flowchart LR
 
 ## Configuration
 
-| Flag                | Default                                          | Description              |
-| ------------------- | ------------------------------------------------ | ------------------------ |
-| `--api-port`        | `8000`                                           | API server port          |
-| `--maestro-url`     | `http://maestro:8000`                            | Maestro API URL          |
-| `--hyperfleet-url`  | `http://hyperfleet-api.hyperfleet-system:8000`   | Hyperfleet API base URL  |
-| `--dynamodb-table`  | `rosa-customer-accounts`                         | DynamoDB table           |
-| `--dynamodb-region` | `us-east-1`                                      | AWS region               |
-| `--zoa.enabled`     | `false`                                            | Enable ZOA Trusted Actions |
-| `--zoa.table-name`  | `rosa-zoa-actions`                                 | ZOA DynamoDB table       |
-| `--zoa.audit-table-name` | `rosa-zoa-audit`                              | ZOA audit log table      |
-| `--zoa.bucket-name` | `rosa-zoa-artifacts`                               | ZOA S3 artifacts bucket  |
-| `--zoa.aws-region`  | `us-east-1`                                        | ZOA AWS region           |
-| `--zoa.templates-dir` | `/etc/zoa/templates`                             | ZOA action templates dir |
-| `--zoa.job-config-dir` | `/etc/zoa/jobs`                                 | ZOA job configuration dir |
-| `--zoa.poll-interval` | `30s`                                            | ZOA job poll interval    |
+| Flag                     | Default                                        | Description                |
+| ------------------------ | ---------------------------------------------- | -------------------------- |
+| `--api-port`             | `8000`                                         | API server port            |
+| `--maestro-url`          | `http://maestro:8000`                          | Maestro API URL            |
+| `--hyperfleet-url`       | `http://hyperfleet-api.hyperfleet-system:8000` | Hyperfleet API base URL    |
+| `--dynamodb-table`       | `rosa-customer-accounts`                       | DynamoDB table             |
+| `--dynamodb-region`      | `us-east-1`                                    | AWS region                 |
+| `--zoa.enabled`          | `false`                                        | Enable ZOA Trusted Actions |
+| `--zoa.table-name`       | `rosa-zoa-actions`                             | ZOA DynamoDB table         |
+| `--zoa.audit-table-name` | `rosa-zoa-audit`                               | ZOA audit log table        |
+| `--zoa.bucket-name`      | `rosa-zoa-artifacts`                           | ZOA S3 artifacts bucket    |
+| `--zoa.aws-region`       | `us-east-1`                                    | ZOA AWS region             |
+| `--zoa.templates-dir`    | `/etc/zoa/templates`                           | ZOA action templates dir   |
+| `--zoa.job-config-dir`   | `/etc/zoa/jobs`                                | ZOA job configuration dir  |
+| `--zoa.poll-interval`    | `30s`                                          | ZOA job poll interval      |
 
 ## Build
 
@@ -69,44 +69,54 @@ make image
 ### Unit Tests
 
 Run all unit tests (excludes e2e tests):
+
 ```bash
 make test
 ```
 
 Run tests for a specific package:
+
 ```bash
 make test-unit PKG=./pkg/authz/...
 ```
 
 Run authorization package tests only:
+
 ```bash
 make test-authz
 ```
 
 Generate coverage report:
+
 ```bash
 make test-coverage
 # Opens coverage.html in your browser
 ```
 
 ### E2E Tests
+
 E2E tests use [Ginkgo](https://onsi.github.io/ginkgo/) and generate JUnit XML reports in `./test-results/junit.xml`.
 
 #### Prerequisites
+
 Set the following environment variables:
+
 - `BASE_URL` - API Gateway URL (e.g., `https://xxxxx.execute-api.us-east-2.amazonaws.com/prod`)
 - `E2E_ACCOUNT_ID` - AWS account ID for testing (optional, defaults to current AWS credentials)
+- `E2E_SKIP_CLEANUP` - Set to `1` to preserve clusters after test runs for debugging
 
 #### Run E2E tests locally (Native)
 
 The tests run natively on your platform (Linux, macOS, Windows).
 
 **Prerequisites**: Install Ginkgo CLI
+
 ```bash
 go install github.com/onsi/ginkgo/v2/ginkgo@latest
 ```
 
 **Run tests:**
+
 ```bash
 export BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod"
 export E2E_ACCOUNT_ID="123456789012"  # Optional
@@ -122,6 +132,7 @@ This is useful for CI/CD pipelines or isolated test environments.
 **Note**: Containers run Linux. You can **build** the container on macOS/Windows, but it runs Linux inside.
 
 1. Build the e2e container:
+
 ```bash
 # Single platform build (default: linux/amd64)
 # Works on macOS (including M1/M2), Linux, Windows
@@ -136,11 +147,13 @@ make image-e2e-push-multiarch
 ```
 
 You can customize the target platforms:
+
 ```bash
 make image-e2e-multiarch PLATFORMS=linux/amd64,linux/arm64,linux/ppc64le
 ```
 
 **Building on macOS (including Apple Silicon)**:
+
 ```bash
 # On macOS M1/M2, build for linux/arm64 (faster)
 make image-e2e GOOS=linux GOARCH=arm64
@@ -150,6 +163,7 @@ make image-e2e GOOS=linux GOARCH=amd64
 ```
 
 2. Run tests in the container:
+
 ```bash
 make test-e2e-container \
   BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod" \
@@ -157,6 +171,7 @@ make test-e2e-container \
 ```
 
 **With a specific AWS profile** (shares your `~/.aws` credentials):
+
 ```bash
 make test-e2e-container \
   BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod" \
@@ -165,6 +180,7 @@ make test-e2e-container \
 ```
 
 **Run specific tests with --focus**:
+
 ```bash
 # Run only AWS Credentials Check test
 make test-e2e-container \
@@ -178,6 +194,7 @@ make test-e2e-container \
 ```
 
 **Skip specific tests**:
+
 ```bash
 # Skip authorization tests (default behavior)
 make test-e2e-container \
@@ -191,11 +208,13 @@ make test-e2e-container \
 ```
 
 The container automatically:
+
 - Mounts your `~/.aws` directory (read-only) - includes both `credentials` and `config` files
 - Passes the `AWS_PROFILE` environment variable
 - Configures AWS SDK to load the profile
 
 **Using credentials from a custom location**:
+
 ```bash
 make test-e2e-container \
   BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod" \
@@ -203,12 +222,14 @@ make test-e2e-container \
 ```
 
 **Note**: The AWS SDK requires both `credentials` and `config` files for full profile support. If you only have a `credentials` file, make sure to:
+
 - Set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` directly, OR
 - Ensure your credentials file contains all necessary settings
 
 **Or use Docker/Podman directly**:
 
 Standard approach (mounts entire `~/.aws` directory):
+
 ```bash
 docker run --rm \
   -e E2E_BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod" \
@@ -222,6 +243,7 @@ docker run --rm \
 ```
 
 With a custom credentials directory:
+
 ```bash
 docker run --rm \
   -e E2E_BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod" \
@@ -238,6 +260,7 @@ The JUnit XML results will be available in `./test-results/junit.xml` after the 
 #### Common E2E Test Scenarios
 
 **Local development on macOS/Linux** (fastest):
+
 ```bash
 export BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod"
 export AWS_PROFILE="my-profile"
@@ -245,6 +268,7 @@ make test-e2e
 ```
 
 **Testing with a specific AWS profile in a container**:
+
 ```bash
 make test-e2e-container \
   BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod" \
@@ -252,6 +276,7 @@ make test-e2e-container \
 ```
 
 **Debug AWS credentials in container**:
+
 ```bash
 make test-e2e-container \
   BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod" \
@@ -260,6 +285,7 @@ make test-e2e-container \
 ```
 
 **Run specific test in container**:
+
 ```bash
 make test-e2e-container \
   BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.com/prod" \
@@ -267,12 +293,14 @@ make test-e2e-container \
 ```
 
 **CI/CD pipeline** (uses IAM role or instance profile):
+
 ```bash
 # AWS credentials provided by CI environment
 make test-e2e-container BASE_URL="${API_URL}"
 ```
 
 **Using Podman instead of Docker**:
+
 ```bash
 # Replace 'docker' with 'podman' in any command
 podman run --rm \
@@ -299,10 +327,12 @@ make test-e2e-container \
 ```
 
 The test will show:
+
 - ✓ Successfully validated credentials with your AWS account, ARN, and UserId
 - ✗ Error message if credentials are missing or invalid
 
 **Example output:**
+
 ```bash
 ✓ AWS Credentials verified successfully
   Account: 123456789012
@@ -313,6 +343,7 @@ The test will show:
 ```
 
 Common issues:
+
 - **"no such file or directory"**: AWS credentials file not mounted correctly
 - **"Unable to locate credentials"**: `AWS_PROFILE` doesn't exist or credentials file is malformed
 - **"ExpiredToken"**: Your AWS session token has expired (common with SSO)
@@ -331,11 +362,13 @@ make test-e2e-container-static-creds \
 ```
 
 This target:
+
 1. Exports credentials from your profile using `aws configure export-credentials`
 2. Passes them as environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN)
 3. Avoids mounting credential files and running credential_process in the container
 
 Or manually export credentials:
+
 ```bash
 # Export your credentials directly (avoids credential_process)
 export AWS_ACCESS_KEY_ID="your-access-key"
@@ -347,6 +380,7 @@ make test-e2e-container BASE_URL="https://xxxxx.execute-api.us-east-2.amazonaws.
 ```
 
 Or, get temporary credentials from your credential process locally and pass them:
+
 ```bash
 # Get credentials from your local credential process
 aws configure export-credentials --profile rrp-chris-regional_cluster --format env
@@ -363,6 +397,7 @@ docker run --rm \
 ```
 
 **Debug credentials inside the container:**
+
 ```bash
 # Drop into an interactive shell to troubleshoot
 make debug-e2e-container-creds AWS_PROFILE="rrp-chris-regional_cluster"
@@ -379,21 +414,25 @@ make debug-e2e-container-creds AWS_PROFILE="rrp-chris-regional_cluster"
 Authorization tests require local DynamoDB and cedar-agent infrastructure.
 
 Start the infrastructure:
+
 ```bash
 make e2e-authz-infra-up
 ```
 
 Run authz e2e tests:
+
 ```bash
 make test-e2e-authz
 ```
 
 Stop the infrastructure:
+
 ```bash
 make e2e-authz-infra-down
 ```
 
 Or run everything with automatic cleanup:
+
 ```bash
 make test-e2e-authz-clean
 ```
@@ -410,32 +449,41 @@ Tests compatibility by spinning up an ephemeral [rosa-regional-platform](https:/
 
 ```
 test/
-├── e2e/
-│   ├── e2e_test.go              # Main e2e test suite
+├── e2e-api/
+│   ├── e2e_test.go              # Platform API e2e test suite
 │   ├── awscreds_check_test.go   # AWS credentials verification tests
 │   ├── authz_e2e_test.go        # Authorization e2e tests
 │   ├── api_client.go            # Reusable API client with SigV4 auth
 │   └── testdata_loader.go       # Test data utilities
+├── e2e-cli/
+│   └── cluster_test.go          # CLI cluster operations tests
+├── e2e-platform-monitoring/
+│   └── observability_test.go    # Observability pipeline tests
+└── e2e-zoa/
+    └── zoa_test.go              # ZOA Trusted Actions e2e tests
 ```
 
 ### E2E Test Cases
 
 The e2e suite includes several test categories:
 
-1. **AWS Credentials Check** (`awscreds_check_test.go`)
+1. **AWS Credentials Check** (`e2e-api/awscreds_check_test.go`)
    - Verifies AWS credentials are properly configured
    - Uses STS GetCallerIdentity to validate credentials
    - Reports AWS account, ARN, and profile information
    - Useful for debugging credential mounting in containers
 
-2. **Platform API Tests** (`e2e_test.go`)
+2. **Platform API Tests** (`e2e-api/e2e_test.go`)
    - Tests API endpoints (`/live`, `/ready`, etc.)
    - Management cluster operations
    - ManifestWork creation and distribution
 
-3. **Authorization Tests** (`authz_e2e_test.go`)
+3. **Authorization Tests** (`e2e-api/authz_e2e_test.go`)
    - Tests Cedar-based authorization
    - Requires local DynamoDB and cedar-agent
+
+4. **ZOA Tests** (`e2e-zoa/zoa_test.go`, run via `make test-e2e-zoa`)
+   - Tests ZOA Trusted Actions lifecycle: catalog, execution, dry run, cooldown, audit
 
 ### Writing E2E Tests
 
@@ -450,6 +498,7 @@ It("should successfully call an endpoint", func() {
 ```
 
 For POST requests:
+
 ```go
 It("should create a resource", func() {
     payload := map[string]interface{}{
@@ -467,6 +516,7 @@ It("should create a resource", func() {
 ## API Examples
 
 ### Register a new management cluster
+
 ```bash
 awscurl -X POST https://z11111111.execute-api.us-east-2.amazonaws.com/prod/api/v0/management_clusters \
 --service execute-api \
@@ -476,6 +526,7 @@ awscurl -X POST https://z11111111.execute-api.us-east-2.amazonaws.com/prod/api/v
 ```
 
 ### Get the current resource bundles
+
 ```bash
 awscurl https://z11111111.execute-api.us-east-2.amazonaws.com/prod/api/v0/resource_bundles \
 --service execute-api \
@@ -483,6 +534,7 @@ awscurl https://z11111111.execute-api.us-east-2.amazonaws.com/prod/api/v0/resour
 ```
 
 ### Create a manifestwork for management-01
+
 ```bash
 # see swagger for reference for the payload struct
 awscurl -X POST https://z11111111.execute-api.us-east-2.amazonaws.com/prod/api/v0/work \
@@ -490,6 +542,3 @@ awscurl -X POST https://z11111111.execute-api.us-east-2.amazonaws.com/prod/api/v
 --region us-east-2 \
 -d @payload.json
 ```
-
-
-

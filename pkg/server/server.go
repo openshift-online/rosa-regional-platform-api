@@ -14,7 +14,7 @@ import (
 
 	"github.com/openshift/rosa-regional-platform-api/pkg/authz"
 	"github.com/openshift/rosa-regional-platform-api/pkg/authz/client"
-	"github.com/openshift/rosa-regional-platform-api/pkg/clients/hyperfleet"
+	"github.com/openshift/rosa-regional-platform-api/pkg/clients/fleetdb"
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
 	"github.com/openshift/rosa-regional-platform-api/pkg/config"
 	apphandlers "github.com/openshift/rosa-regional-platform-api/pkg/handlers"
@@ -33,15 +33,13 @@ type Server struct {
 	zoaReconciler  *zoa.Reconciler
 }
 
-// New creates a new Server instance
-func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
+// New creates a new Server instance. The fleetDBClient is used by cluster and
+// nodepool handlers; callers must create it via fleetdb.NewClient before calling New.
+func New(cfg *config.Config, fleetDBClient *fleetdb.Client, logger *slog.Logger) (*Server, error) {
 	ctx := context.Background()
 
-	// Create Maestro client
+	// Create Maestro client (used by management_clusters, resource_bundles, work, ZOA)
 	maestroClient := maestro.NewClient(cfg.Maestro, logger)
-
-	// Create Hyperfleet client
-	hyperfleetClient := hyperfleet.NewClient(cfg.Hyperfleet, logger)
 
 	// Create handlers
 	healthHandler := apphandlers.NewHealthHandler()
@@ -49,8 +47,8 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(maestroClient, logger)
 	resourceBundleHandler := apphandlers.NewResourceBundleHandler(maestroClient, logger)
 	workHandler := apphandlers.NewWorkHandler(maestroClient, logger)
-	clusterHandler := apphandlers.NewClusterHandler(hyperfleetClient, maestroClient, logger)
-	nodePoolHandler := apphandlers.NewNodePoolHandler(maestroClient, logger)
+	clusterHandler := apphandlers.NewClusterHandler(fleetDBClient, logger)
+	nodePoolHandler := apphandlers.NewNodePoolHandler(fleetDBClient, logger)
 
 	// Create legacy authorization middleware (for non-authz routes)
 	authMiddleware := middleware.NewAuthorization(cfg.AllowedAccounts, logger)

@@ -6,38 +6,35 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
+	"github.com/openshift/rosa-regional-platform-api/pkg/clients/fleetdb"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
 	"github.com/openshift/rosa-regional-platform-api/pkg/types"
 )
 
-// NodePoolHandler handles nodepool-related HTTP requests
 type NodePoolHandler struct {
-	maestroClient *maestro.Client
-	logger        *slog.Logger
+	fleetDB *fleetdb.Client
+	logger  *slog.Logger
 }
 
-// NewNodePoolHandler creates a new nodepool handler
-func NewNodePoolHandler(maestroClient *maestro.Client, logger *slog.Logger) *NodePoolHandler {
+func NewNodePoolHandler(fleetDB *fleetdb.Client, logger *slog.Logger) *NodePoolHandler {
 	return &NodePoolHandler{
-		maestroClient: maestroClient,
-		logger:        logger,
+		fleetDB: fleetDB,
+		logger:  logger,
 	}
 }
 
-// List handles GET /api/v0/nodepools
 func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
 
-	// Parse query parameters
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
 	clusterID := r.URL.Query().Get("clusterId")
 
-	limit := 50 // default
-	offset := 0 // default
+	limit := 50
+	offset := 0
 
 	if limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
@@ -53,12 +50,28 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("listing nodepools", "account_id", accountID, "limit", limit, "offset", offset, "cluster_id", clusterID)
 
-	// Call Maestro to list nodepools
-	nodepools, total, err := h.maestroClient.ListNodePools(ctx, accountID, limit, offset, clusterID)
+	list, err := h.fleetDB.ListNodePools(ctx, accountID, clusterID)
 	if err != nil {
 		h.logger.Error("failed to list nodepools", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusInternalServerError, "NODEPOOLS-MGMT-LIST-001", "Failed to list nodepools")
 		return
+	}
+
+	nodepools := make([]*types.NodePool, 0, len(list.Items))
+	for i := range list.Items {
+		nodepools = append(nodepools, fleetdb.NodePoolCRToPlatform(&list.Items[i]))
+	}
+
+	total := len(nodepools)
+
+	if offset >= len(nodepools) {
+		nodepools = nil
+	} else {
+		end := offset + limit
+		if end > len(nodepools) {
+			end = len(nodepools)
+		}
+		nodepools = nodepools[offset:end]
 	}
 
 	response := map[string]interface{}{
@@ -71,11 +84,9 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, response)
 }
 
-// Create handles POST /api/v0/nodepools
 func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
-	userEmail := middleware.GetUserID(ctx) // May be empty if not provided
 
 	var req types.NodePoolCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -83,25 +94,35 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate required fields
 	if req.Name == "" || req.ClusterID == "" || req.Spec == nil {
 		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-CREATE-002", "Missing required fields: name, cluster_id, and spec")
 		return
 	}
 
-	h.logger.Info("creating nodepool", "account_id", accountID, "cluster_id", req.ClusterID, "nodepool_name", req.Name)
+	nodepoolID := uuid.New().String()
 
-	nodepool, err := h.maestroClient.CreateNodePool(ctx, accountID, userEmail, &req)
+	h.logger.Info("creating nodepool", "account_id", accountID, "cluster_id", req.ClusterID, "nodepool_name", req.Name, "nodepool_id", nodepoolID)
+
+	cr, err := fleetdb.PlatformCreateToNodePoolCR(nodepoolID, accountID, &req)
 	if err != nil {
+		h.logger.Error("failed to convert nodepool spec", "error", err, "account_id", accountID)
+		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-CREATE-002", "Invalid nodepool spec")
+		return
+	}
+
+	if err := h.fleetDB.CreateNodePool(ctx, accountID, cr); err != nil {
 		h.logger.Error("failed to create nodepool", "error", err, "account_id", accountID)
+		if fleetdb.IsAlreadyExists(err) {
+			h.writeError(w, http.StatusConflict, "NODEPOOLS-MGMT-CREATE-003", "NodePool already exists")
+			return
+		}
 		h.writeError(w, http.StatusInternalServerError, "NODEPOOLS-MGMT-CREATE-003", "Failed to create nodepool")
 		return
 	}
 
-	h.writeJSON(w, http.StatusCreated, nodepool)
+	h.writeJSON(w, http.StatusCreated, fleetdb.NodePoolCRToPlatform(cr))
 }
 
-// Get handles GET /api/v0/nodepools/{id}
 func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
@@ -110,9 +131,9 @@ func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("getting nodepool", "account_id", accountID, "nodepool_id", nodepoolID)
 
-	nodepool, err := h.maestroClient.GetNodePool(ctx, accountID, nodepoolID)
+	cr, err := h.fleetDB.GetNodePool(ctx, accountID, nodepoolID)
 	if err != nil {
-		if maestro.IsNotFound(err) {
+		if fleetdb.IsNotFound(err) {
 			h.writeError(w, http.StatusNotFound, "NODEPOOLS-MGMT-GET-001", "NodePool not found")
 			return
 		}
@@ -121,10 +142,9 @@ func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, nodepool)
+	h.writeJSON(w, http.StatusOK, fleetdb.NodePoolCRToPlatform(cr))
 }
 
-// Update handles PUT /api/v0/nodepools/{id}
 func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
@@ -144,21 +164,32 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("updating nodepool", "account_id", accountID, "nodepool_id", nodepoolID)
 
-	nodepool, err := h.maestroClient.UpdateNodePool(ctx, accountID, nodepoolID, &req)
+	cr, err := h.fleetDB.GetNodePool(ctx, accountID, nodepoolID)
 	if err != nil {
-		if maestro.IsNotFound(err) {
+		if fleetdb.IsNotFound(err) {
 			h.writeError(w, http.StatusNotFound, "NODEPOOLS-MGMT-UPDATE-003", "NodePool not found")
 			return
 		}
+		h.logger.Error("failed to get nodepool for update", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
+		h.writeError(w, http.StatusInternalServerError, "NODEPOOLS-MGMT-UPDATE-004", "Failed to update nodepool")
+		return
+	}
+
+	if err := fleetdb.ApplyPlatformUpdateToNodePoolCR(cr, &req); err != nil {
+		h.logger.Error("failed to merge nodepool spec", "error", err)
+		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-002", "Invalid nodepool spec")
+		return
+	}
+
+	if err := h.fleetDB.UpdateNodePool(ctx, cr); err != nil {
 		h.logger.Error("failed to update nodepool", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
 		h.writeError(w, http.StatusInternalServerError, "NODEPOOLS-MGMT-UPDATE-004", "Failed to update nodepool")
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, nodepool)
+	h.writeJSON(w, http.StatusOK, fleetdb.NodePoolCRToPlatform(cr))
 }
 
-// Delete handles DELETE /api/v0/nodepools/{id}
 func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
@@ -167,9 +198,9 @@ func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("deleting nodepool", "account_id", accountID, "nodepool_id", nodepoolID)
 
-	err := h.maestroClient.DeleteNodePool(ctx, accountID, nodepoolID)
+	err := h.fleetDB.DeleteNodePool(ctx, accountID, nodepoolID)
 	if err != nil {
-		if maestro.IsNotFound(err) {
+		if fleetdb.IsNotFound(err) {
 			h.writeError(w, http.StatusNotFound, "NODEPOOLS-MGMT-DELETE-001", "NodePool not found")
 			return
 		}
@@ -186,7 +217,6 @@ func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusAccepted, response)
 }
 
-// GetStatus handles GET /api/v0/nodepools/{id}/status
 func (h *NodePoolHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
@@ -195,9 +225,9 @@ func (h *NodePoolHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("getting nodepool status", "account_id", accountID, "nodepool_id", nodepoolID)
 
-	status, err := h.maestroClient.GetNodePoolStatus(ctx, accountID, nodepoolID)
+	cr, err := h.fleetDB.GetNodePool(ctx, accountID, nodepoolID)
 	if err != nil {
-		if maestro.IsNotFound(err) {
+		if fleetdb.IsNotFound(err) {
 			h.writeError(w, http.StatusNotFound, "NODEPOOLS-MGMT-STATUS-001", "NodePool not found")
 			return
 		}
@@ -206,10 +236,9 @@ func (h *NodePoolHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, status)
+	h.writeJSON(w, http.StatusOK, fleetdb.NodePoolStatusFromCR(cr))
 }
 
-// Helper methods
 func (h *NodePoolHandler) writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

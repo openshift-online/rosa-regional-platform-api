@@ -17,7 +17,7 @@ func TestNew(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestNew_WithCustomConfig(t *testing.T) {
 		AllowedAccounts: []string{"123456789012"},
 	}
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestServer_HealthRoutes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestServer_ManagementClusterRoutes_Unauthorized(t *testing.T) {
 	cfg := config.NewConfig()
 	cfg.AllowedAccounts = []string{"123456789012"}
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestServer_ResourceBundleRoutes_Unauthorized(t *testing.T) {
 	cfg := config.NewConfig()
 	cfg.AllowedAccounts = []string{"123456789012"}
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestServer_IdentityMiddleware(t *testing.T) {
 	cfg := config.NewConfig()
 	cfg.AllowedAccounts = []string{"123456789012"}
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestServer_MetricsRoute(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -302,7 +302,7 @@ func TestServer_HealthServerRoutes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestServer_InvalidRoutes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -387,7 +387,7 @@ func TestServer_ReadinessToggle(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -447,7 +447,7 @@ func TestServer_ServerAddresses(t *testing.T) {
 		AllowedAccounts: []string{},
 	}
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}

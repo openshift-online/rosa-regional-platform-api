@@ -10,10 +10,16 @@ type Config struct {
 	Server          ServerConfig
 	Maestro         MaestroConfig
 	Hyperfleet      HyperfleetConfig
+	FleetDB         FleetDBConfig
 	Logging         LoggingConfig
 	Authz           *authz.Config
 	Zoa             ZoaConfig
 	AllowedAccounts []string
+}
+
+type FleetDBConfig struct {
+	ClusterName string
+	AWSRegion   string
 }
 
 type ZoaConfig struct {

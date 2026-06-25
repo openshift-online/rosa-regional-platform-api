@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -35,6 +36,9 @@ func NewClient(ctx context.Context, awsCfg aws.Config, clusterName string, logge
 	}
 
 	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("register core scheme: %w", err)
+	}
 	if err := hyperfleetv1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("register hyperfleet scheme: %w", err)
 	}
@@ -52,9 +56,20 @@ func NewClient(ctx context.Context, awsCfg aws.Config, clusterName string, logge
 // CreateCluster creates a Cluster CR on fleet-db. The accountID becomes the
 // namespace; the cluster ID is metadata.name.
 func (c *Client) CreateCluster(ctx context.Context, accountID string, cluster *hyperfleetv1alpha1.Cluster) error {
+	if err := c.ensureNamespace(ctx, accountID); err != nil {
+		return fmt.Errorf("ensure namespace %s: %w", accountID, err)
+	}
 	cluster.Namespace = accountID
 	if err := c.Client.Create(ctx, cluster); err != nil {
 		return fmt.Errorf("create cluster %s/%s: %w", accountID, cluster.Name, err)
+	}
+	return nil
+}
+
+func (c *Client) ensureNamespace(ctx context.Context, name string) error {
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	if err := c.Client.Create(ctx, ns); err != nil && !apierrors.IsAlreadyExists(err) {
+		return err
 	}
 	return nil
 }

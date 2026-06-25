@@ -19,7 +19,7 @@ import (
 
 const (
 	mcConfigMapName      = "management-clusters"
-	mcConfigMapNamespace = "rosa-regional-platform"
+	mcConfigMapNamespace = "platform-api"
 	mcConfigMapKey       = "clusters.yaml"
 )
 

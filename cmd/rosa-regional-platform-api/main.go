@@ -26,7 +26,6 @@ var (
 	logLevel           string
 	logFormat          string
 	fleetDBClusterName string
-	awsRegion          string
 	allowedAccounts    string
 	dynamodbRegion     string
 	dynamodbPrefix     string
@@ -60,8 +59,7 @@ func init() {
 	serveCmd.Flags().StringVar(&logFormat, "log-format", "json", "Log format (json, text)")
 	serveCmd.Flags().StringVar(&allowedAccounts, "allowed-accounts", "", "Comma-separated list of allowed AWS account IDs")
 	serveCmd.Flags().StringVar(&fleetDBClusterName, "fleet-db-cluster-name", "", "EKS cluster name for fleet-db")
-	serveCmd.Flags().StringVar(&awsRegion, "aws-region", "us-east-1", "AWS region for fleet-db and DynamoDB")
-	serveCmd.Flags().StringVar(&dynamodbRegion, "dynamodb-region", "", "AWS region for DynamoDB (defaults to --aws-region)")
+	serveCmd.Flags().StringVar(&dynamodbRegion, "dynamodb-region", "", "AWS region for DynamoDB (defaults to auto-detected region)")
 	serveCmd.Flags().StringVar(&dynamodbPrefix, "dynamodb-prefix", "rosa", "Prefix for DynamoDB table names (default: rosa)")
 	serveCmd.Flags().StringVar(&oidcIssuerBaseURL, "oidc-issuer-base-url", "", "Base URL for OIDC issuer (e.g. https://<cloudfront-domain>)")
 	serveCmd.Flags().IntVar(&apiPort, "api-port", 8000, "API server port")
@@ -80,6 +78,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 		"log_format", logFormat,
 	)
 
+	// Detect AWS region from SDK default chain (IMDS, AWS_REGION env var, etc.)
+	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to detect AWS region: %w", err)
+	}
+	if awsCfg.Region == "" {
+		return fmt.Errorf("AWS region could not be detected from environment; set AWS_REGION")
+	}
+	logger.Info("detected AWS region", "region", awsCfg.Region)
+
 	// Create config
 	cfg := config.NewConfig()
 	cfg.Logging.Level = logLevel
@@ -88,7 +96,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--fleet-db-cluster-name is required")
 	}
 	cfg.FleetDB.ClusterName = fleetDBClusterName
-	cfg.FleetDB.AWSRegion = awsRegion
+	cfg.FleetDB.AWSRegion = awsCfg.Region
 
 	cfg.Regional.OIDCIssuerBaseURL = oidcIssuerBaseURL
 	cfg.AllowedAccounts = parseAllowedAccounts(allowedAccounts)
@@ -96,12 +104,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	cfg.Server.HealthPort = healthPort
 	cfg.Server.MetricsPort = metricsPort
 
-	// Set DynamoDB region: --dynamodb-region if set, otherwise fall back to --aws-region
+	// Set DynamoDB region: --dynamodb-region if set, otherwise fall back to auto-detected region
 	if dynamodbRegion != "" {
 		cfg.Authz.AWSRegion = dynamodbRegion
 		logger.Info("using DynamoDB region from flag", "region", dynamodbRegion)
-	} else if awsRegion != "" {
-		cfg.Authz.AWSRegion = awsRegion
+	} else {
+		cfg.Authz.AWSRegion = awsCfg.Region
 	}
 
 	// Set DynamoDB table name prefix
@@ -162,11 +170,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		)
 	}
 
-	// Create fleet-db client
-	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion(cfg.FleetDB.AWSRegion))
-	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
-	}
+	// Create fleet-db client (reuses awsCfg from region detection above)
 	fleetDBClient, err := fleetdb.NewClient(context.Background(), awsCfg, cfg.FleetDB.ClusterName, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create fleet-db client: %w", err)

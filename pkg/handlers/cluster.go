@@ -69,7 +69,7 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	// Apply offset/limit pagination in-memory.
 	if offset >= len(clusters) {
-		clusters = nil
+		clusters = []*types.Cluster{}
 	} else {
 		end := offset + limit
 		if end > len(clusters) {

@@ -30,12 +30,21 @@ type ClusterUpdateRequest struct {
 
 // ClusterStatusInfo represents the status of a cluster
 type ClusterStatusInfo struct {
-	ObservedGeneration int64       `json:"observedGeneration"`
-	Conditions         []Condition `json:"conditions,omitempty"`
-	Phase              string      `json:"phase"`
-	Message            string      `json:"message,omitempty"`
-	Reason             string      `json:"reason,omitempty"`
-	LastUpdateTime     time.Time   `json:"lastUpdateTime"`
+	ObservedGeneration   int64               `json:"observedGeneration"`
+	Conditions           []Condition         `json:"conditions,omitempty"`
+	Phase                string              `json:"phase"`
+	ControlPlaneEndpoint string              `json:"controlPlaneEndpoint,omitempty"`
+	Version              string              `json:"version,omitempty"`
+	PlacementRef         *PlacementReference `json:"placementRef,omitempty"`
+	Message              string              `json:"message,omitempty"`
+	Reason               string              `json:"reason,omitempty"`
+	LastUpdateTime       time.Time           `json:"lastUpdateTime"`
+}
+
+// PlacementReference identifies the management cluster assignment.
+type PlacementReference struct {
+	Name              string `json:"name"`
+	ManagementCluster string `json:"managementCluster"`
 }
 
 // Condition represents a status condition

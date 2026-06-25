@@ -30,6 +30,7 @@ var (
 	allowedAccounts    string
 	dynamodbRegion     string
 	dynamodbPrefix     string
+	oidcIssuerBaseURL  string
 	apiPort            int
 	healthPort         int
 	metricsPort        int
@@ -62,6 +63,7 @@ func init() {
 	serveCmd.Flags().StringVar(&awsRegion, "aws-region", "us-east-1", "AWS region for fleet-db and DynamoDB")
 	serveCmd.Flags().StringVar(&dynamodbRegion, "dynamodb-region", "", "AWS region for DynamoDB (defaults to --aws-region)")
 	serveCmd.Flags().StringVar(&dynamodbPrefix, "dynamodb-prefix", "rosa", "Prefix for DynamoDB table names (default: rosa)")
+	serveCmd.Flags().StringVar(&oidcIssuerBaseURL, "oidc-issuer-base-url", "", "Base URL for OIDC issuer (e.g. https://<cloudfront-domain>)")
 	serveCmd.Flags().IntVar(&apiPort, "api-port", 8000, "API server port")
 	serveCmd.Flags().IntVar(&healthPort, "health-port", 8080, "Health check server port")
 	serveCmd.Flags().IntVar(&metricsPort, "metrics-port", 9090, "Metrics server port")
@@ -88,6 +90,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	cfg.FleetDB.ClusterName = fleetDBClusterName
 	cfg.FleetDB.AWSRegion = awsRegion
 
+	cfg.Regional.OIDCIssuerBaseURL = oidcIssuerBaseURL
 	cfg.AllowedAccounts = parseAllowedAccounts(allowedAccounts)
 	cfg.Server.APIPort = apiPort
 	cfg.Server.HealthPort = healthPort

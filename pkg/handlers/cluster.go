@@ -16,15 +16,17 @@ import (
 
 // ClusterHandler handles cluster-related HTTP requests
 type ClusterHandler struct {
-	fleetDB *fleetdb.Client
-	logger  *slog.Logger
+	fleetDB           *fleetdb.Client
+	oidcIssuerBaseURL string
+	logger            *slog.Logger
 }
 
 // NewClusterHandler creates a new cluster handler
-func NewClusterHandler(fleetDB *fleetdb.Client, logger *slog.Logger) *ClusterHandler {
+func NewClusterHandler(fleetDB *fleetdb.Client, oidcIssuerBaseURL string, logger *slog.Logger) *ClusterHandler {
 	return &ClusterHandler{
-		fleetDB: fleetDB,
-		logger:  logger,
+		fleetDB:           fleetDB,
+		oidcIssuerBaseURL: oidcIssuerBaseURL,
+		logger:            logger,
 	}
 }
 
@@ -131,6 +133,10 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("failed to convert cluster spec", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusBadRequest, "CLUSTERS-MGMT-CREATE-002", "Invalid cluster spec")
 		return
+	}
+
+	if h.oidcIssuerBaseURL != "" {
+		cr.Spec.OIDCIssuerURL = h.oidcIssuerBaseURL + "/" + clusterID
 	}
 
 	if err := h.fleetDB.CreateCluster(ctx, accountID, cr); err != nil {

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -25,6 +26,7 @@ const testAccountID = "123456789012"
 
 func newTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
+	_ = corev1.AddToScheme(s)
 	_ = hyperfleetv1alpha1.AddToScheme(s)
 	return s
 }
@@ -57,7 +59,7 @@ func TestClusterHandler_List_Success(t *testing.T) {
 		testClusterCR("cluster-2", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -85,7 +87,7 @@ func TestClusterHandler_List_Empty(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -113,7 +115,7 @@ func TestClusterHandler_List_Pagination(t *testing.T) {
 		testClusterCR("c3", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters?limit=2&offset=1", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -141,7 +143,7 @@ func TestClusterHandler_Create_Success(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"name": "my-cluster",
@@ -179,7 +181,7 @@ func TestClusterHandler_Create_SetsCreatorARN(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"name": "my-cluster",
@@ -208,7 +210,7 @@ func TestClusterHandler_Create_InvalidJSON(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader([]byte("not json")))
 	req = req.WithContext(testContext(testAccountID))
@@ -236,7 +238,7 @@ func TestClusterHandler_Create_MissingFields(t *testing.T) {
 			scheme := newTestScheme()
 			fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+			handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 			body, _ := json.Marshal(tt.body)
 			req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
@@ -258,7 +260,7 @@ func TestClusterHandler_Get_Success(t *testing.T) {
 		testClusterCR("cluster-123", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/cluster-123", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -286,7 +288,7 @@ func TestClusterHandler_Get_NotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/no-such-cluster", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -312,7 +314,7 @@ func TestClusterHandler_Delete_Success(t *testing.T) {
 		testClusterCR("cluster-123", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v0/clusters/cluster-123", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -336,7 +338,7 @@ func TestClusterHandler_Delete_NotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v0/clusters/no-such-cluster", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -368,7 +370,7 @@ func TestClusterHandler_GetStatus_Success(t *testing.T) {
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
 		WithStatusSubresource(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/cluster-123/statuses", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -393,7 +395,7 @@ func TestClusterHandler_GetStatus_NotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/no-such/statuses", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -413,7 +415,7 @@ func TestClusterHandler_Update_Success(t *testing.T) {
 		testClusterCR("cluster-123", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"spec": map[string]interface{}{
@@ -444,7 +446,7 @@ func TestClusterHandler_Update_NotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"spec": map[string]interface{}{"name": "x"},
@@ -466,7 +468,7 @@ func TestClusterHandler_Update_MissingSpec(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	body, _ := json.Marshal(map[string]interface{}{})
 
@@ -488,7 +490,7 @@ func TestClusterHandler_Create_DuplicateName(t *testing.T) {
 		testClusterCR("existing-id", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"name": "test-cluster",
@@ -519,7 +521,7 @@ func TestClusterHandler_Create_SameNameDifferentAccount(t *testing.T) {
 		testClusterCR("existing-id", otherAccount),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", logger)
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"name": "test-cluster",

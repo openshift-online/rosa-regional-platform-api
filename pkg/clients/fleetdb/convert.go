@@ -39,9 +39,18 @@ func ClusterCRToPlatform(cr *hyperfleetv1alpha1.Cluster) *types.Cluster {
 
 	if phase := cr.Status.Phase; phase != "" {
 		cluster.Status = &types.ClusterStatusInfo{
-			ObservedGeneration: cr.Status.ObservedGeneration,
-			Phase:              string(phase),
-			LastUpdateTime:     metaTime(cr),
+			ObservedGeneration:   cr.Status.ObservedGeneration,
+			Phase:                string(phase),
+			ControlPlaneEndpoint: cr.Status.ControlPlaneEndpoint,
+			Version:              cr.Status.Version,
+			LastUpdateTime:       metaTime(cr),
+		}
+
+		if pr := cr.Status.PlacementRef; pr != nil {
+			cluster.Status.PlacementRef = &types.PlacementReference{
+				Name:              pr.Name,
+				ManagementCluster: pr.ManagementCluster,
+			}
 		}
 
 		if len(cr.Status.Conditions) > 0 {

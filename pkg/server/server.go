@@ -43,7 +43,7 @@ func New(cfg *config.Config, fleetDBClient *fleetdb.Client, rcClient ctrlclient.
 	healthHandler := apphandlers.NewHealthHandler()
 	infoHandler := apphandlers.NewInfoHandler()
 	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(rcClient, logger)
-	clusterHandler := apphandlers.NewClusterHandler(fleetDBClient, logger)
+	clusterHandler := apphandlers.NewClusterHandler(fleetDBClient, cfg.Regional.OIDCIssuerBaseURL, logger)
 	nodePoolHandler := apphandlers.NewNodePoolHandler(fleetDBClient, logger)
 
 	// Create legacy authorization middleware (for non-authz routes)

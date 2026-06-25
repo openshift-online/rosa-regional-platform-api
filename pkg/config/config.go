@@ -9,6 +9,7 @@ import (
 type Config struct {
 	Server          ServerConfig
 	FleetDB         FleetDBConfig
+	Regional        RegionalConfig
 	Logging         LoggingConfig
 	Authz           *authz.Config
 	Zoa             ZoaConfig
@@ -18,6 +19,10 @@ type Config struct {
 type FleetDBConfig struct {
 	ClusterName string
 	AWSRegion   string
+}
+
+type RegionalConfig struct {
+	OIDCIssuerBaseURL string
 }
 
 type ZoaConfig struct {

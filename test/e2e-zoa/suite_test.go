@@ -54,7 +54,7 @@ func discoverMC(client *awstest.APIClient, acctID string) string {
 
 	var list struct {
 		Items []struct {
-			Name string `json:"name"`
+			ID string `json:"id"`
 		} `json:"items"`
 	}
 	err = json.Unmarshal(resp.Body, &list)
@@ -62,8 +62,8 @@ func discoverMC(client *awstest.APIClient, acctID string) string {
 	ExpectWithOffset(1, list.Items).NotTo(BeEmpty(), "No management clusters registered")
 
 	for _, item := range list.Items {
-		if !strings.HasPrefix(item.Name, "test-") {
-			return item.Name
+		if !strings.HasPrefix(item.ID, "test-") {
+			return item.ID
 		}
 	}
 	Fail("No non-test management cluster found")

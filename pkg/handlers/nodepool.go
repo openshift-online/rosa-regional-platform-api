@@ -99,6 +99,16 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if _, err := h.fleetDB.GetCluster(ctx, accountID, req.ClusterID); err != nil {
+		if fleetdb.IsNotFound(err) {
+			h.writeError(w, http.StatusNotFound, "NODEPOOLS-MGMT-CREATE-004", "Referenced cluster not found")
+			return
+		}
+		h.logger.Error("failed to verify cluster exists", "error", err, "account_id", accountID, "cluster_id", req.ClusterID)
+		h.writeError(w, http.StatusInternalServerError, "NODEPOOLS-MGMT-CREATE-005", "Failed to validate cluster reference")
+		return
+	}
+
 	nodepoolID := uuid.New().String()
 
 	h.logger.Info("creating nodepool", "account_id", accountID, "cluster_id", req.ClusterID, "nodepool_name", req.Name, "nodepool_id", nodepoolID)

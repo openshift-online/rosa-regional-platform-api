@@ -210,7 +210,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.fleetDB.CreateManifest(ctx, accountID, hfm); err != nil {
+	if err := h.fleetDB.CreateManifest(ctx, zoa.JobNamespace, hfm); err != nil {
 		h.logger.Error("failed to create manifest on fleet-db", "error", err, "execution_id", execID)
 		_ = h.store.UpdateStatus(ctx, execID, zoa.StatusFailed, time.Now().UTC().Format(time.RFC3339), 0)
 		h.writeError(w, http.StatusBadGateway, "dispatch-error", "Failed to dispatch trusted action")

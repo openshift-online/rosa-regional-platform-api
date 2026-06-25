@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	mcConfigMapName      = "hyperfleet-mc-config"
-	mcConfigMapNamespace = "default"
+	mcConfigMapName      = "management-clusters"
+	mcConfigMapNamespace = "rosa-regional-platform"
 	mcConfigMapKey       = "clusters.yaml"
 )
 

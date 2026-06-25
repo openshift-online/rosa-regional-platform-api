@@ -153,9 +153,9 @@ spec:
             - serve
             - --log-level=info
             - --log-format=json
-            - --maestro-url=http://maestro:8000
+            - --fleet-db-cluster-name=fleet-db
+            - --aws-region=us-east-2
             - --dynamodb-region=us-east-2
-            - --dynamodb-table=rosa-customer-accounts
             - --api-port=8000
             - --health-port=8081
             - --metrics-port=9090

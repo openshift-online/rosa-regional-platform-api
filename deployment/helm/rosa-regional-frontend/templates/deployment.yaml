@@ -24,9 +24,9 @@ spec:
             - serve
             - --log-level={{ .Values.app.args.logLevel }}
             - --log-format={{ .Values.app.args.logFormat }}
-            - --maestro-url={{ .Values.app.args.maestroUrl }}
+            - --fleet-db-cluster-name={{ .Values.app.args.fleetDBClusterName }}
+            - --aws-region={{ .Values.app.args.awsRegion }}
             - --dynamodb-region={{ .Values.app.args.dynamodbRegion }}
-            - --dynamodb-table={{ .Values.app.args.dynamodbTable }}
             - --api-port={{ .Values.app.args.apiPort }}
             - --health-port={{ .Values.app.args.healthPort }}
             - --metrics-port={{ .Values.app.args.metricsPort }}

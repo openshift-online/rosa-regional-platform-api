@@ -2,41 +2,42 @@ package zoa
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"time"
 
-	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
-	workv1 "open-cluster-management.io/api/work/v1"
+	"github.com/openshift/rosa-regional-platform-api/pkg/clients/fleetdb"
+	hyperfleetv1alpha1 "github.com/typeid/hyperfleet-operator/api/v1alpha1"
 )
 
 // Reconciler periodically checks pending/running TA executions and updates their
-// status by inspecting Maestro ManifestWork feedback via gRPC.
-// On terminal states (succeeded, failed, timeout), it deletes the ResourceBundle
-// BEFORE updating status, preventing stale RBs if the status update were to fail.
+// status by inspecting HyperFleetManifest CR status on fleet-db.
+// On terminal states (succeeded, failed, timeout), it deletes the HyperFleetManifest
+// BEFORE updating status, preventing stale CRs if the status update were to fail.
 type Reconciler struct {
-	store         ExecutionStore
-	registry      *TemplateRegistry
-	maestroClient maestro.ClientInterface
-	jobConfig     *JobConfig
-	logger        *slog.Logger
-	interval      time.Duration
+	store     ExecutionStore
+	registry  *TemplateRegistry
+	fleetDB   *fleetdb.Client
+	jobConfig *JobConfig
+	logger    *slog.Logger
+	interval  time.Duration
 }
 
 func NewReconciler(
 	store ExecutionStore,
 	registry *TemplateRegistry,
-	maestroClient maestro.ClientInterface,
+	fleetDB *fleetdb.Client,
 	jobConfig *JobConfig,
 	interval time.Duration,
 	logger *slog.Logger,
 ) *Reconciler {
 	return &Reconciler{
-		store:         store,
-		registry:      registry,
-		maestroClient: maestroClient,
-		jobConfig:     jobConfig,
-		logger:        logger,
-		interval:      interval,
+		store:     store,
+		registry:  registry,
+		fleetDB:   fleetDB,
+		jobConfig: jobConfig,
+		logger:    logger,
+		interval:  interval,
 	}
 }
 
@@ -84,22 +85,25 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 		return
 	}
 
-	mw, err := r.maestroClient.GetManifestWork(ctx, exec.TargetCluster, exec.ManifestWorkName)
+	hfm, err := r.fleetDB.GetManifest(ctx, exec.AccountID, exec.ManifestWorkName)
 	if err != nil {
-		r.logger.Error("failed to get manifestwork from maestro",
+		if fleetdb.IsNotFound(err) {
+			return
+		}
+		r.logger.Error("failed to get manifest from fleet-db",
 			"execution_id", exec.ExecutionID,
-			"manifest_work", exec.ManifestWorkName,
+			"manifest", exec.ManifestWorkName,
 			"target_cluster", exec.TargetCluster,
 			"error", err,
 		)
 		return
 	}
 
-	if mw == nil {
+	if hfm == nil {
 		return
 	}
 
-	result := r.parseManifestWorkStatus(mw)
+	result := r.parseManifestStatus(hfm, exec.ExecutionID)
 
 	if result.fullyCompleted() {
 		r.handleCompletion(ctx, exec, result)
@@ -121,8 +125,8 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 	}
 }
 
-// handleTimeout deletes the ResourceBundle FIRST, then marks as timed_out.
-// If RB deletion fails, status stays pending/running so the reconciler retries.
+// handleTimeout deletes the HyperFleetManifest FIRST, then marks as timed_out.
+// If deletion fails, status stays pending/running so the reconciler retries.
 func (r *Reconciler) handleTimeout(ctx context.Context, exec *Execution) {
 	timeout := r.timeoutForExecution(exec)
 	createdAt, _ := time.Parse(time.RFC3339, exec.CreatedAt)
@@ -133,14 +137,14 @@ func (r *Reconciler) handleTimeout(ctx context.Context, exec *Execution) {
 		"timeout", timeout.String(),
 	)
 
-	if err := r.deleteResourceBundle(ctx, exec); err != nil {
+	if err := r.deleteManifest(ctx, exec); err != nil {
 		return
 	}
 
 	now := time.Now().UTC()
 	duration := int(now.Sub(createdAt).Seconds())
 	if err := r.store.UpdateStatus(ctx, exec.ExecutionID, StatusTimedOut, now.Format(time.RFC3339), duration); err != nil {
-		r.logger.Error("resource bundle deleted but failed to update status to timed_out — will not retry RB deletion",
+		r.logger.Error("manifest deleted but failed to update status to timed_out — will not retry deletion",
 			"execution_id", exec.ExecutionID,
 			"error", err,
 		)
@@ -153,10 +157,10 @@ func (r *Reconciler) handleTimeout(ctx context.Context, exec *Execution) {
 	)
 }
 
-// handleCompletion deletes the ResourceBundle FIRST, then updates terminal status.
-// Computes durations from Job timestamps reported via Maestro feedback.
+// handleCompletion deletes the HyperFleetManifest FIRST, then updates terminal status.
+// Computes durations from Job timestamps reported via HFM resource statuses.
 func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, result *jobResult) {
-	if err := r.deleteResourceBundle(ctx, exec); err != nil {
+	if err := r.deleteManifest(ctx, exec); err != nil {
 		return
 	}
 
@@ -174,7 +178,7 @@ func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, resu
 	outputStatus := result.outputStatus()
 
 	if err := r.store.UpdateCompletion(ctx, exec.ExecutionID, status, now.Format(time.RFC3339), totalDuration, runnerSeconds, uploadSeconds, outputStatus); err != nil {
-		r.logger.Error("resource bundle deleted but failed to update terminal status",
+		r.logger.Error("manifest deleted but failed to update terminal status",
 			"execution_id", exec.ExecutionID,
 			"terminal_status", string(status),
 			"error", err,
@@ -192,34 +196,34 @@ func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, resu
 	)
 }
 
-// deleteResourceBundle removes the RB from Maestro. Returns nil on success or
-// if the RB is already gone (idempotent). Returns error if deletion actually fails.
-func (r *Reconciler) deleteResourceBundle(ctx context.Context, exec *Execution) error {
-	err := r.maestroClient.DeleteManifestWork(ctx, exec.TargetCluster, exec.ManifestWorkName)
+// deleteManifest removes the HyperFleetManifest from fleet-db. Returns nil on success or
+// if the CR is already gone (idempotent). Returns error if deletion actually fails.
+func (r *Reconciler) deleteManifest(ctx context.Context, exec *Execution) error {
+	err := r.fleetDB.DeleteManifest(ctx, exec.AccountID, exec.ManifestWorkName)
 	if err != nil {
-		if maestro.IsNotFound(err) {
-			r.logger.Debug("resource bundle already deleted",
+		if fleetdb.IsNotFound(err) {
+			r.logger.Debug("manifest already deleted",
 				"execution_id", exec.ExecutionID,
-				"manifest_work", exec.ManifestWorkName,
+				"manifest", exec.ManifestWorkName,
 			)
 			return nil
 		}
-		r.logger.Error("failed to delete resource bundle — will retry next reconcile",
+		r.logger.Error("failed to delete manifest — will retry next reconcile",
 			"execution_id", exec.ExecutionID,
-			"manifest_work", exec.ManifestWorkName,
+			"manifest", exec.ManifestWorkName,
 			"error", err,
 		)
 		return err
 	}
 
-	r.logger.Info("resource bundle deleted",
+	r.logger.Info("manifest deleted",
 		"execution_id", exec.ExecutionID,
-		"manifest_work", exec.ManifestWorkName,
+		"manifest", exec.ManifestWorkName,
 	)
 	return nil
 }
 
-const dispatchBuffer = 120 // seconds — covers Maestro + MQTT + pod scheduling + image pull
+const dispatchBuffer = 120 // seconds — covers DynamoDB desire propagation + pod scheduling + image pull
 
 func (r *Reconciler) timeoutForExecution(exec *Execution) time.Duration {
 	execTimeout := r.jobConfig.ExecutionTimeoutSeconds
@@ -243,14 +247,14 @@ func (r *Reconciler) isTimedOut(exec *Execution) bool {
 	return time.Since(createdAt) > r.timeoutForExecution(exec)
 }
 
-// jobResult holds parsed completion info from ManifestWork feedback for both Jobs.
+// jobResult holds parsed completion info from HyperFleetManifest resource statuses.
 type jobResult struct {
-	taSucceeded         bool
-	taFailed            bool
-	uploadSucceeded     bool
-	uploadFailed        bool
-	applied             bool
-	runnerStartTime     string
+	taSucceeded          bool
+	taFailed             bool
+	uploadSucceeded      bool
+	uploadFailed         bool
+	applied              bool
+	runnerStartTime      string
 	runnerCompletionTime string
 	uploadCompletionTime string
 }
@@ -305,41 +309,65 @@ func (jr *jobResult) computeUploadSeconds() int {
 	return int(uploadEnd.Sub(runnerEnd).Seconds())
 }
 
-// parseManifestWorkStatus extracts Job status from both runner and uploader feedback.
-func (r *Reconciler) parseManifestWorkStatus(mw *workv1.ManifestWork) *jobResult {
+// partialJobStatus mirrors the subset of batch/v1 Job.Status we need.
+type partialJobStatus struct {
+	Status struct {
+		Succeeded      int32  `json:"succeeded,omitempty"`
+		Failed         int32  `json:"failed,omitempty"`
+		StartTime      string `json:"startTime,omitempty"`
+		CompletionTime string `json:"completionTime,omitempty"`
+	} `json:"status,omitempty"`
+}
+
+// parseManifestStatus extracts Job status from the HFM's resource statuses.
+// Runner job name = "zoa-{execID}", upload job name = "zoa-{execID}-upload".
+func (r *Reconciler) parseManifestStatus(hfm *hyperfleetv1alpha1.HyperFleetManifest, execID string) *jobResult {
 	result := &jobResult{}
 
-	for _, resourceStatus := range mw.Status.ResourceStatus.Manifests {
-		for _, value := range resourceStatus.StatusFeedbacks.Values {
-			switch value.Name {
-			case "taSucceeded":
-				if value.Value.Integer != nil && *value.Value.Integer > 0 {
-					result.taSucceeded = true
-				}
-			case "taFailed":
-				if value.Value.Integer != nil && *value.Value.Integer > 0 {
-					result.taFailed = true
-				}
-			case "uploadSucceeded":
-				if value.Value.Integer != nil && *value.Value.Integer > 0 {
-					result.uploadSucceeded = true
-				}
-			case "uploadFailed":
-				if value.Value.Integer != nil && *value.Value.Integer > 0 {
-					result.uploadFailed = true
-				}
-			case "runnerStartTime":
-				if value.Value.String != nil {
-					result.runnerStartTime = *value.Value.String
-				}
-			case "runnerCompletionTime":
-				if value.Value.String != nil {
-					result.runnerCompletionTime = *value.Value.String
-				}
-			case "uploadCompletionTime":
-				if value.Value.String != nil {
-					result.uploadCompletionTime = *value.Value.String
-				}
+	runnerJobName := "zoa-" + execID
+	uploadJobName := "zoa-" + execID + "-upload"
+
+	for _, rs := range hfm.Status.ResourceStatuses {
+		if rs.Resource != "jobs" {
+			continue
+		}
+
+		if len(rs.KubeContent.Raw) == 0 {
+			continue
+		}
+
+		var job partialJobStatus
+		if err := json.Unmarshal(rs.KubeContent.Raw, &job); err != nil {
+			r.logger.Debug("failed to unmarshal job status from resource status",
+				"name", rs.Name,
+				"error", err,
+			)
+			continue
+		}
+
+		switch rs.Name {
+		case runnerJobName:
+			if job.Status.Succeeded > 0 {
+				result.taSucceeded = true
+			}
+			if job.Status.Failed > 0 {
+				result.taFailed = true
+			}
+			if job.Status.StartTime != "" {
+				result.runnerStartTime = job.Status.StartTime
+			}
+			if job.Status.CompletionTime != "" {
+				result.runnerCompletionTime = job.Status.CompletionTime
+			}
+		case uploadJobName:
+			if job.Status.Succeeded > 0 {
+				result.uploadSucceeded = true
+			}
+			if job.Status.Failed > 0 {
+				result.uploadFailed = true
+			}
+			if job.Status.CompletionTime != "" {
+				result.uploadCompletionTime = job.Status.CompletionTime
 			}
 		}
 	}
@@ -348,11 +376,8 @@ func (r *Reconciler) parseManifestWorkStatus(mw *workv1.ManifestWork) *jobResult
 		return result
 	}
 
-	for _, condition := range mw.Status.Conditions {
-		if condition.Type == "Applied" && condition.Status == "True" {
-			result.applied = true
-			return result
-		}
+	if hfm.Status.Phase == hyperfleetv1alpha1.ManifestPhaseApplied {
+		result.applied = true
 	}
 
 	return result

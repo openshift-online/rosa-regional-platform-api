@@ -162,6 +162,41 @@ func (c *Client) DeleteNodePool(ctx context.Context, accountID, nodepoolID strin
 	return nil
 }
 
+// --- HyperFleetManifest operations ---
+
+// CreateManifest creates a HyperFleetManifest CR on fleet-db.
+func (c *Client) CreateManifest(ctx context.Context, accountID string, hfm *hyperfleetv1alpha1.HyperFleetManifest) error {
+	hfm.Namespace = accountID
+	if err := c.Client.Create(ctx, hfm); err != nil {
+		return fmt.Errorf("create manifest %s/%s: %w", accountID, hfm.Name, err)
+	}
+	return nil
+}
+
+// GetManifest retrieves a HyperFleetManifest CR by account ID and name.
+func (c *Client) GetManifest(ctx context.Context, accountID, name string) (*hyperfleetv1alpha1.HyperFleetManifest, error) {
+	var hfm hyperfleetv1alpha1.HyperFleetManifest
+	key := client.ObjectKey{Namespace: accountID, Name: name}
+	if err := c.Client.Get(ctx, key, &hfm); err != nil {
+		return nil, err
+	}
+	return &hfm, nil
+}
+
+// DeleteManifest deletes a HyperFleetManifest CR.
+func (c *Client) DeleteManifest(ctx context.Context, accountID, name string) error {
+	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: accountID,
+			Name:      name,
+		},
+	}
+	if err := c.Client.Delete(ctx, hfm); err != nil {
+		return fmt.Errorf("delete manifest %s/%s: %w", accountID, name, err)
+	}
+	return nil
+}
+
 // --- Error helpers ---
 
 // IsNotFound returns true if the error is a Kubernetes 404.

@@ -16,7 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
-	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
+	"github.com/openshift/rosa-regional-platform-api/pkg/clients/fleetdb"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
 	"github.com/openshift/rosa-regional-platform-api/pkg/zoa"
 )
@@ -25,14 +25,14 @@ var jiraTicketRegex = regexp.MustCompile(`^[A-Z][A-Z0-9]+-\d+$`)
 
 // ZoaHandler handles ZOA Trusted Action endpoints.
 type ZoaHandler struct {
-	store         zoa.ExecutionStore
-	auditStore    zoa.AuditStore
-	registry      *zoa.TemplateRegistry
-	maestroClient maestro.ClientInterface
-	s3Client      S3Client
-	bucketName    string
-	jobConfig     *zoa.JobConfig
-	logger        *slog.Logger
+	store      zoa.ExecutionStore
+	auditStore zoa.AuditStore
+	registry   *zoa.TemplateRegistry
+	fleetDB    *fleetdb.Client
+	s3Client   S3Client
+	bucketName string
+	jobConfig  *zoa.JobConfig
+	logger     *slog.Logger
 }
 
 // S3Client provides operations for accessing S3 objects.
@@ -51,20 +51,20 @@ type ZoaConfig struct {
 func NewZoaHandler(
 	store zoa.ExecutionStore,
 	registry *zoa.TemplateRegistry,
-	maestroClient maestro.ClientInterface,
+	fleetDB *fleetdb.Client,
 	s3Client S3Client,
 	cfg ZoaConfig,
 	logger *slog.Logger,
 ) *ZoaHandler {
 	return &ZoaHandler{
-		store:         store,
-		auditStore:    cfg.AuditStore,
-		registry:      registry,
-		maestroClient: maestroClient,
-		s3Client:      s3Client,
-		bucketName:    cfg.BucketName,
-		jobConfig:     cfg.JobConfig,
-		logger:        logger,
+		store:      store,
+		auditStore: cfg.AuditStore,
+		registry:   registry,
+		fleetDB:    fleetDB,
+		s3Client:   s3Client,
+		bucketName: cfg.BucketName,
+		jobConfig:  cfg.JobConfig,
+		logger:     logger,
 	}
 }
 
@@ -202,32 +202,31 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Config:        *h.jobConfig,
 	}
 
-	mw, err := zoa.BuildManifestWork(tmpl, renderCtx)
+	hfm, err := zoa.BuildHyperFleetManifest(tmpl, renderCtx)
 	if err != nil {
-		h.logger.Error("failed to build manifestwork", "error", err, "execution_id", execID)
+		h.logger.Error("failed to build manifest", "error", err, "execution_id", execID)
 		_ = h.store.UpdateStatus(ctx, execID, zoa.StatusFailed, time.Now().UTC().Format(time.RFC3339), 0)
 		h.writeError(w, http.StatusInternalServerError, "render-error", "Failed to build trusted action manifest")
 		return
 	}
 
-	result, err := h.maestroClient.CreateManifestWork(ctx, req.TargetCluster, mw)
-	if err != nil {
-		h.logger.Error("failed to dispatch manifestwork", "error", err, "execution_id", execID)
+	if err := h.fleetDB.CreateManifest(ctx, accountID, hfm); err != nil {
+		h.logger.Error("failed to create manifest on fleet-db", "error", err, "execution_id", execID)
 		_ = h.store.UpdateStatus(ctx, execID, zoa.StatusFailed, time.Now().UTC().Format(time.RFC3339), 0)
-		h.writeError(w, http.StatusBadGateway, "maestro-error", "Failed to dispatch trusted action")
+		h.writeError(w, http.StatusBadGateway, "dispatch-error", "Failed to dispatch trusted action")
 		return
 	}
 
-	exec.ManifestWorkName = result.Name
-	if err := h.store.UpdateManifestWorkName(ctx, execID, result.Name); err != nil {
-		h.logger.Error("failed to update manifestwork name", "error", err, "execution_id", execID)
+	exec.ManifestWorkName = hfm.Name
+	if err := h.store.UpdateManifestWorkName(ctx, execID, hfm.Name); err != nil {
+		h.logger.Error("failed to update manifest name", "error", err, "execution_id", execID)
 	}
 
 	h.logger.Info("trusted action dispatched",
 		"execution_id", execID,
 		"action", action,
 		"target_cluster", req.TargetCluster,
-		"manifest_work", result.Name,
+		"manifest", hfm.Name,
 		"operator", operator,
 		"scope", tmpl.Scope,
 		"type", tmpl.Type,

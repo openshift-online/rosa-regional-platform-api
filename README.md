@@ -40,21 +40,14 @@ flowchart LR
 
 ## Configuration
 
-| Flag                | Default                                          | Description              |
-| ------------------- | ------------------------------------------------ | ------------------------ |
-| `--api-port`        | `8000`                                           | API server port          |
-| `--maestro-url`     | `http://maestro:8000`                            | Maestro API URL          |
-| `--hyperfleet-url`  | `http://hyperfleet-api.hyperfleet-system:8000`   | Hyperfleet API base URL  |
-| `--dynamodb-table`  | `rosa-customer-accounts`                         | DynamoDB table           |
-| `--dynamodb-region` | `us-east-1`                                      | AWS region               |
-| `--zoa.enabled`     | `false`                                            | Enable ZOA Trusted Actions |
-| `--zoa.table-name`  | `rosa-zoa-actions`                                 | ZOA DynamoDB table       |
-| `--zoa.audit-table-name` | `rosa-zoa-audit`                              | ZOA audit log table      |
-| `--zoa.bucket-name` | `rosa-zoa-artifacts`                               | ZOA S3 artifacts bucket  |
-| `--zoa.aws-region`  | `us-east-1`                                        | ZOA AWS region           |
-| `--zoa.templates-dir` | `/etc/zoa/templates`                             | ZOA action templates dir |
-| `--zoa.job-config-dir` | `/etc/zoa/jobs`                                 | ZOA job configuration dir |
-| `--zoa.poll-interval` | `30s`                                            | ZOA job poll interval    |
+| Flag                     | Default            | Description                    |
+| ------------------------ | ------------------ | ------------------------------ |
+| `--api-port`             | `8000`             | API server port                |
+| `--fleet-db-cluster-name`| (required)         | EKS cluster name for fleet-db  |
+| `--aws-region`           | `us-east-1`        | AWS region for fleet-db and DynamoDB |
+| `--dynamodb-region`      | (same as aws-region) | AWS region for DynamoDB      |
+| `--dynamodb-prefix`      | `rosa`             | Prefix for DynamoDB table names |
+| `--allowed-accounts`     | (none)             | Comma-separated allowed AWS account IDs |
 
 ## Build
 
@@ -431,7 +424,7 @@ The e2e suite includes several test categories:
 2. **Platform API Tests** (`e2e_test.go`)
    - Tests API endpoints (`/live`, `/ready`, etc.)
    - Management cluster operations
-   - ManifestWork creation and distribution
+   - Cluster and nodepool operations
 
 3. **Authorization Tests** (`authz_e2e_test.go`)
    - Tests Cedar-based authorization
@@ -472,23 +465,21 @@ awscurl -X POST https://z11111111.execute-api.us-east-2.amazonaws.com/prod/api/v
 --service execute-api \
 --region us-east-2 \
 -H "Content-Type: application/json" \
--d '{"name": "management-01", "labels": {"cluster_type": "management", "cluster_id": "management-01"}}'
+-d '{"id": "mc-useast2-1", "region": "us-east-2", "account_id": "123456789012"}'
 ```
 
-### Get the current resource bundles
+### List management clusters
 ```bash
-awscurl https://z11111111.execute-api.us-east-2.amazonaws.com/prod/api/v0/resource_bundles \
+awscurl https://z11111111.execute-api.us-east-2.amazonaws.com/prod/api/v0/management_clusters \
 --service execute-api \
 --region us-east-2
 ```
 
-### Create a manifestwork for management-01
+### List clusters
 ```bash
-# see swagger for reference for the payload struct
-awscurl -X POST https://z11111111.execute-api.us-east-2.amazonaws.com/prod/api/v0/work \
+awscurl https://z11111111.execute-api.us-east-2.amazonaws.com/prod/api/v0/clusters \
 --service execute-api \
---region us-east-2 \
--d @payload.json
+--region us-east-2
 ```
 
 

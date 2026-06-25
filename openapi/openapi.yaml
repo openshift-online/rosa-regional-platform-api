@@ -16,7 +16,7 @@ paths:
     post:
       summary: Create a new management cluster
       description: |
-        Creates a new management cluster by registering a consumer in Maestro.
+        Creates a new management cluster by registering via ConfigMap on fleet-db cluster.
         Requires privileged access (admin AWS account).
       operationId: createManagementCluster
       tags:
@@ -56,7 +56,7 @@ paths:
     get:
       summary: List all management clusters
       description: |
-        Returns a list of all management clusters (consumers in Maestro).
+        Returns a list of all management clusters.
         Requires privileged access (admin AWS account).
       operationId: listManagementClusters
       tags:
@@ -134,135 +134,6 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /resource_bundles:
-    get:
-      summary: List all resource bundles
-      description: |
-        Returns a paginated list of resource bundles.
-        Supports filtering via search query and custom field selection.
-      operationId: listResourceBundles
-      tags:
-        - ResourceBundles
-      parameters:
-        - name: page
-          in: query
-          description: Page number (1-indexed)
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
-        - name: size
-          in: query
-          description: Number of items per page
-          schema:
-            type: integer
-            minimum: 0
-            default: 100
-        - name: search
-          in: query
-          description: SQL-like filter criteria on resource attributes
-          schema:
-            type: string
-        - name: orderBy
-          in: query
-          description: SQL-like ordering (e.g., "name asc")
-          schema:
-            type: string
-        - name: fields
-          in: query
-          description: Comma-separated list of fields to return
-          schema:
-            type: string
-        - name: X-Operation-ID
-          in: header
-          description: Optional operation ID for tracking
-          schema:
-            type: string
-      responses:
-        '200':
-          description: List of resource bundles
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ResourceBundleList'
-        '401':
-          description: Invalid authentication token
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: Forbidden - user lacks required permissions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /work:
-    post:
-      summary: Create manifestwork for a cluster
-      description: |
-        Creates manifestwork for the specified cluster identified by cluster_id.
-        This endpoint creates the necessary work manifest for the target cluster.
-      operationId: createWork
-      tags:
-        - Work
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/WorkRequest'
-      responses:
-        '201':
-          description: Manifestwork created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Work'
-        '400':
-          description: Bad request - invalid cluster_id or payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          description: Invalid authentication token
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: Forbidden - user lacks required permissions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Cluster not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '502':
-          description: Bad Gateway - Maestro error
           content:
             application/json:
               schema:
@@ -1718,7 +1589,7 @@ components:
 
     ManagementCluster:
       type: object
-      description: A management cluster (passthrough from Maestro consumer)
+      description: A management cluster registered on fleet-db cluster
       required:
         - id
         - kind
@@ -1731,7 +1602,7 @@ components:
         kind:
           type: string
           description: Resource kind
-          example: Consumer
+          example: ManagementCluster
         href:
           type: string
           description: API href reference
@@ -1765,7 +1636,7 @@ components:
         kind:
           type: string
           description: Resource kind
-          example: ConsumerList
+          example: ManagementClusterList
         page:
           type: integer
           description: Current page number
@@ -1779,152 +1650,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ManagementCluster'
-
-    ResourceBundle:
-      type: object
-      description: A resource bundle containing manifests for deployment
-      required:
-        - id
-        - kind
-        - href
-        - name
-      properties:
-        id:
-          type: string
-          description: Unique identifier for the resource bundle
-        kind:
-          type: string
-          description: Resource kind
-          example: ResourceBundle
-        href:
-          type: string
-          description: API href reference
-        name:
-          type: string
-          description: Name of the resource bundle
-        consumer_name:
-          type: string
-          description: Name of the consumer this bundle is associated with
-        version:
-          type: integer
-          description: Version number of the resource bundle
-        created_at:
-          type: string
-          format: date-time
-          description: Creation timestamp
-        updated_at:
-          type: string
-          format: date-time
-          description: Last update timestamp
-        deleted_at:
-          type: string
-          format: date-time
-          description: Deletion timestamp (if soft-deleted)
-        metadata:
-          type: object
-          description: Additional metadata
-          additionalProperties:
-            type: string
-        manifests:
-          type: array
-          description: Array of Kubernetes manifests
-          items:
-            type: object
-        delete_option:
-          type: object
-          description: Deletion strategy for the resource bundle
-        manifest_configs:
-          type: array
-          description: Configuration for manifests
-          items:
-            type: object
-        status:
-          type: object
-          description: Status of the resource bundle
-
-    ResourceBundleList:
-      type: object
-      description: Paginated list of resource bundles
-      required:
-        - kind
-        - page
-        - size
-        - total
-        - items
-      properties:
-        kind:
-          type: string
-          description: Resource kind
-          example: ResourceBundleList
-        page:
-          type: integer
-          description: Current page number
-        size:
-          type: integer
-          description: Number of items per page
-        total:
-          type: integer
-          description: Total number of items
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/ResourceBundle'
-
-    WorkRequest:
-      type: object
-      description: Request body for creating manifestwork
-      required:
-        - cluster_id
-        - data
-      properties:
-        cluster_id:
-          type: string
-          description: Unique identifier of the target cluster
-        data:
-          type: object
-          description: |
-            Payload data to be passed to Maestro gRPC for creating the manifestwork.
-            This should contain the ManifestWork specification including manifests.
-          additionalProperties: true
-
-    Work:
-      type: object
-      description: A manifestwork resource created for a cluster
-      required:
-        - id
-        - kind
-        - href
-        - cluster_id
-        - name
-      properties:
-        id:
-          type: string
-          description: Unique identifier for the manifestwork
-        kind:
-          type: string
-          description: Resource kind
-          example: ManifestWork
-        href:
-          type: string
-          description: API href reference
-        cluster_id:
-          type: string
-          description: Cluster ID this work is associated with
-        name:
-          type: string
-          description: Name of the manifestwork resource
-          example: rosa-work-cluster-123
-        created_at:
-          type: string
-          format: date-time
-          description: Creation timestamp
-        updated_at:
-          type: string
-          format: date-time
-          description: Last update timestamp
-        status:
-          type: object
-          description: Status of the manifestwork
 
     Error:
       type: object

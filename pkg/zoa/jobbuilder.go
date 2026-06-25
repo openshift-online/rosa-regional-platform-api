@@ -7,7 +7,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	workv1 "open-cluster-management.io/api/work/v1"
+
+	hyperfleetv1alpha1 "github.com/typeid/hyperfleet-operator/api/v1alpha1"
 )
 
 const (
@@ -30,130 +31,81 @@ const (
 	uploaderSAName = "zoa-uploader"
 )
 
-// BuildManifestWork generates a complete ManifestWork with two Jobs (runner + uploader).
-func BuildManifestWork(tmpl *TATemplate, ctx RenderContext) (*workv1.ManifestWork, error) {
+// BuildHyperFleetManifest generates a HyperFleetManifest CR with two Jobs (runner + uploader)
+// and all supporting resources (SAs, RBAC, ConfigMaps). The runner and uploader Jobs
+// are watched so the reconciler can read their completion status.
+func BuildHyperFleetManifest(tmpl *TATemplate, ctx RenderContext) (*hyperfleetv1alpha1.HyperFleetManifest, error) {
 	if err := validateSecretsPolicy(tmpl, ctx); err != nil {
 		return nil, err
 	}
 
 	labels := buildLabels(ctx)
-	manifests := make([]workv1.Manifest, 0, 10)
+	resources := make([]hyperfleetv1alpha1.ResourceTemplate, 0, 10)
 
 	runnerSAName := scopeTypeToRunnerSA(ctx.Scope, ctx.Type, ctx.ExecID)
 
-	// Only create the SA manifest for dynamic (per-execution) SAs.
-	// Static SAs (zoa-aws-read, zoa-aws-write) are pre-provisioned via ArgoCD
-	// and must not be lifecycle-managed by individual ManifestWorks.
 	if isRunnerSADynamic(ctx.Scope) {
-		saManifest, err := buildServiceAccount(runnerSAName, ctx, labels)
+		saResource, err := buildServiceAccount(runnerSAName, ctx, labels)
 		if err != nil {
 			return nil, fmt.Errorf("building service account: %w", err)
 		}
-		manifests = append(manifests, saManifest)
+		resources = append(resources, saResource)
 	}
 
-	rbacManifests, err := buildRBACManifests(tmpl, ctx, runnerSAName, labels)
+	rbacResources, err := buildRBACResources(tmpl, ctx, runnerSAName, labels)
 	if err != nil {
-		return nil, fmt.Errorf("building RBAC manifests: %w", err)
+		return nil, fmt.Errorf("building RBAC resources: %w", err)
 	}
-	manifests = append(manifests, rbacManifests...)
+	resources = append(resources, rbacResources...)
 
-	outputCMManifest, err := buildOutputConfigMap(ctx, labels)
+	outputCMResource, err := buildOutputConfigMap(ctx, labels)
 	if err != nil {
 		return nil, fmt.Errorf("building output configmap: %w", err)
 	}
-	manifests = append(manifests, outputCMManifest)
+	resources = append(resources, outputCMResource)
 
-	outputRBACManifests, err := buildOutputRBAC(ctx, runnerSAName, labels)
+	outputRBACResources, err := buildOutputRBAC(ctx, runnerSAName, labels)
 	if err != nil {
 		return nil, fmt.Errorf("building output RBAC: %w", err)
 	}
-	manifests = append(manifests, outputRBACManifests...)
+	resources = append(resources, outputRBACResources...)
 
-	uploaderRBACManifests, err := buildUploaderRBAC(ctx, labels)
+	uploaderRBACResources, err := buildUploaderRBAC(ctx, labels)
 	if err != nil {
 		return nil, fmt.Errorf("building uploader RBAC: %w", err)
 	}
-	manifests = append(manifests, uploaderRBACManifests...)
+	resources = append(resources, uploaderRBACResources...)
 
-	scriptCMManifest, err := buildScriptConfigMap(tmpl, ctx, labels)
+	scriptCMResource, err := buildScriptConfigMap(tmpl, ctx, labels)
 	if err != nil {
 		return nil, fmt.Errorf("building script configmap: %w", err)
 	}
-	manifests = append(manifests, scriptCMManifest)
+	resources = append(resources, scriptCMResource)
 
-	runnerJobManifest, err := buildRunnerJob(tmpl, ctx, runnerSAName, labels)
+	runnerJobResource, err := buildRunnerJob(tmpl, ctx, runnerSAName, labels)
 	if err != nil {
 		return nil, fmt.Errorf("building runner job: %w", err)
 	}
-	manifests = append(manifests, runnerJobManifest)
+	resources = append(resources, runnerJobResource)
 
-	uploadJobManifest, err := buildUploadJob(tmpl, ctx, labels)
+	uploadJobResource, err := buildUploadJob(tmpl, ctx, labels)
 	if err != nil {
 		return nil, fmt.Errorf("building upload job: %w", err)
 	}
-	manifests = append(manifests, uploadJobManifest)
+	resources = append(resources, uploadJobResource)
 
-	runnerJobName := "zoa-" + ctx.ExecID
-	uploadJobName := "zoa-" + ctx.ExecID + "-upload"
-
-	mw := &workv1.ManifestWork{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "work.open-cluster-management.io/v1",
-			Kind:       "ManifestWork",
-		},
+	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      runnerJobName,
-			Namespace: ctx.TargetCluster,
-			Labels:    labels,
+			Name:   "zoa-" + ctx.ExecID,
+			Labels: labels,
 		},
-		Spec: workv1.ManifestWorkSpec{
-			Workload: workv1.ManifestsTemplate{
-				Manifests: manifests,
-			},
-			ManifestConfigs: []workv1.ManifestConfigOption{
-				{
-					ResourceIdentifier: workv1.ResourceIdentifier{
-						Group:     "batch",
-						Resource:  "jobs",
-						Name:      runnerJobName,
-						Namespace: ctx.Namespace,
-					},
-					FeedbackRules: []workv1.FeedbackRule{
-						{
-							Type: workv1.JSONPathsType,
-							JsonPaths: []workv1.JsonPath{
-								{Name: "taSucceeded", Path: ".status.succeeded"},
-								{Name: "taFailed", Path: ".status.failed"},
-								{Name: "runnerStartTime", Path: ".status.startTime"},
-								{Name: "runnerCompletionTime", Path: ".status.completionTime"},
-							},
-						},
-					},
-				},
-				{
-					ResourceIdentifier: workv1.ResourceIdentifier{
-						Group:     "batch",
-						Resource:  "jobs",
-						Name:      uploadJobName,
-						Namespace: ctx.Namespace,
-					},
-					FeedbackRules: []workv1.FeedbackRule{
-						{
-							Type: workv1.JSONPathsType,
-							JsonPaths: []workv1.JsonPath{
-								{Name: "uploadSucceeded", Path: ".status.succeeded"},
-								{Name: "uploadFailed", Path: ".status.failed"},
-								{Name: "uploadCompletionTime", Path: ".status.completionTime"},
-							},
-						},
-					},
-				},
-			},
+		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
+			ManagementCluster: ctx.TargetCluster,
+			Resources:         resources,
 		},
 	}
 
-	return mw, nil
+	return hfm, nil
 }
 
 func buildLabels(ctx RenderContext) map[string]string {
@@ -169,8 +121,6 @@ func buildLabels(ctx RenderContext) map[string]string {
 	}
 }
 
-// scopeTypeToRunnerSA derives the runner ServiceAccount name from scope + type.
-// For kube-api TAs, a per-execution SA is created. For AWS TAs, static SAs are used.
 func scopeTypeToRunnerSA(scope, taType, execID string) string {
 	switch scope {
 	case "aws-api":
@@ -183,13 +133,11 @@ func scopeTypeToRunnerSA(scope, taType, execID string) string {
 	}
 }
 
-// isRunnerSADynamic returns true when the runner SA is per-execution (created and
-// destroyed with the ManifestWork). Static SAs (aws-api scope) are pre-provisioned.
 func isRunnerSADynamic(scope string) bool {
 	return scope != "aws-api"
 }
 
-func buildServiceAccount(saName string, ctx RenderContext, labels map[string]string) (workv1.Manifest, error) {
+func buildServiceAccount(saName string, ctx RenderContext, labels map[string]string) (hyperfleetv1alpha1.ResourceTemplate, error) {
 	saLabels := copyLabels(labels)
 	saLabels[labelRole] = "runner"
 
@@ -203,15 +151,15 @@ func buildServiceAccount(saName string, ctx RenderContext, labels map[string]str
 		},
 	}
 
-	return toManifest(sa)
+	return toResourceTemplate("serviceaccounts", sa, false)
 }
 
-func buildRBACManifests(tmpl *TATemplate, ctx RenderContext, saName string, labels map[string]string) ([]workv1.Manifest, error) {
+func buildRBACResources(tmpl *TATemplate, ctx RenderContext, saName string, labels map[string]string) ([]hyperfleetv1alpha1.ResourceTemplate, error) {
 	if tmpl.RBAC == nil || len(tmpl.RBAC.Rules) == 0 {
 		return nil, nil
 	}
 
-	manifests := make([]workv1.Manifest, 0, 2)
+	resources := make([]hyperfleetv1alpha1.ResourceTemplate, 0, 2)
 	roleName := fmt.Sprintf("zoa-%s-%s", tmpl.Name, ctx.ExecID)
 
 	rules := make([]map[string]interface{}, 0, len(tmpl.RBAC.Rules))
@@ -233,11 +181,11 @@ func buildRBACManifests(tmpl *TATemplate, ctx RenderContext, saName string, labe
 			},
 			"rules": rules,
 		}
-		m, err := toManifest(role)
+		m, err := toResourceTemplate("clusterroles", role, false)
 		if err != nil {
 			return nil, err
 		}
-		manifests = append(manifests, m)
+		resources = append(resources, m)
 
 		binding := map[string]interface{}{
 			"apiVersion": "rbac.authorization.k8s.io/v1",
@@ -259,11 +207,11 @@ func buildRBACManifests(tmpl *TATemplate, ctx RenderContext, saName string, labe
 				},
 			},
 		}
-		m, err = toManifest(binding)
+		m, err = toResourceTemplate("clusterrolebindings", binding, false)
 		if err != nil {
 			return nil, err
 		}
-		manifests = append(manifests, m)
+		resources = append(resources, m)
 	} else {
 		targetNS := resolveTargetNamespace(tmpl, ctx)
 
@@ -277,11 +225,11 @@ func buildRBACManifests(tmpl *TATemplate, ctx RenderContext, saName string, labe
 			},
 			"rules": rules,
 		}
-		m, err := toManifest(role)
+		m, err := toResourceTemplate("roles", role, false)
 		if err != nil {
 			return nil, err
 		}
-		manifests = append(manifests, m)
+		resources = append(resources, m)
 
 		binding := map[string]interface{}{
 			"apiVersion": "rbac.authorization.k8s.io/v1",
@@ -304,18 +252,17 @@ func buildRBACManifests(tmpl *TATemplate, ctx RenderContext, saName string, labe
 				},
 			},
 		}
-		m, err = toManifest(binding)
+		m, err = toResourceTemplate("rolebindings", binding, false)
 		if err != nil {
 			return nil, err
 		}
-		manifests = append(manifests, m)
+		resources = append(resources, m)
 	}
 
-	return manifests, nil
+	return resources, nil
 }
 
-// buildOutputConfigMap creates the empty output ConfigMap that the runner writes to.
-func buildOutputConfigMap(ctx RenderContext, labels map[string]string) (workv1.Manifest, error) {
+func buildOutputConfigMap(ctx RenderContext, labels map[string]string) (hyperfleetv1alpha1.ResourceTemplate, error) {
 	cmLabels := copyLabels(labels)
 	cmLabels[labelRole] = "output"
 
@@ -330,11 +277,10 @@ func buildOutputConfigMap(ctx RenderContext, labels map[string]string) (workv1.M
 		"data": map[string]interface{}{},
 	}
 
-	return toManifest(cm)
+	return toResourceTemplate("configmaps", cm, false)
 }
 
-// buildOutputRBAC grants the runner SA permission to patch its output ConfigMap.
-func buildOutputRBAC(ctx RenderContext, saName string, labels map[string]string) ([]workv1.Manifest, error) {
+func buildOutputRBAC(ctx RenderContext, saName string, labels map[string]string) ([]hyperfleetv1alpha1.ResourceTemplate, error) {
 	roleName := fmt.Sprintf("zoa-output-%s", ctx.ExecID)
 
 	role := map[string]interface{}{
@@ -354,7 +300,7 @@ func buildOutputRBAC(ctx RenderContext, saName string, labels map[string]string)
 			},
 		},
 	}
-	roleManifest, err := toManifest(role)
+	roleResource, err := toResourceTemplate("roles", role, false)
 	if err != nil {
 		return nil, err
 	}
@@ -380,16 +326,15 @@ func buildOutputRBAC(ctx RenderContext, saName string, labels map[string]string)
 			},
 		},
 	}
-	bindingManifest, err := toManifest(binding)
+	bindingResource, err := toResourceTemplate("rolebindings", binding, false)
 	if err != nil {
 		return nil, err
 	}
 
-	return []workv1.Manifest{roleManifest, bindingManifest}, nil
+	return []hyperfleetv1alpha1.ResourceTemplate{roleResource, bindingResource}, nil
 }
 
-// buildUploaderRBAC grants the uploader SA scoped permission to read the output ConfigMap and watch the runner Job.
-func buildUploaderRBAC(ctx RenderContext, labels map[string]string) ([]workv1.Manifest, error) {
+func buildUploaderRBAC(ctx RenderContext, labels map[string]string) ([]hyperfleetv1alpha1.ResourceTemplate, error) {
 	roleName := fmt.Sprintf("zoa-uploader-%s", ctx.ExecID)
 	runnerJobName := "zoa-" + ctx.ExecID
 	outputCMName := "zoa-output-" + ctx.ExecID
@@ -417,7 +362,7 @@ func buildUploaderRBAC(ctx RenderContext, labels map[string]string) ([]workv1.Ma
 			},
 		},
 	}
-	roleManifest, err := toManifest(role)
+	roleResource, err := toResourceTemplate("roles", role, false)
 	if err != nil {
 		return nil, err
 	}
@@ -443,15 +388,15 @@ func buildUploaderRBAC(ctx RenderContext, labels map[string]string) ([]workv1.Ma
 			},
 		},
 	}
-	bindingManifest, err := toManifest(binding)
+	bindingResource, err := toResourceTemplate("rolebindings", binding, false)
 	if err != nil {
 		return nil, err
 	}
 
-	return []workv1.Manifest{roleManifest, bindingManifest}, nil
+	return []hyperfleetv1alpha1.ResourceTemplate{roleResource, bindingResource}, nil
 }
 
-func buildScriptConfigMap(tmpl *TATemplate, ctx RenderContext, labels map[string]string) (workv1.Manifest, error) {
+func buildScriptConfigMap(tmpl *TATemplate, ctx RenderContext, labels map[string]string) (hyperfleetv1alpha1.ResourceTemplate, error) {
 	data := map[string]interface{}{
 		"entrypoint.sh": ctx.Config.EntrypointScript,
 		"run.sh":        tmpl.Script,
@@ -471,12 +416,10 @@ func buildScriptConfigMap(tmpl *TATemplate, ctx RenderContext, labels map[string
 		"data": data,
 	}
 
-	return toManifest(cm)
+	return toResourceTemplate("configmaps", cm, false)
 }
 
-// buildRunnerJob creates the TA runner Job. It no longer uploads to S3;
-// output is written to the output ConfigMap.
-func buildRunnerJob(tmpl *TATemplate, ctx RenderContext, saName string, labels map[string]string) (workv1.Manifest, error) {
+func buildRunnerJob(tmpl *TATemplate, ctx RenderContext, saName string, labels map[string]string) (hyperfleetv1alpha1.ResourceTemplate, error) {
 	jobName := "zoa-" + ctx.ExecID
 
 	jobLabels := copyLabels(labels)
@@ -576,12 +519,10 @@ func buildRunnerJob(tmpl *TATemplate, ctx RenderContext, saName string, labels m
 		},
 	}
 
-	return toManifest(job)
+	return toResourceTemplate("jobs", job, true)
 }
 
-// buildUploadJob creates the S3 uploader Job. It waits for the runner to write output
-// to the ConfigMap, then uploads to S3.
-func buildUploadJob(tmpl *TATemplate, ctx RenderContext, labels map[string]string) (workv1.Manifest, error) {
+func buildUploadJob(tmpl *TATemplate, ctx RenderContext, labels map[string]string) (hyperfleetv1alpha1.ResourceTemplate, error) {
 	jobName := "zoa-" + ctx.ExecID + "-upload"
 
 	jobLabels := copyLabels(labels)
@@ -666,7 +607,7 @@ func buildUploadJob(tmpl *TATemplate, ctx RenderContext, labels map[string]strin
 		},
 	}
 
-	return toManifest(job)
+	return toResourceTemplate("jobs", job, true)
 }
 
 func resolveTargetNamespace(tmpl *TATemplate, ctx RenderContext) string {
@@ -678,7 +619,6 @@ func resolveTargetNamespace(tmpl *TATemplate, ctx RenderContext) string {
 	return ctx.Namespace
 }
 
-// validateSecretsPolicy enforces that no TA can access secrets in HCP namespaces (clusters-*).
 func validateSecretsPolicy(tmpl *TATemplate, ctx RenderContext) error {
 	if tmpl.RBAC == nil || len(tmpl.RBAC.Rules) == 0 {
 		return nil
@@ -719,12 +659,14 @@ func copyLabels(src map[string]string) map[string]string {
 	return dst
 }
 
-func toManifest(obj interface{}) (workv1.Manifest, error) {
+func toResourceTemplate(resource string, obj interface{}, watch bool) (hyperfleetv1alpha1.ResourceTemplate, error) {
 	jsonBytes, err := json.Marshal(obj)
 	if err != nil {
-		return workv1.Manifest{}, fmt.Errorf("marshaling to JSON: %w", err)
+		return hyperfleetv1alpha1.ResourceTemplate{}, fmt.Errorf("marshaling to JSON: %w", err)
 	}
-	return workv1.Manifest{
-		RawExtension: runtime.RawExtension{Raw: jsonBytes},
+	return hyperfleetv1alpha1.ResourceTemplate{
+		Resource: resource,
+		Content:  runtime.RawExtension{Raw: jsonBytes},
+		Watch:    watch,
 	}, nil
 }

@@ -21,9 +21,9 @@ app:
   args:
     logLevel: info
     logFormat: json
-    maestroUrl: http://maestro-http.maestro:8080
+    fleetDBClusterName: fleet-db
+    awsRegion: us-east-2
     dynamodbRegion: us-east-2
-    dynamodbTable: rosa-customer-accounts
     apiPort: 8000
     healthPort: 8081
     metricsPort: 9090

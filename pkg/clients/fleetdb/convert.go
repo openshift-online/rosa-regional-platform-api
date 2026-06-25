@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	hyperfleetv1alpha1 "github.com/typeid/hyperfleet-operator/api/v1alpha1"
@@ -39,7 +40,7 @@ func ClusterCRToPlatform(cr *hyperfleetv1alpha1.Cluster) *types.Cluster {
 	if phase := cr.Status.Phase; phase != "" {
 		cluster.Status = &types.ClusterStatusInfo{
 			ObservedGeneration: cr.Status.ObservedGeneration,
-			Phase:              phase,
+			Phase:              string(phase),
 			LastUpdateTime:     metaTime(cr),
 		}
 
@@ -74,6 +75,24 @@ func PlatformCreateToClusterCR(clusterID, accountID string, req *types.ClusterCr
 	}
 	if spec.AccountID == "" {
 		spec.AccountID = accountID
+	}
+
+	// TODO(hyperfleet): release image should come from a version service or
+	// region config, not be hardcoded. Matches the old adapter manifestwork default.
+	if spec.Release.Image == "" {
+		spec.Release.Image = "quay.io/openshift-release-dev/ocp-release:5.0.0-ec.2-multi"
+	}
+
+	// TODO(hyperfleet): networking CIDRs should be configurable per-region or
+	// derived from VPC topology. Matches the old adapter manifestwork default.
+	if len(spec.Networking.ClusterNetwork) == 0 {
+		spec.Networking.ClusterNetwork = []hyperfleetv1alpha1.NetworkEntry{{CIDR: "10.132.0.0/14"}}
+	}
+	if len(spec.Networking.ServiceNetwork) == 0 {
+		spec.Networking.ServiceNetwork = []hyperfleetv1alpha1.NetworkEntry{{CIDR: "172.31.0.0/16"}}
+	}
+	if len(spec.Networking.MachineNetwork) == 0 {
+		spec.Networking.MachineNetwork = []hyperfleetv1alpha1.NetworkEntry{{CIDR: "10.0.0.0/16"}}
 	}
 
 	return &hyperfleetv1alpha1.Cluster{
@@ -133,7 +152,7 @@ func NodePoolCRToPlatform(cr *hyperfleetv1alpha1.NodePool) *types.NodePool {
 				"aws": map[string]interface{}{
 					"instanceType":    cr.Spec.Platform.AWS.InstanceType,
 					"rootVolume":      map[string]interface{}{"size": cr.Spec.Platform.AWS.RootVolume.Size, "type": cr.Spec.Platform.AWS.RootVolume.Type},
-					"subnetId":        cr.Spec.Platform.AWS.SubnetId,
+					"subnetId":        cr.Spec.Platform.AWS.SubnetID,
 					"instanceProfile": cr.Spec.Platform.AWS.InstanceProfile,
 					"securityGroups":  cr.Spec.Platform.AWS.SecurityGroups,
 				},
@@ -149,7 +168,7 @@ func NodePoolCRToPlatform(cr *hyperfleetv1alpha1.NodePool) *types.NodePool {
 	if phase := cr.Status.Phase; phase != "" {
 		np.Status = &types.NodePoolStatusInfo{
 			ObservedGeneration: cr.Status.ObservedGeneration,
-			Phase:              phase,
+			Phase:              string(phase),
 			LastUpdateTime:     metaTime(cr),
 		}
 		if len(cr.Status.Conditions) > 0 {
@@ -186,6 +205,39 @@ func PlatformCreateToNodePoolCR(nodepoolID, accountID string, req *types.NodePoo
 		if err := mapToSpec(req.Spec.Platform, &spec.Platform); err != nil {
 			return nil, fmt.Errorf("convert nodepool platform: %w", err)
 		}
+	}
+
+	// TODO(hyperfleet): worker release image should come from a version service
+	// or default to the cluster's control plane version. Matches the old adapter
+	// manifestwork default.
+	if spec.Release.Image == "" {
+		spec.Release.Image = "quay.io/openshift-release-dev/ocp-release:4.21.1-multi"
+	}
+
+	if spec.Replicas == 0 {
+		spec.Replicas = 2
+	}
+
+	// TODO(hyperfleet): management defaults should be configurable per-cluster
+	// or come from a fleet policy. Matches the old adapter manifestwork default.
+	if spec.Management.UpgradeType == "" {
+		spec.Management.UpgradeType = hypershiftv1beta1.UpgradeTypeReplace
+	}
+	if !spec.Management.AutoRepair {
+		spec.Management.AutoRepair = true
+	}
+
+	// TODO(hyperfleet): instance type and volume defaults should be configurable
+	// per-region or come from a fleet sizing policy. Matches the old adapter
+	// manifestwork default.
+	if spec.Platform.AWS.InstanceType == "" {
+		spec.Platform.AWS.InstanceType = "m6a.xlarge"
+	}
+	if spec.Platform.AWS.RootVolume.Size == 0 {
+		spec.Platform.AWS.RootVolume.Size = 120
+	}
+	if spec.Platform.AWS.RootVolume.Type == "" {
+		spec.Platform.AWS.RootVolume.Type = "gp3"
 	}
 
 	return &hyperfleetv1alpha1.NodePool{

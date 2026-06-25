@@ -52,63 +52,6 @@ func customerEnv() []string {
 	return []string{"AWS_PROFILE=" + os.Getenv("CUSTOMER_AWS_PROFILE")}
 }
 
-type bundleItem struct {
-	ID   string
-	Name string
-}
-
-func listClusterBundles(apiClient *awstest.APIClient, clusterID, accountID string) []bundleItem {
-	var matched []bundleItem
-	page := 1
-	for {
-		resp, err := apiClient.Get(fmt.Sprintf("/api/v0/resource_bundles?page=%d&size=100", page), accountID)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			break
-		}
-		var list struct {
-			Total int                      `json:"total"`
-			Items []map[string]interface{} `json:"items"`
-		}
-		if json.Unmarshal(resp.Body, &list) != nil {
-			break
-		}
-		for _, item := range list.Items {
-			meta, _ := item["metadata"].(map[string]interface{})
-			name, _ := meta["name"].(string)
-			if strings.Contains(name, clusterID) {
-				id, _ := item["id"].(string)
-				matched = append(matched, bundleItem{ID: id, Name: name})
-			}
-		}
-		if len(list.Items) == 0 || page*100 >= list.Total {
-			break
-		}
-		page++
-	}
-	return matched
-}
-
-func deleteClusterBundles(apiClient *awstest.APIClient, clusterID, accountID string) int {
-	bundles := listClusterBundles(apiClient, clusterID, accountID)
-	for _, b := range bundles {
-		GinkgoWriter.Printf("Deleting bundle %s (%s)\n", b.ID, b.Name)
-		apiClient.Delete("/api/v0/resource_bundles/"+b.ID, accountID) //nolint:errcheck
-	}
-	return len(bundles)
-}
-
-func waitForBundleRemoval(apiClient *awstest.APIClient, clusterID, accountID string, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if len(listClusterBundles(apiClient, clusterID, accountID)) == 0 {
-			GinkgoWriter.Printf("All resource bundles for cluster %s removed\n", clusterID)
-			return true
-		}
-		GinkgoWriter.Printf("Resource bundles still present, waiting...\n")
-		time.Sleep(30 * time.Second)
-	}
-	return false
-}
 
 func fireAndForgetInfraDelete(rosactlBin, clusterName, region string, resources []string) {
 	for _, subCmd := range resources {
@@ -254,8 +197,6 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 					}
 				}
 
-				deleteClusterBundles(apiClient, clusterID, accountID)
-				waitForBundleRemoval(apiClient, clusterID, accountID, 5*time.Minute)
 			}
 
 			var stacks []string
@@ -631,11 +572,10 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		}
 		Expect(id).ToNot(BeEmpty(), "set clusterID from hcp-create (Ordered) or HCP_INSTANCE_ID when running nodepools-wait alone")
 
-		GinkgoWriter.Printf("Polling resource_bundles for NodePool readyCondition (cluster %s)\n", id)
+		GinkgoWriter.Printf("Polling nodepools for readiness (cluster %s)\n", id)
 
 		Eventually(func(g Gomega) {
-			searchQuery := fmt.Sprintf("payload->'metadata'->'labels'->>'hyperfleet.io/cluster-id'='%s'", id)
-			resp, err := apiClient.Get("/api/v0/resource_bundles?search="+url.QueryEscape(searchQuery)+"&size=100", accountID)
+			resp, err := apiClient.Get("/api/v0/nodepools", accountID)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -643,48 +583,35 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 				Items []map[string]interface{} `json:"items"`
 			}
 			g.Expect(json.Unmarshal(resp.Body, &list)).To(Succeed())
-			g.Expect(list.Items).NotTo(BeEmpty(), "no resource bundles found for cluster %s", id)
 
 			foundNodePool := false
-			for _, bundle := range list.Items {
-				manifests, _ := bundle["manifests"].([]interface{})
-				status, _ := bundle["status"].(map[string]interface{})
-				resourceStatuses, _ := status["resourceStatus"].([]interface{})
-
-				for i, raw := range manifests {
-					m, _ := raw.(map[string]interface{})
-					if m == nil || m["kind"] != "NodePool" {
-						continue
-					}
-					foundNodePool = true
-					meta, _ := m["metadata"].(map[string]interface{})
-					name, _ := meta["name"].(string)
-
-					readyValue := ""
-					if i < len(resourceStatuses) {
-						rs, _ := resourceStatuses[i].(map[string]interface{})
-						feedback, _ := rs["statusFeedback"].(map[string]interface{})
-						values, _ := feedback["values"].([]interface{})
-						for _, v := range values {
-							vm, _ := v.(map[string]interface{})
-							if vm["name"] == "readyCondition" {
-								fv, _ := vm["fieldValue"].(map[string]interface{})
-								readyValue, _ = fv["string"].(string)
-							}
-						}
-					}
-
-					if os.Getenv("E2E_STATUS_POLL_LOG") != "" {
-						_, _ = fmt.Fprintf(os.Stderr, "[%s] nodepool %s: readyCondition=%s\n",
-							time.Now().Format(time.RFC3339), name, readyValue)
-					}
-					GinkgoWriter.Printf("  nodepool %s: readyCondition=%s\n", name, readyValue)
-					g.Expect(readyValue).To(Equal("True"), "nodepool %s readyCondition should be True, got %s", name, readyValue)
+			for _, np := range list.Items {
+				npClusterID, _ := np["cluster_id"].(string)
+				if npClusterID != id {
+					continue
 				}
+				foundNodePool = true
+				npID, _ := np["id"].(string)
+				npName, _ := np["name"].(string)
+
+				statusResp, err := apiClient.Get("/api/v0/nodepools/"+npID+"/status", accountID)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(statusResp.StatusCode).To(Equal(http.StatusOK))
+
+				var status map[string]interface{}
+				g.Expect(json.Unmarshal(statusResp.Body, &status)).To(Succeed())
+				ready, _ := status["ready"].(bool)
+
+				if os.Getenv("E2E_STATUS_POLL_LOG") != "" {
+					_, _ = fmt.Fprintf(os.Stderr, "[%s] nodepool %s: ready=%v\n",
+						time.Now().Format(time.RFC3339), npName, ready)
+				}
+				GinkgoWriter.Printf("  nodepool %s: ready=%v\n", npName, ready)
+				g.Expect(ready).To(BeTrue(), "nodepool %s should be ready", npName)
 			}
-			g.Expect(foundNodePool).To(BeTrue(), "no NodePool manifest found in resource bundles for cluster %s", id)
+			g.Expect(foundNodePool).To(BeTrue(), "no nodepools found for cluster %s", id)
 		}).WithTimeout(15*time.Minute).WithPolling(30*time.Second).Should(Succeed(),
-			"all nodepools should have readyCondition=True")
+			"all nodepools should be ready")
 
 		GinkgoWriter.Printf("All nodepools ready for cluster %s\n", id)
 	})
@@ -733,37 +660,6 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 			g.Expect(response.StatusCode).To(Or(Equal(http.StatusNotFound), Equal(http.StatusGone)))
 		}).WithTimeout(10*time.Minute).WithPolling(30*time.Second).Should(Succeed(), "cluster should be deleted")
 		GinkgoWriter.Printf("HCP cluster deleted successfully: %s\n", clusterName)
-	})
-
-	It("should be able to delete the resource bundles", Label("hcp-delete", "bundles-delete", "cleanup"), func() {
-		if clusterID == "" {
-			clusterID = os.Getenv("HCP_INSTANCE_ID")
-			if clusterID == "" {
-				Skip("clusterID not set - run full Ordered suite or set HCP_INSTANCE_ID")
-			}
-		}
-
-		deleted := deleteClusterBundles(apiClient, clusterID, accountID)
-		GinkgoWriter.Printf("Deleted %d resource bundles for cluster %s\n", deleted, clusterID)
-	})
-
-	It("should wait for resource bundles to be fully removed", Label("bundles-wait", "cleanup"), func() {
-		if clusterID == "" {
-			clusterID = os.Getenv("HCP_INSTANCE_ID")
-			if clusterID == "" {
-				Skip("clusterID not set - run full Ordered suite or set HCP_INSTANCE_ID")
-			}
-		}
-
-		GinkgoWriter.Printf("Waiting for resource bundles for cluster %s to be fully removed...\n", clusterID)
-
-		Eventually(func(g Gomega) {
-			g.Expect(listClusterBundles(apiClient, clusterID, accountID)).To(BeEmpty(),
-				"resource bundles for cluster %s still exist", clusterID)
-		}).WithTimeout(15*time.Minute).WithPolling(30*time.Second).Should(Succeed(),
-			"resource bundles should be fully removed before proceeding with infrastructure teardown")
-
-		GinkgoWriter.Printf("All resource bundles for cluster %s have been removed\n", clusterID)
 	})
 
 	It("should be able to delete the cluster-oidc", Label("oidc-delete", "cleanup"), func() {

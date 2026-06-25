@@ -4,14 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -98,336 +96,57 @@ var _ = Describe("Platform API", Ordered, func() {
 	It("should be able to list all the registered management clusters", func() {
 		response := getAndExpectOK(apiClient, "/api/v0/management_clusters", accountID, "")
 		Expect(response.StatusCode).To(Equal(http.StatusOK))
-		// response is ConsumerList: { "kind", "page", "size", "total", "items": [...] }
 		var list struct {
+			Kind  string                   `json:"kind"`
 			Items []map[string]interface{} `json:"items"`
+			Total int                      `json:"total"`
 		}
 		err := json.Unmarshal(response.Body, &list)
 		Expect(err).To(BeNil())
-		Expect(list.Items).ToNot(BeEmpty())
-		// display list.Items as a table using standard go library
+		Expect(list.Kind).To(Equal("ManagementClusterList"))
 		for _, item := range list.Items {
-			labels, _ := item["labels"].(map[string]interface{})
-			clusterType := ""
-			if labels != nil {
-				clusterType, _ = labels["cluster_type"].(string)
-			}
-			GinkgoWriter.Printf("management cluster id=%v name=%v cluster_type=%s\n", item["id"], item["name"], clusterType)
+			GinkgoWriter.Printf("management cluster id=%v region=%v accountId=%v\n", item["id"], item["region"], item["accountId"])
 		}
-		// fmt.Println(tabulate.Fprint(os.Stdout, list.Items))
 		Expect(response.Headers).To(HaveKey("Content-Type"))
 		Expect(response.Headers).To(HaveKey("X-Amz-Apigw-Id"))
 	})
 
 	It("should be able to register a new management cluster", func() {
-		// Generate a unique cluster name for this test run
-		clusterName := fmt.Sprintf("test-mgmt-%s", time.Now().Format("20060102150405"))
-		GinkgoWriter.Printf("Creating management cluster: %s\n", clusterName)
+		mcID := fmt.Sprintf("test-mc-%s", time.Now().Format("20060102150405"))
+		GinkgoWriter.Printf("Creating management cluster: %s\n", mcID)
 
-		// create a management cluster with unique name
-		managementCluster := map[string]interface{}{
-			"name": clusterName,
-			"labels": map[string]string{
-				"cluster_type": "management",
-			},
+		createReq := map[string]interface{}{
+			"id":        mcID,
+			"region":    "us-east-2",
+			"accountId": accountID,
 		}
 
-		response, err := apiClient.Post("/api/v0/management_clusters", managementCluster, accountID)
+		response, err := apiClient.Post("/api/v0/management_clusters", createReq, accountID)
 		Expect(err).To(BeNil())
 		Expect(response.StatusCode).To(Equal(http.StatusCreated))
 		Expect(response.Headers).To(HaveKey("Content-Type"))
 		Expect(response.Headers).To(HaveKey("X-Amz-Apigw-Id"))
-		// expect the response body to be a valid json object
 
-		err = json.Unmarshal(response.Body, &managementCluster)
+		var created map[string]interface{}
+		err = json.Unmarshal(response.Body, &created)
 		Expect(err).To(BeNil())
-		Expect(managementCluster["kind"]).To(Equal("Consumer"))
-		Expect(managementCluster["href"]).ToNot(BeEmpty())
-		Expect(managementCluster["name"]).To(Equal(clusterName))
-		Expect(managementCluster["labels"].(map[string]interface{})["cluster_type"]).To(Equal("management"))
-		Expect(managementCluster["created_at"]).ToNot(BeEmpty())
-		Expect(managementCluster["updated_at"]).ToNot(BeEmpty())
+		Expect(created["id"]).To(Equal(mcID))
+		Expect(created["region"]).To(Equal("us-east-2"))
+		Expect(created["accountId"]).To(Equal(accountID))
 
 		// it should be able to get the management cluster by ID
-		response, err = apiClient.Get("/api/v0/management_clusters/"+managementCluster["id"].(string), accountID)
+		response, err = apiClient.Get("/api/v0/management_clusters/"+mcID, accountID)
 		Expect(err).To(BeNil())
 		Expect(response.StatusCode).To(Equal(http.StatusOK))
 		Expect(response.Headers).To(HaveKey("Content-Type"))
 		Expect(response.Headers).To(HaveKey("X-Amz-Apigw-Id"))
-		// expect the response body to be a valid json object
-		var managementCluster2 map[string]interface{}
-		err = json.Unmarshal(response.Body, &managementCluster2)
+
+		var fetched map[string]interface{}
+		err = json.Unmarshal(response.Body, &fetched)
 		Expect(err).To(BeNil())
-		Expect(managementCluster2["kind"]).To(Equal("Consumer"))
-		Expect(managementCluster2["href"]).ToNot(BeEmpty())
-		Expect(managementCluster2["name"]).To(Equal(clusterName))
-		Expect(managementCluster2["labels"].(map[string]interface{})["cluster_type"]).To(Equal("management"))
-		Expect(managementCluster2["created_at"]).ToNot(BeEmpty())
-		Expect(managementCluster2["updated_at"]).ToNot(BeEmpty())
-
-		// DELETE is not defined for management_clusters in the API (OpenAPI has no delete operation for /management_clusters/{id})
-	})
-
-	// it should be able to post to the work endpoint
-	It("should be able to create new manifestwork on each of the registered management clusters", func() {
-
-		// iterate through the list of management_clusters, get back the management cluster id
-		listResp := getAndExpectOK(apiClient, "/api/v0/management_clusters", accountID, "")
-		Expect(listResp.StatusCode).To(Equal(http.StatusOK))
-		var list struct {
-			Items []map[string]interface{} `json:"items"`
-		}
-		err := json.Unmarshal(listResp.Body, &list)
-		Expect(err).To(BeNil())
-		Expect(list.Items).ToNot(BeEmpty(), "No management clusters registered - cannot test work creation")
-		for _, item := range list.Items {
-			managementClusterID := item["id"].(string)
-			managementClusterName := item["name"].(string)
-			GinkgoWriter.Printf("management cluster id=%s name=%s\n", managementClusterID, managementClusterName)
-			work := map[string]interface{}{
-				"cluster_id": managementClusterName,
-				"data": map[string]interface{}{
-					"apiVersion": "work.open-cluster-management.io/v1",
-					"kind":       "ManifestWork",
-					"metadata": map[string]interface{}{
-						"name": "test-work-" + time.Now().Format("20060102150405"),
-					},
-					"spec": map[string]interface{}{
-						"workload": map[string]interface{}{
-							"manifests": []map[string]interface{}{
-								{
-									"apiVersion": "v1",
-									"kind":       "ConfigMap",
-									"metadata": map[string]interface{}{
-										"name":      "test-config-" + time.Now().Format("20060102150405"),
-										"namespace": "default",
-									},
-									"data": map[string]string{
-										"key": "value",
-									},
-								},
-							},
-						},
-					},
-				},
-			}
-
-			response, err := apiClient.Post("/api/v0/work", work, accountID)
-			Expect(err).To(BeNil())
-			Expect(response.StatusCode).To(Equal(http.StatusCreated))
-			// expect the response body to be a valid json object
-			var responseBody map[string]interface{}
-			err = json.Unmarshal(response.Body, &responseBody)
-			Expect(err).To(BeNil())
-			Expect(responseBody["kind"]).To(Equal("ManifestWork"))
-			Expect(responseBody["href"]).ToNot(BeEmpty())
-			Expect(responseBody["cluster_id"]).To(Equal(managementClusterName))
-			Expect(responseBody["name"]).To(ContainSubstring("test-work"))
-			Expect(responseBody["status"]).ToNot(BeEmpty())
-
-		}
-
-	})
-
-	// it should be able to get the resource bundles
-	It("should be able to list all the resource bundles", func() {
-		response := getAndExpectOK(apiClient, "/api/v0/resource_bundles", accountID, "")
-		Expect(response.StatusCode).To(Equal(http.StatusOK))
-		Expect(response.Headers).To(HaveKey("Content-Type"))
-		Expect(response.Headers).To(HaveKey("X-Amz-Apigw-Id"))
-		// expect the response body to be a valid json object
-		var list struct {
-			Items []map[string]interface{} `json:"items"`
-		}
-		err := json.Unmarshal(response.Body, &list)
-		Expect(err).To(BeNil())
-		Expect(list.Items).ToNot(BeEmpty())
-		// display list.Items as a table using standard go library
-		for _, item := range list.Items {
-			GinkgoWriter.Printf("%v %v %v %v %v %v %v %v\n", item["id"], item["kind"], item["href"], item["name"], item["consumer_name"], item["version"], item["created_at"], item["updated_at"])
-		}
-		// GET /api/v0/resource_bundles/{id} is not implemented; only list is available
-		// TODO: add support for GET /api/v0/resource_bundles/{id}
-	})
-
-	// get the /api/v0/resource_bundles, iterate and find items with status.resourceStatus (and optional statusFeedback / StatusFeedbackSynced)
-	// if there are statusfeedback then maestro-server is connected to maestro-client
-	It("should have maestro-server connected to maestro-agent", func() {
-
-		var managementClusterName string
-		var testWorkName = "test-work-" + uuid.New().String()[:8]
-
-		By("selecting the management cluster to test", func() {
-			response, err := apiClient.Get("/api/v0/management_clusters", accountID)
-			Expect(err).To(BeNil())
-			Expect(response.StatusCode).To(Equal(http.StatusOK))
-			var list struct {
-				Items []map[string]interface{} `json:"items"`
-			}
-			err = json.Unmarshal(response.Body, &list)
-			Expect(err).To(BeNil())
-
-			for _, item := range list.Items {
-				if !strings.HasPrefix(item["name"].(string), "test-") {
-					managementClusterName = item["name"].(string)
-					break
-				}
-			}
-			if managementClusterName == "" {
-				// There should be at least one management cluster that is created by testing
-				Fail("No management cluster found that is not named 'test-mgmt-*', cannot test maestro-server connected to maestro-agent")
-
-			}
-			GinkgoWriter.Printf("Using management cluster: %s\n", managementClusterName)
-		})
-
-		By("creating a manifestwork for the selected management cluster", func() {
-			// create a manifestwork with a configmap
-			work := map[string]interface{}{
-				"cluster_id": managementClusterName,
-				"data": map[string]interface{}{
-					"apiVersion": "work.open-cluster-management.io/v1",
-					"kind":       "ManifestWork",
-					"metadata": map[string]interface{}{
-						"name": testWorkName,
-					},
-					"spec": map[string]interface{}{
-						"workload": map[string]interface{}{
-							"manifests": []map[string]interface{}{
-								{
-									"apiVersion": "v1",
-									"kind":       "ConfigMap",
-									"metadata": map[string]interface{}{
-										"name":      testWorkName,
-										"namespace": "default",
-									},
-									"data": map[string]string{
-										"key": "value",
-									},
-								},
-							},
-						},
-					},
-				},
-			}
-			GinkgoWriter.Printf("Creating manifestwork: %s on management cluster: %s\n", testWorkName, managementClusterName)
-			response, err := apiClient.Post("/api/v0/work", work, accountID)
-			Expect(err).To(BeNil())
-			Expect(response.StatusCode).To(Equal(http.StatusCreated))
-			GinkgoWriter.Printf("Manifestwork created: %s\n", string(response.Body))
-			var responseBody map[string]interface{}
-			err = json.Unmarshal(response.Body, &responseBody)
-			Expect(err).To(BeNil())
-			Expect(responseBody["kind"]).To(Equal("ManifestWork"))
-			Expect(responseBody["href"]).ToNot(BeEmpty())
-			Expect(responseBody["cluster_id"]).To(Equal(managementClusterName))
-			Expect(responseBody["name"]).To(Equal(testWorkName))
-
-		})
-
-		By("waiting for the resource bundles to be created and have conditions set correctly", func() {
-
-			Eventually(func() bool {
-
-				// Filter resource bundles by consumer_name, paginating through all results
-				searchQuery := fmt.Sprintf("consumer_name='%s'", managementClusterName)
-				GinkgoWriter.Printf("Getting resource bundles for consumer_name=%s (search=%s)\n", managementClusterName, searchQuery)
-
-				foundOrSynced := false
-
-				for page := 1; ; page++ {
-					searchURL := fmt.Sprintf("/api/v0/resource_bundles?search=%s&page=%d&size=100", url.QueryEscape(searchQuery), page)
-					response, err := apiClient.Get(searchURL, accountID)
-					if err != nil {
-						GinkgoWriter.Printf("Error getting resource bundles: %v\n", err)
-						return false
-					}
-					if response.StatusCode != http.StatusOK {
-						GinkgoWriter.Printf("Unexpected status code: %d\n", response.StatusCode)
-						return false
-					}
-					var list struct {
-						Page  int                      `json:"page"`
-						Size  int                      `json:"size"`
-						Total int                      `json:"total"`
-						Items []map[string]interface{} `json:"items"`
-					}
-					err = json.Unmarshal(response.Body, &list)
-					if err != nil {
-						GinkgoWriter.Printf("Error unmarshaling response: %v\n", err)
-						return false
-					}
-					if len(list.Items) == 0 {
-						break
-					}
-
-					for _, item := range list.Items {
-						metadata, hasMetadata := item["metadata"].(map[string]interface{})
-						if !hasMetadata || metadata == nil {
-							continue
-						}
-						name, _ := metadata["name"].(string)
-						consumerName, hasConsumerName := item["consumer_name"].(string)
-						if !hasConsumerName || name != testWorkName || consumerName != managementClusterName {
-							continue
-						}
-
-						GinkgoWriter.Printf("resource_bundle id=%v name=%v consumer_name=%v\n", item["id"], name, consumerName)
-
-						appliedOk, availableOk, statusFeedbackSyncedOk := false, false, false
-						status, statusOk := item["status"].(map[string]interface{})
-						if !statusOk || status == nil {
-							continue
-						}
-						resourceStatusList, resourceStatusOk := status["resourceStatus"].([]interface{})
-						if !resourceStatusOk {
-							continue
-						}
-						for _, rs := range resourceStatusList {
-							rsMap, rsOk := rs.(map[string]interface{})
-							if !rsOk || rsMap == nil {
-								continue
-							}
-							conditions, conditionsOk := rsMap["conditions"].([]interface{})
-							if !conditionsOk {
-								continue
-							}
-							for _, condition := range conditions {
-								conditionMap, conditionOk := condition.(map[string]interface{})
-								if !conditionOk || conditionMap == nil {
-									continue
-								}
-								if conditionMap["type"] == "Applied" && conditionMap["status"] == "True" {
-									appliedOk = true
-								}
-								if conditionMap["type"] == "Available" && conditionMap["status"] == "True" {
-									availableOk = true
-								}
-								if conditionMap["type"] == "StatusFeedbackSynced" && conditionMap["status"] == "True" {
-									statusFeedbackSyncedOk = true
-								}
-							}
-						}
-						if appliedOk && availableOk && statusFeedbackSyncedOk {
-							foundOrSynced = true
-							GinkgoWriter.Printf("resource_bundle id=%v name=%v consumer_name=%v applied=true available=true statusfeedbacksynced=true\n", item["id"], name, consumerName)
-							break
-						}
-					}
-
-					if foundOrSynced || page*list.Size >= list.Total {
-						break
-					}
-				}
-
-				if !foundOrSynced {
-					GinkgoWriter.Printf("Test work %s for management cluster %s not found in resource bundles\n", testWorkName, managementClusterName)
-					return false
-				}
-
-				return foundOrSynced
-			}, "5m", "5s").Should(BeTrue(), "No resource bundles found with Applied, Available, or StatusFeedbackSynced conditions - maestro-server may not be connected to maestro-agent")
-		})
+		Expect(fetched["id"]).To(Equal(mcID))
+		Expect(fetched["region"]).To(Equal("us-east-2"))
+		Expect(fetched["accountId"]).To(Equal(accountID))
 	})
 
 	// it should be able to GET /clusters endpoint and return an array

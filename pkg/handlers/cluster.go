@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -101,6 +102,20 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.Name == "" || req.Spec == nil {
 		h.writeError(w, http.StatusBadRequest, "CLUSTERS-MGMT-CREATE-002", "Missing required fields: name and spec")
 		return
+	}
+
+	existing, err := h.fleetDB.ListClusters(ctx, accountID)
+	if err != nil {
+		h.logger.Error("failed to check cluster name uniqueness", "error", err, "account_id", accountID)
+		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-CREATE-004", "Failed to validate cluster name")
+		return
+	}
+	for i := range existing.Items {
+		if existing.Items[i].Spec.Name == req.Name {
+			h.writeError(w, http.StatusConflict, "CLUSTERS-MGMT-CREATE-005",
+				fmt.Sprintf("A cluster named %q already exists in this account", req.Name))
+			return
+		}
 	}
 
 	if callerARN := middleware.GetCallerARN(ctx); callerARN != "" {

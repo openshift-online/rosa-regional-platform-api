@@ -11,8 +11,10 @@ spec:
     path: deployment/helm/rosa-regional-platform
     helm:
       parameters:
-        - name: app.args.maestroUrl
-          value: http://maestro-http.maestro:8080
+        - name: app.args.fleetDBClusterName
+          value: fleet-db
+        - name: app.args.awsRegion
+          value: us-east-2
         - name: app.args.logLevel
           value: info
   destination:

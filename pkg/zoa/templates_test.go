@@ -75,7 +75,7 @@ rbac:
 	assert.Error(t, err)
 }
 
-func TestBuildManifestWork_ClusterScoped(t *testing.T) {
+func TestBuildHyperFleetManifest_ClusterScoped(t *testing.T) {
 	tmpl := &TATemplate{
 		Name:  "get_nodes",
 		Scope: "kube-api",
@@ -111,22 +111,26 @@ func TestBuildManifestWork_ClusterScoped(t *testing.T) {
 		},
 	}
 
-	mw, err := BuildManifestWork(tmpl, ctx)
+	hfm, err := BuildHyperFleetManifest(tmpl, ctx)
 	require.NoError(t, err)
 
-	assert.Equal(t, "zoa-abc123", mw.Name)
-	assert.Equal(t, "local-cluster", mw.Namespace)
+	assert.Equal(t, "zoa-abc123", hfm.Name)
+	assert.Equal(t, "local-cluster", hfm.Spec.ManagementCluster)
 	// SA + ClusterRole + ClusterRoleBinding + OutputCM + OutputRole + OutputRoleBinding + UploaderRole + UploaderRoleBinding + ScriptCM + RunnerJob + UploadJob = 11
-	assert.Len(t, mw.Spec.Workload.Manifests, 11)
-	require.Len(t, mw.Spec.ManifestConfigs, 2)
-	assert.Equal(t, "zoa-abc123", mw.Spec.ManifestConfigs[0].ResourceIdentifier.Name)
-	assert.Equal(t, "zoa-abc123-upload", mw.Spec.ManifestConfigs[1].ResourceIdentifier.Name)
-	assert.Equal(t, "zoa-jobs", mw.Spec.ManifestConfigs[0].ResourceIdentifier.Namespace)
-	assert.Equal(t, "slopezma", mw.Labels[labelOperator])
-	assert.Equal(t, "a1b2c3d", mw.Labels[labelRevision])
+	assert.Len(t, hfm.Spec.Resources, 11)
+	// Runner and upload jobs should have Watch: true
+	watchCount := 0
+	for _, r := range hfm.Spec.Resources {
+		if r.Watch {
+			watchCount++
+		}
+	}
+	assert.Equal(t, 2, watchCount)
+	assert.Equal(t, "slopezma", hfm.Labels[labelOperator])
+	assert.Equal(t, "a1b2c3d", hfm.Labels[labelRevision])
 }
 
-func TestBuildManifestWork_NamespaceScoped(t *testing.T) {
+func TestBuildHyperFleetManifest_NamespaceScoped(t *testing.T) {
 	tmpl := &TATemplate{
 		Name:  "get_pods",
 		Scope: "kube-api",
@@ -154,7 +158,7 @@ func TestBuildManifestWork_NamespaceScoped(t *testing.T) {
 		Revision:      "HEAD",
 		Type:          "read",
 		Scope:         "kube-api",
-		Params:        map[string]string{"namespace": "maestro"},
+		Params:        map[string]string{"namespace": "default"},
 		Config: JobConfig{
 			Image:            "quay.io/test/zoa-tools:latest",
 			CPURequest:       "100m",
@@ -166,22 +170,21 @@ func TestBuildManifestWork_NamespaceScoped(t *testing.T) {
 		},
 	}
 
-	mw, err := BuildManifestWork(tmpl, ctx)
+	hfm, err := BuildHyperFleetManifest(tmpl, ctx)
 	require.NoError(t, err)
 
-	assert.Equal(t, "zoa-def456", mw.Name)
-	assert.Equal(t, "mc01", mw.Namespace)
+	assert.Equal(t, "zoa-def456", hfm.Name)
+	assert.Equal(t, "mc01", hfm.Spec.ManagementCluster)
 	// SA + Role + RoleBinding + OutputCM + OutputRole + OutputRoleBinding + UploaderRole + UploaderRoleBinding + ScriptCM + RunnerJob + UploadJob = 11
-	assert.Len(t, mw.Spec.Workload.Manifests, 11)
-	require.Len(t, mw.Spec.ManifestConfigs, 2)
+	assert.Len(t, hfm.Spec.Resources, 11)
 }
 
-func TestBuildManifestWork_AWSScope_NoSAManifest(t *testing.T) {
+func TestBuildHyperFleetManifest_AWSScope_NoSAManifest(t *testing.T) {
 	tmpl := &TATemplate{
-		Name:  "describe_instance",
-		Scope: "aws-api",
-		Type:  "read",
-		RBAC:  nil,
+		Name:   "describe_instance",
+		Scope:  "aws-api",
+		Type:   "read",
+		RBAC:   nil,
 		Script: "aws ec2 describe-instances > /artifacts/output.json\n",
 	}
 
@@ -207,13 +210,12 @@ func TestBuildManifestWork_AWSScope_NoSAManifest(t *testing.T) {
 		},
 	}
 
-	mw, err := BuildManifestWork(tmpl, ctx)
+	hfm, err := BuildHyperFleetManifest(tmpl, ctx)
 	require.NoError(t, err)
 
 	// No SA manifest (static SA pre-provisioned), no RBAC from template (nil):
 	// OutputCM + OutputRole + OutputRoleBinding + UploaderRole + UploaderRoleBinding + ScriptCM + RunnerJob + UploadJob = 8
-	assert.Len(t, mw.Spec.Workload.Manifests, 8)
-	require.Len(t, mw.Spec.ManifestConfigs, 2)
+	assert.Len(t, hfm.Spec.Resources, 8)
 }
 
 func TestLoadJobConfig(t *testing.T) {

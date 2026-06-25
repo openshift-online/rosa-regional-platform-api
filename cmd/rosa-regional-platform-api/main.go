@@ -21,8 +21,6 @@ var (
 	// Config flags
 	logLevel           string
 	logFormat          string
-	maestroURL         string
-	maestroGRPCURL     string
 	fleetDBClusterName string
 	awsRegion          string
 	allowedAccounts    string
@@ -55,9 +53,7 @@ var serveCmd = &cobra.Command{
 func init() {
 	serveCmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	serveCmd.Flags().StringVar(&logFormat, "log-format", "json", "Log format (json, text)")
-	serveCmd.Flags().StringVar(&maestroURL, "maestro-url", "http://maestro:8000", "Maestro service base URL")
 	serveCmd.Flags().StringVar(&allowedAccounts, "allowed-accounts", "", "Comma-separated list of allowed AWS account IDs")
-	serveCmd.Flags().StringVar(&maestroGRPCURL, "maestro-grpc-url", "maestro-grpc.maestro-server:8090", "Maestro gRPC service base URL")
 	serveCmd.Flags().StringVar(&fleetDBClusterName, "fleet-db-cluster-name", "", "EKS cluster name for fleet-db")
 	serveCmd.Flags().StringVar(&awsRegion, "aws-region", "us-east-1", "AWS region for fleet-db and DynamoDB")
 	serveCmd.Flags().StringVar(&dynamodbRegion, "dynamodb-region", "", "AWS region for DynamoDB (defaults to --aws-region)")
@@ -82,9 +78,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 	cfg := config.NewConfig()
 	cfg.Logging.Level = logLevel
 	cfg.Logging.Format = logFormat
-	cfg.Maestro.BaseURL = maestroURL
-	cfg.Maestro.GRPCBaseURL = maestroGRPCURL
-
 	if fleetDBClusterName == "" {
 		return fmt.Errorf("--fleet-db-cluster-name is required")
 	}
@@ -187,8 +180,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		"api_port", cfg.Server.APIPort,
 		"health_port", cfg.Server.HealthPort,
 		"metrics_port", cfg.Server.MetricsPort,
-		"maestro_url", cfg.Maestro.BaseURL,
-		"maestro_grpc_url", cfg.Maestro.GRPCBaseURL,
 		"fleet_db_cluster", cfg.FleetDB.ClusterName,
 		"aws_region", cfg.FleetDB.AWSRegion,
 		"allowed_accounts_count", len(cfg.AllowedAccounts),

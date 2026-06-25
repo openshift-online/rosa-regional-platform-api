@@ -481,3 +481,58 @@ func TestClusterHandler_Update_MissingSpec(t *testing.T) {
 		t.Errorf("expected 400, got %d", w.Code)
 	}
 }
+
+func TestClusterHandler_Create_DuplicateName(t *testing.T) {
+	scheme := newTestScheme()
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+		testClusterCR("existing-id", testAccountID),
+	).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"name": "test-cluster",
+		"spec": map[string]interface{}{},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+	req = req.WithContext(testContext(testAccountID))
+
+	w := httptest.NewRecorder()
+	handler.Create(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for duplicate name, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var errResp map[string]interface{}
+	_ = json.NewDecoder(w.Body).Decode(&errResp)
+	if errResp["code"] != "CLUSTERS-MGMT-CREATE-005" {
+		t.Errorf("expected code CLUSTERS-MGMT-CREATE-005, got %v", errResp["code"])
+	}
+}
+
+func TestClusterHandler_Create_SameNameDifferentAccount(t *testing.T) {
+	otherAccount := "999999999999"
+	scheme := newTestScheme()
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+		testClusterCR("existing-id", otherAccount),
+	).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewClusterHandler(fleetdb.NewClientFrom(fc, logger), logger)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"name": "test-cluster",
+		"spec": map[string]interface{}{},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+	req = req.WithContext(testContext(testAccountID))
+
+	w := httptest.NewRecorder()
+	handler.Create(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 (same name in different account is allowed), got %d: %s", w.Code, w.Body.String())
+	}
+}

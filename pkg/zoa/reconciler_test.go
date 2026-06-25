@@ -130,7 +130,7 @@ func TestReconcileExecution_PendingToRunning(t *testing.T) {
 	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "zoa-exec-1",
-			Namespace: "account-1",
+			Namespace: "zoa-jobs",
 		},
 		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
 			ManagementCluster: "mc01",
@@ -180,7 +180,7 @@ func TestReconcileExecution_FullyCompleted(t *testing.T) {
 	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "zoa-exec-2",
-			Namespace: "account-1",
+			Namespace: "zoa-jobs",
 		},
 		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
 			ManagementCluster: "mc01",
@@ -238,7 +238,7 @@ func TestReconcileExecution_Timeout(t *testing.T) {
 	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "zoa-exec-timeout",
-			Namespace: "account-1",
+			Namespace: "zoa-jobs",
 		},
 		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
 			ManagementCluster: "mc01",
@@ -267,7 +267,7 @@ func TestReconcileExecution_Timeout(t *testing.T) {
 	assert.Equal(t, StatusTimedOut, statusUpdated)
 
 	// Verify the manifest was deleted
-	_, err := fdb.GetManifest(context.Background(), "account-1", "zoa-exec-timeout")
+	_, err := fdb.GetManifest(context.Background(), "zoa-jobs", "zoa-exec-timeout")
 	assert.True(t, apierrors.IsNotFound(err))
 }
 
@@ -310,7 +310,7 @@ func TestReconcileExecution_DeletionFails(t *testing.T) {
 	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "zoa-exec-rb-fail",
-			Namespace: "account-1",
+			Namespace: "zoa-jobs",
 		},
 		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
 			ManagementCluster: "mc01",
@@ -563,7 +563,7 @@ func TestReconcilePending_MultipleExecutions(t *testing.T) {
 	reconciled := make([]string, 0)
 
 	hfm1 := &hyperfleetv1alpha1.HyperFleetManifest{
-		ObjectMeta: metav1.ObjectMeta{Name: "zoa-a", Namespace: "account-1"},
+		ObjectMeta: metav1.ObjectMeta{Name: "zoa-a", Namespace: "zoa-jobs"},
 		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
 			ManagementCluster: "mc01",
 			Resources:         []hyperfleetv1alpha1.ResourceTemplate{{Resource: "jobs", Content: runtime.RawExtension{Raw: []byte("{}")}}},
@@ -571,7 +571,7 @@ func TestReconcilePending_MultipleExecutions(t *testing.T) {
 		Status: hyperfleetv1alpha1.HyperFleetManifestStatus{Phase: hyperfleetv1alpha1.ManifestPhaseApplied},
 	}
 	hfm2 := &hyperfleetv1alpha1.HyperFleetManifest{
-		ObjectMeta: metav1.ObjectMeta{Name: "zoa-b", Namespace: "account-1"},
+		ObjectMeta: metav1.ObjectMeta{Name: "zoa-b", Namespace: "zoa-jobs"},
 		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
 			ManagementCluster: "mc02",
 			Resources:         []hyperfleetv1alpha1.ResourceTemplate{{Resource: "jobs", Content: runtime.RawExtension{Raw: []byte("{}")}}},

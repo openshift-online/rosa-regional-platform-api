@@ -85,7 +85,7 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 		return
 	}
 
-	hfm, err := r.fleetDB.GetManifest(ctx, exec.AccountID, exec.ManifestWorkName)
+	hfm, err := r.fleetDB.GetManifest(ctx, JobNamespace, exec.ManifestWorkName)
 	if err != nil {
 		if fleetdb.IsNotFound(err) {
 			return
@@ -199,7 +199,7 @@ func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, resu
 // deleteManifest removes the HyperFleetManifest from fleet-db. Returns nil on success or
 // if the CR is already gone (idempotent). Returns error if deletion actually fails.
 func (r *Reconciler) deleteManifest(ctx context.Context, exec *Execution) error {
-	err := r.fleetDB.DeleteManifest(ctx, exec.AccountID, exec.ManifestWorkName)
+	err := r.fleetDB.DeleteManifest(ctx, JobNamespace, exec.ManifestWorkName)
 	if err != nil {
 		if fleetdb.IsNotFound(err) {
 			r.logger.Debug("manifest already deleted",

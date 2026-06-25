@@ -14,12 +14,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
+	"github.com/openshift/rosa-regional-platform-api/pkg/clients/fleetdb"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
 )
 
 const (
 	mcConfigMapName      = "hyperfleet-mc-config"
-	mcConfigMapNamespace = "default"
+	mcConfigMapNamespace = "hyperfleet-system"
 	mcConfigMapKey       = "clusters.yaml"
 )
 
@@ -37,19 +38,17 @@ type ManagementClusterCreateRequest struct {
 	AccountID string `json:"accountId"`
 }
 
-// ManagementClusterHandler handles management cluster endpoints.
-// It reads and writes the MC ConfigMap on the local (RC) cluster.
+// ManagementClusterHandler handles management cluster endpoints
 type ManagementClusterHandler struct {
-	rcClient client.Client
-	logger   *slog.Logger
+	fleetDB *fleetdb.Client
+	logger  *slog.Logger
 }
 
-// NewManagementClusterHandler creates a new ManagementClusterHandler.
-// rcClient must point at the Regional Cluster (where the platform API runs).
-func NewManagementClusterHandler(rcClient client.Client, logger *slog.Logger) *ManagementClusterHandler {
+// NewManagementClusterHandler creates a new ManagementClusterHandler
+func NewManagementClusterHandler(fleetDB *fleetdb.Client, logger *slog.Logger) *ManagementClusterHandler {
 	return &ManagementClusterHandler{
-		rcClient: rcClient,
-		logger:   logger,
+		fleetDB: fleetDB,
+		logger:  logger,
 	}
 }
 
@@ -162,7 +161,7 @@ func (h *ManagementClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *ManagementClusterHandler) loadMCConfig(ctx context.Context) ([]ManagementCluster, *corev1.ConfigMap, error) {
 	var cm corev1.ConfigMap
 	key := client.ObjectKey{Namespace: mcConfigMapNamespace, Name: mcConfigMapName}
-	if err := h.rcClient.Get(ctx, key, &cm); err != nil {
+	if err := h.fleetDB.Get(ctx, key, &cm); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil, nil
 		}
@@ -198,11 +197,11 @@ func (h *ManagementClusterHandler) saveMCConfig(ctx context.Context, existing *c
 				mcConfigMapKey: string(yamlData),
 			},
 		}
-		return h.rcClient.Create(ctx, cm)
+		return h.fleetDB.Create(ctx, cm)
 	}
 
 	existing.Data[mcConfigMapKey] = string(yamlData)
-	return h.rcClient.Update(ctx, existing)
+	return h.fleetDB.Update(ctx, existing)
 }
 
 func (h *ManagementClusterHandler) writeError(w http.ResponseWriter, status int, code, reason string) {

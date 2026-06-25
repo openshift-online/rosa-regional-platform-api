@@ -21,7 +21,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
-	github.com/typeid/hyperfleet-operator/api v0.0.0-20260624180552-eeaed6f8d067
+	github.com/typeid/hyperfleet-operator/api v0.0.0-20260625125804-59e68eadf718
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.36.0
 	k8s.io/apimachinery v0.36.0
@@ -95,5 +95,3 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
 )
-
-replace github.com/typeid/hyperfleet-operator/api => ../hyperfleet/api

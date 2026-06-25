@@ -100,11 +100,8 @@ func newFakeFleetDB(objs ...client.Object) *fleetdb.Client {
 	return fleetdb.NewClientFrom(builder.Build(), reconcilerLogger())
 }
 
-func jobKubeContent(succeeded, failed int32, startTime, completionTime string) runtime.RawExtension {
-	job := map[string]interface{}{
-		"status": map[string]interface{}{},
-	}
-	status := job["status"].(map[string]interface{})
+func jobStatus(succeeded, failed int32, startTime, completionTime string) runtime.RawExtension {
+	status := map[string]interface{}{}
 	if succeeded > 0 {
 		status["succeeded"] = succeeded
 	}
@@ -117,7 +114,7 @@ func jobKubeContent(succeeded, failed int32, startTime, completionTime string) r
 	if completionTime != "" {
 		status["completionTime"] = completionTime
 	}
-	raw, _ := json.Marshal(job)
+	raw, _ := json.Marshal(status)
 	return runtime.RawExtension{Raw: raw}
 }
 
@@ -198,13 +195,13 @@ func TestReconcileExecution_FullyCompleted(t *testing.T) {
 					Resource:    "jobs",
 					Name:        "zoa-exec-2",
 					Namespace:   "zoa-jobs",
-					KubeContent: jobKubeContent(1, 0, runnerStart, runnerComplete),
+					Status: jobStatus(1, 0, runnerStart, runnerComplete),
 				},
 				{
 					Resource:    "jobs",
 					Name:        "zoa-exec-2-upload",
 					Namespace:   "zoa-jobs",
-					KubeContent: jobKubeContent(1, 0, "", uploadComplete),
+					Status: jobStatus(1, 0, "", uploadComplete),
 				},
 			},
 		},
@@ -324,8 +321,8 @@ func TestReconcileExecution_DeletionFails(t *testing.T) {
 		Status: hyperfleetv1alpha1.HyperFleetManifestStatus{
 			Phase: hyperfleetv1alpha1.ManifestPhaseApplied,
 			ResourceStatuses: []hyperfleetv1alpha1.ResourceStatus{
-				{Resource: "jobs", Name: "zoa-exec-rb-fail", KubeContent: jobKubeContent(1, 0, "", "")},
-				{Resource: "jobs", Name: "zoa-exec-rb-fail-upload", KubeContent: jobKubeContent(1, 0, "", "")},
+				{Resource: "jobs", Name: "zoa-exec-rb-fail", Status: jobStatus(1, 0, "", "")},
+				{Resource: "jobs", Name: "zoa-exec-rb-fail-upload", Status: jobStatus(1, 0, "", "")},
 			},
 		},
 	}
@@ -359,12 +356,12 @@ func TestParseManifestStatus_AllFeedback(t *testing.T) {
 				{
 					Resource:    "jobs",
 					Name:        "zoa-exec-1",
-					KubeContent: jobKubeContent(1, 0, start, runnerEnd),
+					Status: jobStatus(1, 0, start, runnerEnd),
 				},
 				{
 					Resource:    "jobs",
 					Name:        "zoa-exec-1-upload",
-					KubeContent: jobKubeContent(1, 0, "", uploadEnd),
+					Status: jobStatus(1, 0, "", uploadEnd),
 				},
 			},
 		},
@@ -385,8 +382,8 @@ func TestParseManifestStatus_TAFailedUploadSucceeded(t *testing.T) {
 		Status: hyperfleetv1alpha1.HyperFleetManifestStatus{
 			Phase: hyperfleetv1alpha1.ManifestPhaseApplied,
 			ResourceStatuses: []hyperfleetv1alpha1.ResourceStatus{
-				{Resource: "jobs", Name: "zoa-exec-1", KubeContent: jobKubeContent(0, 1, "", "")},
-				{Resource: "jobs", Name: "zoa-exec-1-upload", KubeContent: jobKubeContent(1, 0, "", "")},
+				{Resource: "jobs", Name: "zoa-exec-1", Status: jobStatus(0, 1, "", "")},
+				{Resource: "jobs", Name: "zoa-exec-1-upload", Status: jobStatus(1, 0, "", "")},
 			},
 		},
 	}

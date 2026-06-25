@@ -310,13 +310,12 @@ func (jr *jobResult) computeUploadSeconds() int {
 }
 
 // partialJobStatus mirrors the subset of batch/v1 Job.Status we need.
+// ResourceStatus.Status contains the .status sub-object directly (not the full Job).
 type partialJobStatus struct {
-	Status struct {
-		Succeeded      int32  `json:"succeeded,omitempty"`
-		Failed         int32  `json:"failed,omitempty"`
-		StartTime      string `json:"startTime,omitempty"`
-		CompletionTime string `json:"completionTime,omitempty"`
-	} `json:"status,omitempty"`
+	Succeeded      int32  `json:"succeeded,omitempty"`
+	Failed         int32  `json:"failed,omitempty"`
+	StartTime      string `json:"startTime,omitempty"`
+	CompletionTime string `json:"completionTime,omitempty"`
 }
 
 // parseManifestStatus extracts Job status from the HFM's resource statuses.
@@ -332,12 +331,12 @@ func (r *Reconciler) parseManifestStatus(hfm *hyperfleetv1alpha1.HyperFleetManif
 			continue
 		}
 
-		if len(rs.KubeContent.Raw) == 0 {
+		if len(rs.Status.Raw) == 0 {
 			continue
 		}
 
 		var job partialJobStatus
-		if err := json.Unmarshal(rs.KubeContent.Raw, &job); err != nil {
+		if err := json.Unmarshal(rs.Status.Raw, &job); err != nil {
 			r.logger.Debug("failed to unmarshal job status from resource status",
 				"name", rs.Name,
 				"error", err,
@@ -347,27 +346,27 @@ func (r *Reconciler) parseManifestStatus(hfm *hyperfleetv1alpha1.HyperFleetManif
 
 		switch rs.Name {
 		case runnerJobName:
-			if job.Status.Succeeded > 0 {
+			if job.Succeeded > 0 {
 				result.taSucceeded = true
 			}
-			if job.Status.Failed > 0 {
+			if job.Failed > 0 {
 				result.taFailed = true
 			}
-			if job.Status.StartTime != "" {
-				result.runnerStartTime = job.Status.StartTime
+			if job.StartTime != "" {
+				result.runnerStartTime = job.StartTime
 			}
-			if job.Status.CompletionTime != "" {
-				result.runnerCompletionTime = job.Status.CompletionTime
+			if job.CompletionTime != "" {
+				result.runnerCompletionTime = job.CompletionTime
 			}
 		case uploadJobName:
-			if job.Status.Succeeded > 0 {
+			if job.Succeeded > 0 {
 				result.uploadSucceeded = true
 			}
-			if job.Status.Failed > 0 {
+			if job.Failed > 0 {
 				result.uploadFailed = true
 			}
-			if job.Status.CompletionTime != "" {
-				result.uploadCompletionTime = job.Status.CompletionTime
+			if job.CompletionTime != "" {
+				result.uploadCompletionTime = job.CompletionTime
 			}
 		}
 	}

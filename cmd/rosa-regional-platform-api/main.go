@@ -11,6 +11,10 @@ import (
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/rosa-regional-platform-api/pkg/clients/fleetdb"
 	"github.com/openshift/rosa-regional-platform-api/pkg/config"
@@ -165,8 +169,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create fleet-db client: %w", err)
 	}
 
+	// Create in-cluster client for the RC (local cluster) — used by MC handler
+	// to manage the hyperfleet-mc-config ConfigMap.
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	rcClient, err := ctrlclient.New(ctrl.GetConfigOrDie(), ctrlclient.Options{Scheme: scheme})
+	if err != nil {
+		return fmt.Errorf("failed to create RC in-cluster client: %w", err)
+	}
+
 	// Create server
-	srv, err := server.New(cfg, fleetDBClient, logger)
+	srv, err := server.New(cfg, fleetDBClient, rcClient, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}

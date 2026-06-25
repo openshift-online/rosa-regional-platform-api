@@ -48,7 +48,12 @@ func NewClient(ctx context.Context, awsCfg aws.Config, clusterName string, logge
 		return nil, fmt.Errorf("create fleet-db kube client: %w", err)
 	}
 
-	return &Client{Client: c, logger: logger}, nil
+	fc := &Client{Client: c, logger: logger}
+	if err := fc.ensureNamespace(ctx, "zoa-jobs"); err != nil {
+		return nil, fmt.Errorf("ensure zoa-jobs namespace on fleet-db: %w", err)
+	}
+
+	return fc, nil
 }
 
 // --- Cluster operations ---

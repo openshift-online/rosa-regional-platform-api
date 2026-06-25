@@ -11,7 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	smithymiddleware "github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"k8s.io/client-go/rest"
 )
@@ -74,14 +73,12 @@ func (p *tokenProvider) Token(ctx context.Context) (string, error) {
 
 	presignClient := sts.NewPresignClient(p.sts)
 	presigned, err := presignClient.PresignGetCallerIdentity(ctx, &sts.GetCallerIdentityInput{}, func(o *sts.PresignOptions) {
-		o.ClientOptions = append(o.ClientOptions, func(opts *sts.Options) {
-			opts.APIOptions = append(opts.APIOptions, func(stack *smithymiddleware.Stack) error {
-				return stack.Build.Add(&addHeaderMiddleware{
-					key:   clusterIDHeader,
-					value: p.clusterName,
-				}, smithymiddleware.After)
-			})
-		})
+		o.ClientOptions = []func(*sts.Options){
+			sts.WithAPIOptions(
+				smithyhttp.AddHeaderValue(clusterIDHeader, p.clusterName),
+				smithyhttp.AddHeaderValue("X-Amz-Expires", "60"),
+			),
+		}
 	})
 	if err != nil {
 		return "", fmt.Errorf("presign GetCallerIdentity: %w", err)
@@ -90,23 +87,6 @@ func (p *tokenProvider) Token(ctx context.Context) (string, error) {
 	p.token = tokenPrefix + base64.RawURLEncoding.EncodeToString([]byte(presigned.URL))
 	p.expiry = time.Now().Add(tokenExpiry)
 	return p.token, nil
-}
-
-type addHeaderMiddleware struct {
-	key, value string
-}
-
-func (m *addHeaderMiddleware) ID() string { return "AddClusterIDHeader" }
-
-func (m *addHeaderMiddleware) HandleBuild(
-	ctx context.Context,
-	in smithymiddleware.BuildInput,
-	next smithymiddleware.BuildHandler,
-) (smithymiddleware.BuildOutput, smithymiddleware.Metadata, error) {
-	if req, ok := in.Request.(*smithyhttp.Request); ok {
-		req.Header.Set(m.key, m.value)
-	}
-	return next.HandleBuild(ctx, in)
 }
 
 type tokenRoundTripper struct {

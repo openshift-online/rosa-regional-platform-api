@@ -664,17 +664,20 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(statusResp.StatusCode).To(Equal(http.StatusOK))
 
-				var status struct {
-					Phase string `json:"phase"`
+				var statusBody struct {
+					Status struct {
+						Phase string `json:"phase"`
+					} `json:"status"`
 				}
-				g.Expect(json.Unmarshal(statusResp.Body, &status)).To(Succeed())
+				g.Expect(json.Unmarshal(statusResp.Body, &statusBody)).To(Succeed())
 
+				phase := statusBody.Status.Phase
 				if os.Getenv("E2E_STATUS_POLL_LOG") != "" {
 					_, _ = fmt.Fprintf(os.Stderr, "[%s] nodepool %s: phase=%s\n",
-						time.Now().Format(time.RFC3339), npName, status.Phase)
+						time.Now().Format(time.RFC3339), npName, phase)
 				}
-				GinkgoWriter.Printf("  nodepool %s: phase=%s\n", npName, status.Phase)
-				g.Expect(status.Phase).To(Equal("Ready"), "nodepool %s should be Ready", npName)
+				GinkgoWriter.Printf("  nodepool %s: phase=%s\n", npName, phase)
+				g.Expect(phase).To(Equal("Ready"), "nodepool %s should be Ready", npName)
 			}
 			g.Expect(foundNodePool).To(BeTrue(), "no nodepools found for cluster %s", id)
 		}).WithTimeout(15*time.Minute).WithPolling(30*time.Second).Should(Succeed(),

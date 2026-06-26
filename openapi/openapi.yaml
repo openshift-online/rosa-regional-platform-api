@@ -189,17 +189,13 @@ paths:
         Create a new cluster for the authenticated user.
 
         The API automatically enriches the cluster spec with:
-        - cloudUrl: Auto-populated from the management cluster's cloudfront_url label
+        - oidcIssuerURL: Auto-populated from the regional OIDC CloudFront distribution
         - placement: Auto-populated from the management cluster's name (if not provided by client)
 
         Possible error codes:
         - CLUSTERS-MGMT-CREATE-001: Invalid request body
-        - CLUSTERS-MGMT-CREATE-002: Missing required fields (name or spec)
-        - CLUSTERS-MGMT-CREATE-003: Failed to create cluster in hyperfleet
-        - CLUSTERS-MGMT-CREATE-004: Failed to retrieve CloudFront URL
-        - CLUSTERS-MGMT-CREATE-005: No management clusters found
-        - CLUSTERS-MGMT-CREATE-006: CloudFront URL not configured
-        - CLUSTERS-MGMT-CREATE-007: Management cluster name not available for placement
+        - CLUSTERS-MGMT-CREATE-002: Invalid cluster spec
+        - CLUSTERS-MGMT-CREATE-003: Failed to create cluster
       operationId: createUserCluster
       tags:
         - Clusters
@@ -2257,13 +2253,13 @@ components:
           type: object
           description: |
             Cluster specification. When a cluster is created, the response includes
-            auto-populated fields like cloudUrl and placement.
+            auto-populated fields like oidcIssuerURL and placement.
           properties:
-            cloudUrl:
+            oidcIssuerURL:
               type: string
               description: |
-                CloudFront URL with cluster ID appended (format: {cloudfront_url}/{cluster_id}).
-                This field is automatically added to the response when creating a cluster.
+                OIDC issuer URL for this cluster (format: {cloudfront_url}/{cluster_id}).
+                This field is automatically populated during cluster creation.
               example: https://doku78iof5s87.cloudfront.net/cluster-123
             placement:
               type: string
@@ -2289,7 +2285,7 @@ components:
         Request body for creating a cluster.
 
         The API automatically enriches the cluster spec with the following fields:
-        - cloudUrl: Auto-populated from the first management cluster's cloudfront_url label
+        - oidcIssuerURL: Auto-populated from the regional OIDC CloudFront distribution
         - placement: Auto-populated from the first management cluster's name if not provided by the client
       required:
         - name
@@ -2309,7 +2305,7 @@ components:
           description: |
             Cluster specification. The following fields are auto-populated if not provided:
             - placement: Management cluster name where the cluster will be deployed (optional, auto-assigned if omitted)
-            - cloudUrl: CloudFront URL (always auto-populated from management cluster)
+            - oidcIssuerURL: OIDC issuer URL (always auto-populated from regional OIDC CloudFront distribution)
           properties:
             placement:
               type: string

@@ -74,7 +74,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		ROSACTL_BIN       string
 		clusterName       string
 		clusterID         string
-		cloudUrl          string
+		oidcIssuerURL          string
 		region            string
 		apiClient         *awstest.APIClient
 
@@ -353,8 +353,8 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 					if item["name"] == clusterName {
 						clusterID = item["id"].(string)
 						if spec, ok := item["spec"].(map[string]interface{}); ok {
-							if issuerUrl, ok := spec["cloudUrl"].(string); ok {
-								cloudUrl = issuerUrl
+							if issuerUrl, ok := spec["oidcIssuerURL"].(string); ok {
+								oidcIssuerURL = issuerUrl
 							}
 						}
 						found = true
@@ -364,7 +364,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 				Expect(found).To(BeTrue(), "cluster %s should exist after 409 conflict", clusterName)
 				hcpCreated = true
 				GinkgoWriter.Printf("Found existing HCP cluster ID: %s\n", clusterID)
-				GinkgoWriter.Printf("Found existing HCP cluster cloud url: %s\n", cloudUrl)
+				GinkgoWriter.Printf("Found existing HCP cluster OIDC issuer URL: %s\n", oidcIssuerURL)
 				return
 			}
 			Fail("Failed to create the HCP cluster: " + err.Error() + "\nstderr: " + stderrStr)
@@ -385,23 +385,23 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		Expect(err).To(BeNil())
 		clusterID = cluster["id"].(string)
 		if spec, ok := cluster["spec"].(map[string]interface{}); ok {
-			if issuerUrl, ok := spec["cloudUrl"].(string); ok {
-				cloudUrl = issuerUrl
+			if issuerUrl, ok := spec["oidcIssuerURL"].(string); ok {
+				oidcIssuerURL = issuerUrl
 			}
 		}
 		hcpCreated = true
 		GinkgoWriter.Printf("HCP cluster ID: %s\n", clusterID)
-		GinkgoWriter.Printf("HCP cluster cloud url: %s\n", cloudUrl)
+		GinkgoWriter.Printf("HCP cluster OIDC issuer URL: %s\n", oidcIssuerURL)
 		GinkgoWriter.Printf("HCP cluster created successfully: %s\n", clusterName)
 	})
 
 	It("should be able to create the cluster-oidc", Label("oidc-create", "setup"), func() {
 		GinkgoWriter.Printf("Creating new cluster-oidc: %s\n", clusterName)
-		if cloudUrl == "" {
-			cloudUrl = os.Getenv("HCP_ROSA_ISSUER_URL")
+		if oidcIssuerURL == "" {
+			oidcIssuerURL = os.Getenv("HCP_ROSA_ISSUER_URL")
 		}
-		GinkgoWriter.Printf("HCP cluster cloud url: %s\n", cloudUrl)
-		cmd := exec.Command(ROSACTL_BIN, "cluster-oidc", "create", clusterName, "--region", region, "--oidc-issuer-url", cloudUrl)
+		GinkgoWriter.Printf("HCP cluster OIDC issuer URL: %s\n", oidcIssuerURL)
+		cmd := exec.Command(ROSACTL_BIN, "cluster-oidc", "create", clusterName, "--region", region, "--oidc-issuer-url", oidcIssuerURL)
 		cmd.Env = append(os.Environ(), customerEnv()...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

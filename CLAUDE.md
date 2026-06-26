@@ -37,7 +37,6 @@ make e2e-authz-infra-down # Stop authorization test infrastructure
 - **internal/**: Internal packages (not importable by external modules)
 - **docs/**: API documentation and design references
 - **openapi/**: OpenAPI/Swagger specifications
-- **deployment/**: Kubernetes deployment manifests
 - **test/**: Integration and E2E test suites
 - **hack/**: Development scripts and utilities
 

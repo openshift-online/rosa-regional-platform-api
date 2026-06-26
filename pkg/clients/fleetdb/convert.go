@@ -41,7 +41,7 @@ func ClusterCRToPlatform(cr *hyperfleetv1alpha1.Cluster) *types.Cluster {
 		cluster.Status = &types.ClusterStatusInfo{
 			ObservedGeneration:   cr.Status.ObservedGeneration,
 			Phase:                string(phase),
-			ControlPlaneEndpoint: cr.Status.ControlPlaneEndpoint,
+			ControlPlaneEndpoint: apiEndpointFromCR(cr.Status.ControlPlaneEndpoint),
 			Version:              cr.Status.Version,
 			LastUpdateTime:       metaTime(cr),
 		}
@@ -317,6 +317,13 @@ func mapToSpec(src interface{}, dst interface{}) error {
 		return err
 	}
 	return json.Unmarshal(data, dst)
+}
+
+func apiEndpointFromCR(ep hypershiftv1beta1.APIEndpoint) *types.APIEndpoint {
+	if ep.Host == "" {
+		return nil
+	}
+	return &types.APIEndpoint{Host: ep.Host, Port: ep.Port}
 }
 
 func metaTime(obj metav1.Object) time.Time {

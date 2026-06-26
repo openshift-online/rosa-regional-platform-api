@@ -36,7 +36,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -595,26 +594,22 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 
 		var statusEnvelope struct {
 			Status struct {
-				ControlPlaneEndpoint string `json:"controlPlaneEndpoint"`
+				ControlPlaneEndpoint struct {
+					Host string `json:"host"`
+					Port int32  `json:"port"`
+				} `json:"controlPlaneEndpoint"`
 			} `json:"status"`
 		}
 		Expect(json.Unmarshal(resp.Body, &statusEnvelope)).To(Succeed())
 
-		apiEndpoint := statusEnvelope.Status.ControlPlaneEndpoint
-		Expect(apiEndpoint).ToNot(BeEmpty(), "controlPlaneEndpoint should be present in status after cluster is Ready")
-		GinkgoWriter.Printf("KAS controlPlaneEndpoint: %s\n", apiEndpoint)
+		ep := statusEnvelope.Status.ControlPlaneEndpoint
+		Expect(ep.Host).ToNot(BeEmpty(), "controlPlaneEndpoint.host should be present in status after cluster is Ready")
+		GinkgoWriter.Printf("KAS controlPlaneEndpoint: %s:%d\n", ep.Host, ep.Port)
 
-		// controlPlaneEndpoint is a hostname (e.g. "api.cluster.example.com"),
-		// not a URL. If it contains a scheme, parse it; otherwise use directly.
-		hostname := apiEndpoint
+		hostname := ep.Host
 		port := "6443"
-		if strings.Contains(apiEndpoint, "://") {
-			parsedURL, err := url.Parse(apiEndpoint)
-			Expect(err).ToNot(HaveOccurred())
-			hostname = parsedURL.Hostname()
-			if p := parsedURL.Port(); p != "" {
-				port = p
-			}
+		if ep.Port > 0 {
+			port = fmt.Sprintf("%d", ep.Port)
 		}
 
 		hostPort := net.JoinHostPort(hostname, port)

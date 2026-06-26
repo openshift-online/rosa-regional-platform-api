@@ -33,7 +33,7 @@ type ClusterStatusInfo struct {
 	ObservedGeneration   int64               `json:"observedGeneration"`
 	Conditions           []Condition         `json:"conditions,omitempty"`
 	Phase                string              `json:"phase"`
-	ControlPlaneEndpoint string              `json:"controlPlaneEndpoint,omitempty"`
+	ControlPlaneEndpoint *APIEndpoint        `json:"controlPlaneEndpoint,omitempty"`
 	Version              string              `json:"version,omitempty"`
 	PlacementRef         *PlacementReference `json:"placementRef,omitempty"`
 	Message              string              `json:"message,omitempty"`
@@ -45,6 +45,12 @@ type ClusterStatusInfo struct {
 type PlacementReference struct {
 	Name              string `json:"name"`
 	ManagementCluster string `json:"managementCluster"`
+}
+
+// APIEndpoint represents the API server endpoint for a hosted cluster.
+type APIEndpoint struct {
+	Host string `json:"host"`
+	Port int32  `json:"port"`
 }
 
 // Condition represents a status condition

@@ -31,10 +31,10 @@ const (
 	uploaderSAName = "zoa-uploader"
 )
 
-// BuildHyperFleetManifest generates a HyperFleetManifest CR with two Jobs (runner + uploader)
+// BuildManifest generates a Manifest CR with two Jobs (runner + uploader)
 // and all supporting resources (SAs, RBAC, ConfigMaps). The runner and uploader Jobs
 // are watched so the reconciler can read their completion status.
-func BuildHyperFleetManifest(tmpl *TATemplate, ctx RenderContext) (*hyperfleetv1alpha1.HyperFleetManifest, error) {
+func BuildManifest(tmpl *TATemplate, ctx RenderContext) (*hyperfleetv1alpha1.Manifest, error) {
 	if err := validateSecretsPolicy(tmpl, ctx); err != nil {
 		return nil, err
 	}
@@ -94,12 +94,12 @@ func BuildHyperFleetManifest(tmpl *TATemplate, ctx RenderContext) (*hyperfleetv1
 	}
 	resources = append(resources, uploadJobResource)
 
-	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
+	hfm := &hyperfleetv1alpha1.Manifest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "zoa-" + ctx.ExecID,
 			Labels: labels,
 		},
-		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
+		Spec: hyperfleetv1alpha1.ManifestSpec{
 			ManagementCluster: ctx.TargetCluster,
 			Resources:         resources,
 		},

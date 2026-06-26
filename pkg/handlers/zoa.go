@@ -202,7 +202,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Config:        *h.jobConfig,
 	}
 
-	hfm, err := zoa.BuildHyperFleetManifest(tmpl, renderCtx)
+	hfm, err := zoa.BuildManifest(tmpl, renderCtx)
 	if err != nil {
 		h.logger.Error("failed to build manifest", "error", err, "execution_id", execID)
 		_ = h.store.UpdateStatus(ctx, execID, zoa.StatusFailed, time.Now().UTC().Format(time.RFC3339), 0)

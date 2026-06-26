@@ -177,10 +177,10 @@ func (c *Client) DeleteNodePool(ctx context.Context, accountID, nodepoolID strin
 	return nil
 }
 
-// --- HyperFleetManifest operations ---
+// --- Manifest operations ---
 
-// CreateManifest creates a HyperFleetManifest CR on fleet-db.
-func (c *Client) CreateManifest(ctx context.Context, accountID string, hfm *hyperfleetv1alpha1.HyperFleetManifest) error {
+// CreateManifest creates a Manifest CR on fleet-db.
+func (c *Client) CreateManifest(ctx context.Context, accountID string, hfm *hyperfleetv1alpha1.Manifest) error {
 	hfm.Namespace = accountID
 	if err := c.Client.Create(ctx, hfm); err != nil {
 		return fmt.Errorf("create manifest %s/%s: %w", accountID, hfm.Name, err)
@@ -188,9 +188,9 @@ func (c *Client) CreateManifest(ctx context.Context, accountID string, hfm *hype
 	return nil
 }
 
-// GetManifest retrieves a HyperFleetManifest CR by account ID and name.
-func (c *Client) GetManifest(ctx context.Context, accountID, name string) (*hyperfleetv1alpha1.HyperFleetManifest, error) {
-	var hfm hyperfleetv1alpha1.HyperFleetManifest
+// GetManifest retrieves a Manifest CR by account ID and name.
+func (c *Client) GetManifest(ctx context.Context, accountID, name string) (*hyperfleetv1alpha1.Manifest, error) {
+	var hfm hyperfleetv1alpha1.Manifest
 	key := client.ObjectKey{Namespace: accountID, Name: name}
 	if err := c.Client.Get(ctx, key, &hfm); err != nil {
 		return nil, err
@@ -198,9 +198,9 @@ func (c *Client) GetManifest(ctx context.Context, accountID, name string) (*hype
 	return &hfm, nil
 }
 
-// DeleteManifest deletes a HyperFleetManifest CR.
+// DeleteManifest deletes a Manifest CR.
 func (c *Client) DeleteManifest(ctx context.Context, accountID, name string) error {
-	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
+	hfm := &hyperfleetv1alpha1.Manifest{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: accountID,
 			Name:      name,

@@ -11,8 +11,8 @@ import (
 )
 
 // Reconciler periodically checks pending/running TA executions and updates their
-// status by inspecting HyperFleetManifest CR status on fleet-db.
-// On terminal states (succeeded, failed, timeout), it deletes the HyperFleetManifest
+// status by inspecting Manifest CR status on fleet-db.
+// On terminal states (succeeded, failed, timeout), it deletes the Manifest
 // BEFORE updating status, preventing stale CRs if the status update were to fail.
 type Reconciler struct {
 	store     ExecutionStore
@@ -125,7 +125,7 @@ func (r *Reconciler) reconcileExecution(ctx context.Context, exec *Execution) {
 	}
 }
 
-// handleTimeout deletes the HyperFleetManifest FIRST, then marks as timed_out.
+// handleTimeout deletes the Manifest FIRST, then marks as timed_out.
 // If deletion fails, status stays pending/running so the reconciler retries.
 func (r *Reconciler) handleTimeout(ctx context.Context, exec *Execution) {
 	timeout := r.timeoutForExecution(exec)
@@ -157,7 +157,7 @@ func (r *Reconciler) handleTimeout(ctx context.Context, exec *Execution) {
 	)
 }
 
-// handleCompletion deletes the HyperFleetManifest FIRST, then updates terminal status.
+// handleCompletion deletes the Manifest FIRST, then updates terminal status.
 // Computes durations from Job timestamps reported via HFM resource statuses.
 func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, result *jobResult) {
 	if err := r.deleteManifest(ctx, exec); err != nil {
@@ -196,7 +196,7 @@ func (r *Reconciler) handleCompletion(ctx context.Context, exec *Execution, resu
 	)
 }
 
-// deleteManifest removes the HyperFleetManifest from fleet-db. Returns nil on success or
+// deleteManifest removes the Manifest from fleet-db. Returns nil on success or
 // if the CR is already gone (idempotent). Returns error if deletion actually fails.
 func (r *Reconciler) deleteManifest(ctx context.Context, exec *Execution) error {
 	err := r.fleetDB.DeleteManifest(ctx, JobNamespace, exec.ManifestWorkName)
@@ -247,7 +247,7 @@ func (r *Reconciler) isTimedOut(exec *Execution) bool {
 	return time.Since(createdAt) > r.timeoutForExecution(exec)
 }
 
-// jobResult holds parsed completion info from HyperFleetManifest resource statuses.
+// jobResult holds parsed completion info from Manifest resource statuses.
 type jobResult struct {
 	taSucceeded          bool
 	taFailed             bool
@@ -320,7 +320,7 @@ type partialJobStatus struct {
 
 // parseManifestStatus extracts Job status from the HFM's resource statuses.
 // Runner job name = "zoa-{execID}", upload job name = "zoa-{execID}-upload".
-func (r *Reconciler) parseManifestStatus(hfm *hyperfleetv1alpha1.HyperFleetManifest, execID string) *jobResult {
+func (r *Reconciler) parseManifestStatus(hfm *hyperfleetv1alpha1.Manifest, execID string) *jobResult {
 	result := &jobResult{}
 
 	runnerJobName := "zoa-" + execID

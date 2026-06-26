@@ -127,18 +127,18 @@ func TestReconcileExecution_PendingToRunning(t *testing.T) {
 		},
 	}
 
-	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
+	hfm := &hyperfleetv1alpha1.Manifest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "zoa-exec-1",
 			Namespace: "zoa-jobs",
 		},
-		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
+		Spec: hyperfleetv1alpha1.ManifestSpec{
 			ManagementCluster: "mc01",
 			Resources: []hyperfleetv1alpha1.ResourceTemplate{
 				{Resource: "jobs", Content: runtime.RawExtension{Raw: []byte("{}")}},
 			},
 		},
-		Status: hyperfleetv1alpha1.HyperFleetManifestStatus{
+		Status: hyperfleetv1alpha1.ManifestStatus{
 			Phase: hyperfleetv1alpha1.ManifestPhaseApplied,
 		},
 	}
@@ -177,18 +177,18 @@ func TestReconcileExecution_FullyCompleted(t *testing.T) {
 	runnerComplete := now.Add(-15 * time.Second).Format(time.RFC3339)
 	uploadComplete := now.Add(-5 * time.Second).Format(time.RFC3339)
 
-	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
+	hfm := &hyperfleetv1alpha1.Manifest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "zoa-exec-2",
 			Namespace: "zoa-jobs",
 		},
-		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
+		Spec: hyperfleetv1alpha1.ManifestSpec{
 			ManagementCluster: "mc01",
 			Resources: []hyperfleetv1alpha1.ResourceTemplate{
 				{Resource: "jobs", Content: runtime.RawExtension{Raw: []byte("{}")}},
 			},
 		},
-		Status: hyperfleetv1alpha1.HyperFleetManifestStatus{
+		Status: hyperfleetv1alpha1.ManifestStatus{
 			Phase: hyperfleetv1alpha1.ManifestPhaseApplied,
 			ResourceStatuses: []hyperfleetv1alpha1.ResourceStatus{
 				{
@@ -235,12 +235,12 @@ func TestReconcileExecution_Timeout(t *testing.T) {
 		},
 	}
 
-	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
+	hfm := &hyperfleetv1alpha1.Manifest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "zoa-exec-timeout",
 			Namespace: "zoa-jobs",
 		},
-		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
+		Spec: hyperfleetv1alpha1.ManifestSpec{
 			ManagementCluster: "mc01",
 			Resources: []hyperfleetv1alpha1.ResourceTemplate{
 				{Resource: "jobs", Content: runtime.RawExtension{Raw: []byte("{}")}},
@@ -307,18 +307,18 @@ func TestReconcileExecution_DeletionFails(t *testing.T) {
 	// Use a real fake client but create an HFM. To simulate deletion failure,
 	// we test without the object existing — deleteManifest returns NotFound which is treated as success.
 	// Instead, test the completion path by ensuring a completed HFM works.
-	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
+	hfm := &hyperfleetv1alpha1.Manifest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "zoa-exec-rb-fail",
 			Namespace: "zoa-jobs",
 		},
-		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
+		Spec: hyperfleetv1alpha1.ManifestSpec{
 			ManagementCluster: "mc01",
 			Resources: []hyperfleetv1alpha1.ResourceTemplate{
 				{Resource: "jobs", Content: runtime.RawExtension{Raw: []byte("{}")}},
 			},
 		},
-		Status: hyperfleetv1alpha1.HyperFleetManifestStatus{
+		Status: hyperfleetv1alpha1.ManifestStatus{
 			Phase: hyperfleetv1alpha1.ManifestPhaseApplied,
 			ResourceStatuses: []hyperfleetv1alpha1.ResourceStatus{
 				{Resource: "jobs", Name: "zoa-exec-rb-fail", Status: jobStatus(1, 0, "", "")},
@@ -349,8 +349,8 @@ func TestParseManifestStatus_AllFeedback(t *testing.T) {
 	runnerEnd := "2026-06-01T10:00:15Z"
 	uploadEnd := "2026-06-01T10:00:25Z"
 
-	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
-		Status: hyperfleetv1alpha1.HyperFleetManifestStatus{
+	hfm := &hyperfleetv1alpha1.Manifest{
+		Status: hyperfleetv1alpha1.ManifestStatus{
 			Phase: hyperfleetv1alpha1.ManifestPhaseApplied,
 			ResourceStatuses: []hyperfleetv1alpha1.ResourceStatus{
 				{
@@ -378,8 +378,8 @@ func TestParseManifestStatus_AllFeedback(t *testing.T) {
 }
 
 func TestParseManifestStatus_TAFailedUploadSucceeded(t *testing.T) {
-	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
-		Status: hyperfleetv1alpha1.HyperFleetManifestStatus{
+	hfm := &hyperfleetv1alpha1.Manifest{
+		Status: hyperfleetv1alpha1.ManifestStatus{
 			Phase: hyperfleetv1alpha1.ManifestPhaseApplied,
 			ResourceStatuses: []hyperfleetv1alpha1.ResourceStatus{
 				{Resource: "jobs", Name: "zoa-exec-1", Status: jobStatus(0, 1, "", "")},
@@ -399,8 +399,8 @@ func TestParseManifestStatus_TAFailedUploadSucceeded(t *testing.T) {
 }
 
 func TestParseManifestStatus_AppliedOnly(t *testing.T) {
-	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
-		Status: hyperfleetv1alpha1.HyperFleetManifestStatus{
+	hfm := &hyperfleetv1alpha1.Manifest{
+		Status: hyperfleetv1alpha1.ManifestStatus{
 			Phase: hyperfleetv1alpha1.ManifestPhaseApplied,
 		},
 	}
@@ -413,8 +413,8 @@ func TestParseManifestStatus_AppliedOnly(t *testing.T) {
 }
 
 func TestParseManifestStatus_NoStatusNoPhase(t *testing.T) {
-	hfm := &hyperfleetv1alpha1.HyperFleetManifest{
-		Status: hyperfleetv1alpha1.HyperFleetManifestStatus{},
+	hfm := &hyperfleetv1alpha1.Manifest{
+		Status: hyperfleetv1alpha1.ManifestStatus{},
 	}
 
 	r := &Reconciler{logger: reconcilerLogger()}
@@ -562,21 +562,21 @@ func TestReconcilePending_NoExecutions(t *testing.T) {
 func TestReconcilePending_MultipleExecutions(t *testing.T) {
 	reconciled := make([]string, 0)
 
-	hfm1 := &hyperfleetv1alpha1.HyperFleetManifest{
+	hfm1 := &hyperfleetv1alpha1.Manifest{
 		ObjectMeta: metav1.ObjectMeta{Name: "zoa-a", Namespace: "zoa-jobs"},
-		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
+		Spec: hyperfleetv1alpha1.ManifestSpec{
 			ManagementCluster: "mc01",
 			Resources:         []hyperfleetv1alpha1.ResourceTemplate{{Resource: "jobs", Content: runtime.RawExtension{Raw: []byte("{}")}}},
 		},
-		Status: hyperfleetv1alpha1.HyperFleetManifestStatus{Phase: hyperfleetv1alpha1.ManifestPhaseApplied},
+		Status: hyperfleetv1alpha1.ManifestStatus{Phase: hyperfleetv1alpha1.ManifestPhaseApplied},
 	}
-	hfm2 := &hyperfleetv1alpha1.HyperFleetManifest{
+	hfm2 := &hyperfleetv1alpha1.Manifest{
 		ObjectMeta: metav1.ObjectMeta{Name: "zoa-b", Namespace: "zoa-jobs"},
-		Spec: hyperfleetv1alpha1.HyperFleetManifestSpec{
+		Spec: hyperfleetv1alpha1.ManifestSpec{
 			ManagementCluster: "mc02",
 			Resources:         []hyperfleetv1alpha1.ResourceTemplate{{Resource: "jobs", Content: runtime.RawExtension{Raw: []byte("{}")}}},
 		},
-		Status: hyperfleetv1alpha1.HyperFleetManifestStatus{Phase: hyperfleetv1alpha1.ManifestPhaseApplied},
+		Status: hyperfleetv1alpha1.ManifestStatus{Phase: hyperfleetv1alpha1.ManifestPhaseApplied},
 	}
 
 	store := &mockExecutionStore{

@@ -75,7 +75,7 @@ rbac:
 	assert.Error(t, err)
 }
 
-func TestBuildHyperFleetManifest_ClusterScoped(t *testing.T) {
+func TestBuildManifest_ClusterScoped(t *testing.T) {
 	tmpl := &TATemplate{
 		Name:  "get_nodes",
 		Scope: "kube-api",
@@ -111,7 +111,7 @@ func TestBuildHyperFleetManifest_ClusterScoped(t *testing.T) {
 		},
 	}
 
-	hfm, err := BuildHyperFleetManifest(tmpl, ctx)
+	hfm, err := BuildManifest(tmpl, ctx)
 	require.NoError(t, err)
 
 	assert.Equal(t, "zoa-abc123", hfm.Name)
@@ -130,7 +130,7 @@ func TestBuildHyperFleetManifest_ClusterScoped(t *testing.T) {
 	assert.Equal(t, "a1b2c3d", hfm.Labels[labelRevision])
 }
 
-func TestBuildHyperFleetManifest_NamespaceScoped(t *testing.T) {
+func TestBuildManifest_NamespaceScoped(t *testing.T) {
 	tmpl := &TATemplate{
 		Name:  "get_pods",
 		Scope: "kube-api",
@@ -170,7 +170,7 @@ func TestBuildHyperFleetManifest_NamespaceScoped(t *testing.T) {
 		},
 	}
 
-	hfm, err := BuildHyperFleetManifest(tmpl, ctx)
+	hfm, err := BuildManifest(tmpl, ctx)
 	require.NoError(t, err)
 
 	assert.Equal(t, "zoa-def456", hfm.Name)
@@ -179,7 +179,7 @@ func TestBuildHyperFleetManifest_NamespaceScoped(t *testing.T) {
 	assert.Len(t, hfm.Spec.Resources, 11)
 }
 
-func TestBuildHyperFleetManifest_AWSScope_NoSAManifest(t *testing.T) {
+func TestBuildManifest_AWSScope_NoSAManifest(t *testing.T) {
 	tmpl := &TATemplate{
 		Name:   "describe_instance",
 		Scope:  "aws-api",
@@ -210,7 +210,7 @@ func TestBuildHyperFleetManifest_AWSScope_NoSAManifest(t *testing.T) {
 		},
 	}
 
-	hfm, err := BuildHyperFleetManifest(tmpl, ctx)
+	hfm, err := BuildManifest(tmpl, ctx)
 	require.NoError(t, err)
 
 	// No SA manifest (static SA pre-provisioned), no RBAC from template (nil):

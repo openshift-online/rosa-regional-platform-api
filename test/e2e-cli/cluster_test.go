@@ -457,22 +457,18 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		// GinkgoWriter.Printf("Cluster status phase: %v lastUpdateTime: %v observedGeneration: %v\n",
 		// statusRaw["phase"], statusRaw["lastUpdateTime"], statusRaw["observedGeneration"])
 
-		// Response is pkg/types.ClusterStatusResponse: { "cluster_id", "status", "controller_statuses": [...] }.
-		// Poll until reconcilers report every condition as True (right after create they are often False).
-		//
-		// Logging notes:
-		// - Code after a failing g.Expect never runs, so you only see logs that run *before* the assertion that fails.
-		// - GinkgoWriter is buffered unless you run `ginkgo -v` (then it usually streams); it is not the same as os.Stdout.
-		// - For a snapshot on every poll (including failed attempts), set E2E_STATUS_POLL_LOG=1 (writes to stderr).
+		// Poll until the operator sets status.phase to "Ready".
+		// The hyperfleet-operator advances phase to Ready once Available=True
+		// and Degraded!=True on the Cluster CR, so this is the single
+		// authoritative readiness signal.
 		Eventually(func(g Gomega) {
 			resp, err := customerApiClient.Get("/api/v0/clusters/"+id+"/statuses", customerAccountID)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
 			var statusEnvelope struct {
-				ClusterID          string                   `json:"cluster_id"`
-				Status             map[string]interface{}   `json:"status"`
-				ControllerStatuses []map[string]interface{} `json:"controller_statuses"`
+				ClusterID string                 `json:"cluster_id"`
+				Status    map[string]interface{} `json:"status"`
 			}
 			g.Expect(json.Unmarshal(resp.Body, &statusEnvelope)).To(Succeed())
 
@@ -483,23 +479,13 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 						time.Now().Format(time.RFC3339), id, snap)
 				}
 			}
-			GinkgoWriter.Printf("[%s] polled cluster /statuses (stream with: ginkgo -v)\n", time.Now().Format(time.RFC3339))
 
-			g.Expect(statusEnvelope.ControllerStatuses).NotTo(BeEmpty(), "controller_statuses should be populated")
-
-			// Nested JSON arrays decode as []interface{} with map elements, not []map[string]interface{}.
-			for _, cs := range statusEnvelope.ControllerStatuses {
-				raw, ok := cs["conditions"].([]interface{})
-				g.Expect(ok).To(BeTrue(), "controller status should include conditions: %#v", cs)
-				g.Expect(raw).NotTo(BeEmpty(), "conditions should be non-empty while cluster reconciles")
-				for _, item := range raw {
-					cond, ok := item.(map[string]interface{})
-					g.Expect(ok).To(BeTrue())
-					g.Expect(cond["status"]).To(Equal("True"), "condition %#v should be True", cond)
-				}
-			}
+			g.Expect(statusEnvelope.Status).NotTo(BeNil(), "status should be present")
+			phase, _ := statusEnvelope.Status["phase"].(string)
+			GinkgoWriter.Printf("[%s] polled cluster /statuses — phase=%s\n", time.Now().Format(time.RFC3339), phase)
+			g.Expect(phase).To(Equal("Ready"), "cluster phase should be Ready, got %s", phase)
 		}).WithTimeout(35*time.Minute).WithPolling(20*time.Second).Should(Succeed(),
-			"all controller_statuses conditions should become True")
+			"cluster status.phase should become Ready")
 
 		resp, err := customerApiClient.Get("/api/v0/clusters/"+id+"/statuses", customerAccountID)
 		Expect(err).ToNot(HaveOccurred())
@@ -523,30 +509,27 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
 		var statusEnvelope struct {
-			ControllerStatuses []struct {
-				Data map[string]interface{} `json:"data"`
-			} `json:"controller_statuses"`
+			Status struct {
+				ControlPlaneEndpoint string `json:"controlPlaneEndpoint"`
+			} `json:"status"`
 		}
 		Expect(json.Unmarshal(resp.Body, &statusEnvelope)).To(Succeed())
 
-		var apiEndpoint string
-		for _, cs := range statusEnvelope.ControllerStatuses {
-			if hc, ok := cs.Data["hostedCluster"].(map[string]interface{}); ok {
-				if ep, ok := hc["apiEndpoint"].(string); ok && ep != "" {
-					apiEndpoint = ep
-					break
-				}
-			}
-		}
-		Expect(apiEndpoint).ToNot(BeEmpty(), "apiEndpoint should be present in controller_statuses after cluster is Ready")
-		GinkgoWriter.Printf("KAS apiEndpoint: %s\n", apiEndpoint)
+		apiEndpoint := statusEnvelope.Status.ControlPlaneEndpoint
+		Expect(apiEndpoint).ToNot(BeEmpty(), "controlPlaneEndpoint should be present in status after cluster is Ready")
+		GinkgoWriter.Printf("KAS controlPlaneEndpoint: %s\n", apiEndpoint)
 
-		parsedURL, err := url.Parse(apiEndpoint)
-		Expect(err).ToNot(HaveOccurred())
-		hostname := parsedURL.Hostname()
-		port := parsedURL.Port()
-		if port == "" {
-			port = "443"
+		// controlPlaneEndpoint is a hostname (e.g. "api.cluster.example.com"),
+		// not a URL. If it contains a scheme, parse it; otherwise use directly.
+		hostname := apiEndpoint
+		port := "6443"
+		if strings.Contains(apiEndpoint, "://") {
+			parsedURL, err := url.Parse(apiEndpoint)
+			Expect(err).ToNot(HaveOccurred())
+			hostname = parsedURL.Hostname()
+			if p := parsedURL.Port(); p != "" {
+				port = p
+			}
 		}
 
 		hostPort := net.JoinHostPort(hostname, port)

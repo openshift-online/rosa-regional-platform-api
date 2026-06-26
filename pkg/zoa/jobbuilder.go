@@ -470,7 +470,7 @@ func buildRunnerJob(tmpl *TATemplate, ctx RenderContext, saName string, labels m
 		},
 		"spec": map[string]interface{}{
 			"ttlSecondsAfterFinished": ctx.Config.TTLSeconds,
-			"backoffLimit":            0,
+			"backoffLimit":            5,
 			"activeDeadlineSeconds":   activeDeadline,
 			"template": map[string]interface{}{
 				"metadata": map[string]interface{}{

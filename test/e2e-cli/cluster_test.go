@@ -641,7 +641,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		GinkgoWriter.Printf("Polling nodepools for readiness (cluster %s)\n", id)
 
 		Eventually(func(g Gomega) {
-			resp, err := apiClient.Get("/api/v0/nodepools", accountID)
+			resp, err := customerApiClient.Get("/api/v0/nodepools", customerAccountID)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -660,7 +660,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 				npID, _ := np["id"].(string)
 				npName, _ := np["name"].(string)
 
-				statusResp, err := apiClient.Get("/api/v0/nodepools/"+npID+"/status", accountID)
+				statusResp, err := customerApiClient.Get("/api/v0/nodepools/"+npID+"/status", customerAccountID)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(statusResp.StatusCode).To(Equal(http.StatusOK))
 

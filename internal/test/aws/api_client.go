@@ -33,6 +33,7 @@ type APIClient struct {
 	baseURL    string
 	httpClient *http.Client
 	CallerARN  string
+	AWSProfile string
 }
 
 // APIResponse wraps an HTTP response with convenience methods
@@ -78,7 +79,11 @@ func (c *APIClient) Do(method, path string, body interface{}, accountID string) 
 
 	// Sign with SigV4 when targeting API Gateway (avoids 403 Missing Authentication Token)
 	if region := apiGatewayRegionFromURL(c.baseURL); region != "" {
-		cfg, err := config.LoadDefaultConfig(context.Background())
+		var loadOpts []func(*config.LoadOptions) error
+		if c.AWSProfile != "" {
+			loadOpts = append(loadOpts, config.WithSharedConfigProfile(c.AWSProfile))
+		}
+		cfg, err := config.LoadDefaultConfig(context.Background(), loadOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("loading AWS config for SigV4: %w", err)
 		}

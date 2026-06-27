@@ -38,6 +38,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -47,6 +48,29 @@ import (
 	awstest "github.com/openshift/rosa-regional-platform-api/internal/test/aws"
 	"github.com/openshift/rosa-regional-platform-api/internal/test/thanos"
 )
+
+func recordTiming(phase string) func() {
+	start := float64(time.Now().UnixNano()) / 1e9
+	return func() {
+		end := float64(time.Now().UnixNano()) / 1e9
+		shared := os.Getenv("SHARED_DIR")
+		if shared == "" {
+			return
+		}
+		status := "ok"
+		if CurrentSpecReport().Failed() {
+			status = "error"
+		}
+		record := fmt.Sprintf(`{"phase":%q,"start":%.3f,"end":%.3f,"step":"e2e","status":%q}`,
+			phase, start, end, status)
+		f, err := os.OpenFile(filepath.Join(shared, "timing.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return
+		}
+		defer f.Close()
+		fmt.Fprintln(f, record)
+	}
+}
 
 func customerEnv() []string {
 	return []string{"AWS_PROFILE=" + os.Getenv("CUSTOMER_AWS_PROFILE")}
@@ -304,7 +328,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 
 	// create a new cluster-vpc
 	It("should be able to create a new cluster-vpc", Label("vpc-create", "setup"), func() {
-		// wait for the command to complete, it will take a few minutes.
+		defer recordTiming("hcp-vpc-create")()
 		GinkgoWriter.Printf("Creating new cluster-vpc: %s\n", clusterName)
 		// GinkgoWriter.Printf("Command: %s %s %s %s %s\n", ROSACTL_BIN, "cluster-vpc", "create", clusterName, "--region", region, "--availability-zones", "us-east-1a")
 		cmd := exec.Command(ROSACTL_BIN, "cluster-vpc", "create", clusterName, "--region", region, "--availability-zones", "us-east-1a")
@@ -334,6 +358,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 
 	// create a new cluster-iam
 	It("should be able to create the cluster-iam", Label("iam-create", "setup"), func() {
+		defer recordTiming("hcp-iam-create")()
 		GinkgoWriter.Printf("Creating new cluster-iam: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-iam", "create", clusterName, "--region", region)
 		cmd.Env = append(os.Environ(), customerEnv()...)
@@ -382,6 +407,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	})
 
 	It("should be able to create the hcp cluster", Label("hcp-create", "create"), func() {
+		defer recordTiming("hcp-cluster-create")()
 		GinkgoWriter.Printf("Creating new HCP cluster: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster", "create", clusterName, "--region", region, "--output", "json")
 		cmd.Env = append(os.Environ(), customerEnv()...)
@@ -455,6 +481,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	})
 
 	It("should be able to create the cluster-oidc", Label("oidc-create", "setup"), func() {
+		defer recordTiming("hcp-oidc-create")()
 		GinkgoWriter.Printf("Creating new cluster-oidc: %s\n", clusterName)
 		if cloudUrl == "" {
 			cloudUrl = os.Getenv("HCP_ROSA_ISSUER_URL")
@@ -488,6 +515,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	// GET /api/v0/clusters/{id} and /statuses use the Hyperfleet resource id (e.g. "2pdl6eud5btdtvgv2f4roaca96e9mvtn"),
 	// not the cluster display name. List responses are { "items": [ { "id", "name", "spec", "status", ... } ], ... }.
 	It("should be able to wait for the hcp cluster to be ready", Label("cluster-status", "monitor"), func() {
+		defer recordTiming("hcp-cluster-ready-wait")()
 		id := clusterID
 		if id == "" {
 			id = os.Getenv("HCP_INSTANCE_ID")
@@ -568,6 +596,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	})
 
 	It("should have valid DNS and TLS for the KAS endpoint", Label("dns-verify", "monitor"), func() {
+		defer recordTiming("hcp-dns-tls-verify")()
 		id := clusterID
 		if id == "" {
 			id = os.Getenv("HCP_INSTANCE_ID")
@@ -625,6 +654,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	})
 
 	It("should have nodepools ready", Label("nodepools-wait", "monitor"), func() {
+		defer recordTiming("hcp-nodepools-wait")()
 		id := clusterID
 		if id == "" {
 			id = os.Getenv("HCP_INSTANCE_ID")
@@ -705,6 +735,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	})
 
 	It("should be able to delete the hcp cluster", Label("hcp-delete", "cleanup"), func() {
+		defer recordTiming("hcp-cluster-delete")()
 		if clusterID == "" {
 			clusterID = os.Getenv("HCP_INSTANCE_ID")
 			if clusterID == "" {
@@ -720,6 +751,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 
 	// it should be able to query the /cluster/id until it is deleted
 	It("should be able to query the /cluster/id until it is deleted", Label("hcp-delete", "cluster-query", "cleanup"), func() {
+		defer recordTiming("hcp-cluster-delete-wait")()
 		GinkgoWriter.Printf("Querying the hcp clusterId: %s\n", clusterID)
 		if clusterID == "" {
 			clusterID = os.Getenv("HCP_INSTANCE_ID")
@@ -736,6 +768,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	})
 
 	It("should be able to delete the resource bundles", Label("hcp-delete", "bundles-delete", "cleanup"), func() {
+		defer recordTiming("hcp-bundles-delete")()
 		if clusterID == "" {
 			clusterID = os.Getenv("HCP_INSTANCE_ID")
 			if clusterID == "" {
@@ -748,6 +781,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	})
 
 	It("should wait for resource bundles to be fully removed", Label("bundles-wait", "cleanup"), func() {
+		defer recordTiming("hcp-bundles-wait")()
 		if clusterID == "" {
 			clusterID = os.Getenv("HCP_INSTANCE_ID")
 			if clusterID == "" {
@@ -767,6 +801,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	})
 
 	It("should be able to delete the cluster-oidc", Label("oidc-delete", "cleanup"), func() {
+		defer recordTiming("hcp-oidc-delete")()
 		GinkgoWriter.Printf("Deleting the cluster-oidc: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-oidc", "delete", clusterName, "--region", region)
 		cmd.Env = append(os.Environ(), customerEnv()...)
@@ -779,6 +814,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 
 	// Delete cluster-vpc with up to 3 attempts; fail the spec if all attempts return an error.
 	It("should be able to try to delete the cluster-vpc, trying 3 times", Label("vpc-delete", "cleanup"), func() {
+		defer recordTiming("hcp-vpc-delete")()
 		const maxAttempts = 3
 		const backoffBetweenAttempts = 5 * time.Minute
 
@@ -818,6 +854,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	})
 
 	It("should be able to delete the cluster-iam", Label("iam-delete", "cleanup"), func() {
+		defer recordTiming("hcp-iam-delete")()
 		GinkgoWriter.Printf("Deleting the cluster-iam: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-iam", "delete", clusterName, "--region", region)
 		cmd.Env = append(os.Environ(), customerEnv()...)

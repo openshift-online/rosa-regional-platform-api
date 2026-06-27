@@ -777,44 +777,15 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		GinkgoWriter.Printf("Cluster-OIDC deleted successfully: %s\n", clusterName)
 	})
 
-	// Delete cluster-vpc with up to 3 attempts; fail the spec if all attempts return an error.
-	It("should be able to try to delete the cluster-vpc, trying 3 times", Label("vpc-delete", "cleanup"), func() {
-		const maxAttempts = 3
-		const backoffBetweenAttempts = 5 * time.Minute
-
-		var lastErr error
-		var lastOutput []byte
-		for attempt := 1; attempt <= maxAttempts; attempt++ {
-			GinkgoWriter.Printf("cluster-vpc delete attempt %d/%d\n", attempt, maxAttempts)
-
-			// before trying to delete the cluster-vpc, we should list and
-			// grep if the cluster-vpc is still there
-			cmd := exec.Command(ROSACTL_BIN, "cluster-vpc", "list", "--region", region)
-			cmd.Env = append(os.Environ(), customerEnv()...)
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				Fail(fmt.Sprintf("Failed to list the cluster-vpc: %v\nOutput:\n%s", err, string(output)))
-			}
-			if !strings.Contains(string(output), clusterName) {
-				GinkgoWriter.Printf("cluster-vpc does not exist: %s\n", clusterName)
-				return
-			}
-
-			cmd = exec.Command(ROSACTL_BIN, "cluster-vpc", "delete", clusterName, "--region", region)
-			cmd.Env = append(os.Environ(), customerEnv()...)
-			// rosactl may block with its own internal wait
-			output, err = cmd.CombinedOutput()
-			if err == nil {
-				GinkgoWriter.Printf("cluster-vpc deleted successfully: %s\n", clusterName)
-				return
-			}
-			lastErr, lastOutput = err, output
-			GinkgoWriter.Printf("cluster-vpc delete attempt %d failed: %v\nOutput:\n%s\n", attempt, err, string(output))
-			if attempt < maxAttempts {
-				time.Sleep(backoffBetweenAttempts)
-			}
+	It("should be able to delete the cluster-vpc", Label("vpc-delete", "cleanup"), func() {
+		GinkgoWriter.Printf("Deleting cluster-vpc: %s\n", clusterName)
+		cmd := exec.Command(ROSACTL_BIN, "cluster-vpc", "delete", clusterName, "--region", region)
+		cmd.Env = append(os.Environ(), customerEnv()...)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			Fail(fmt.Sprintf("Failed to delete the cluster-vpc: %v\nOutput:\n%s", err, string(output)))
 		}
-		Fail(fmt.Sprintf("cluster-vpc delete failed after %d attempts: %v\nOutput:\n%s", maxAttempts, lastErr, string(lastOutput)))
+		GinkgoWriter.Printf("cluster-vpc deleted successfully: %s\n", clusterName)
 	})
 
 	It("should be able to delete the cluster-iam", Label("iam-delete", "cleanup"), func() {

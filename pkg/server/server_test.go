@@ -17,7 +17,7 @@ func TestNew(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -63,10 +63,6 @@ func TestNew_WithCustomConfig(t *testing.T) {
 			MetricsPort:        9002,
 			ShutdownTimeout:    15 * time.Second,
 		},
-		Maestro: config.MaestroConfig{
-			BaseURL: "http://localhost:8001",
-			Timeout: 30 * time.Second,
-		},
 		Logging: config.LoggingConfig{
 			Level:  "debug",
 			Format: "text",
@@ -74,7 +70,7 @@ func TestNew_WithCustomConfig(t *testing.T) {
 		AllowedAccounts: []string{"123456789012"},
 	}
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -96,7 +92,7 @@ func TestServer_HealthRoutes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -137,7 +133,7 @@ func TestServer_ManagementClusterRoutes_Unauthorized(t *testing.T) {
 	cfg := config.NewConfig()
 	cfg.AllowedAccounts = []string{"123456789012"}
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -197,63 +193,12 @@ func TestServer_ManagementClusterRoutes_Unauthorized(t *testing.T) {
 	}
 }
 
-func TestServer_ResourceBundleRoutes_Unauthorized(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	cfg := config.NewConfig()
-	cfg.AllowedAccounts = []string{"123456789012"}
-
-	server, err := New(cfg, logger)
-	if err != nil {
-		t.Fatalf("unexpected error creating server: %v", err)
-	}
-
-	tests := []struct {
-		name           string
-		method         string
-		path           string
-		accountID      string
-		expectedStatus int
-	}{
-		{
-			name:           "GET without account ID",
-			method:         http.MethodGet,
-			path:           "/api/v0/resource_bundles",
-			accountID:      "",
-			expectedStatus: http.StatusForbidden,
-		},
-		{
-			name:           "GET with unauthorized account",
-			method:         http.MethodGet,
-			path:           "/api/v0/resource_bundles",
-			accountID:      "999999999999",
-			expectedStatus: http.StatusForbidden,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(tt.method, tt.path, nil)
-			if tt.accountID != "" {
-				ctx := context.WithValue(req.Context(), middleware.ContextKeyAccountID, tt.accountID)
-				req = req.WithContext(ctx)
-			}
-			w := httptest.NewRecorder()
-
-			server.apiServer.Handler.ServeHTTP(w, req)
-
-			if w.Code != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
-			}
-		})
-	}
-}
-
 func TestServer_IdentityMiddleware(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 	cfg.AllowedAccounts = []string{"123456789012"}
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -277,7 +222,7 @@ func TestServer_MetricsRoute(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -302,7 +247,7 @@ func TestServer_HealthServerRoutes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -342,7 +287,7 @@ func TestServer_InvalidRoutes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -387,7 +332,7 @@ func TestServer_ReadinessToggle(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -436,10 +381,6 @@ func TestServer_ServerAddresses(t *testing.T) {
 			MetricsPort:        9090,
 			ShutdownTimeout:    30 * time.Second,
 		},
-		Maestro: config.MaestroConfig{
-			BaseURL: "http://maestro:8000",
-			Timeout: 30 * time.Second,
-		},
 		Logging: config.LoggingConfig{
 			Level:  "info",
 			Format: "json",
@@ -447,7 +388,7 @@ func TestServer_ServerAddresses(t *testing.T) {
 		AllowedAccounts: []string{},
 	}
 
-	server, err := New(cfg, logger)
+	server, err := New(cfg, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}

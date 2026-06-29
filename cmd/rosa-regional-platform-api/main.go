@@ -4,31 +4,35 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/openshift/rosa-regional-platform-api/pkg/clients/fleetdb"
 	"github.com/openshift/rosa-regional-platform-api/pkg/config"
 	"github.com/openshift/rosa-regional-platform-api/pkg/server"
 )
 
 var (
 	// Config flags
-	logLevel        string
-	logFormat       string
-	maestroURL      string
-	maestroGRPCURL  string
-	hyperfleetURL   string
-	allowedAccounts string
-	dynamodbRegion  string
-	dynamodbPrefix  string
-	apiPort         int
-	healthPort      int
-	metricsPort     int
+	logLevel           string
+	logFormat          string
+	fleetDBClusterName string
+	allowedAccounts    string
+	dynamodbRegion     string
+	dynamodbPrefix     string
+	oidcIssuerBaseURL  string
+	apiPort            int
+	healthPort         int
+	metricsPort        int
 )
 
 func main() {
@@ -53,12 +57,11 @@ var serveCmd = &cobra.Command{
 func init() {
 	serveCmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	serveCmd.Flags().StringVar(&logFormat, "log-format", "json", "Log format (json, text)")
-	serveCmd.Flags().StringVar(&maestroURL, "maestro-url", "http://maestro:8000", "Maestro service base URL")
 	serveCmd.Flags().StringVar(&allowedAccounts, "allowed-accounts", "", "Comma-separated list of allowed AWS account IDs")
-	serveCmd.Flags().StringVar(&maestroGRPCURL, "maestro-grpc-url", "maestro-grpc.maestro-server:8090", "Maestro gRPC service base URL")
-	serveCmd.Flags().StringVar(&hyperfleetURL, "hyperfleet-url", "http://hyperfleet-api.hyperfleet-system:8000", "Hyperfleet service base URL")
-	serveCmd.Flags().StringVar(&dynamodbRegion, "dynamodb-region", "", "AWS region for DynamoDB (defaults to us-east-1)")
+	serveCmd.Flags().StringVar(&fleetDBClusterName, "fleet-db-cluster-name", "", "EKS cluster name for fleet-db")
+	serveCmd.Flags().StringVar(&dynamodbRegion, "dynamodb-region", "", "AWS region for DynamoDB (defaults to auto-detected region)")
 	serveCmd.Flags().StringVar(&dynamodbPrefix, "dynamodb-prefix", "rosa", "Prefix for DynamoDB table names (default: rosa)")
+	serveCmd.Flags().StringVar(&oidcIssuerBaseURL, "oidc-issuer-base-url", "", "Base URL for OIDC issuer (e.g. https://<cloudfront-domain>)")
 	serveCmd.Flags().IntVar(&apiPort, "api-port", 8000, "API server port")
 	serveCmd.Flags().IntVar(&healthPort, "health-port", 8080, "Health check server port")
 	serveCmd.Flags().IntVar(&metricsPort, "metrics-port", 9090, "Metrics server port")
@@ -75,34 +78,38 @@ func runServe(cmd *cobra.Command, args []string) error {
 		"log_format", logFormat,
 	)
 
+	// Detect AWS region from SDK default chain (IMDS, AWS_REGION env var, etc.)
+	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to detect AWS region: %w", err)
+	}
+	if awsCfg.Region == "" {
+		return fmt.Errorf("AWS region could not be detected from environment; set AWS_REGION")
+	}
+	logger.Info("detected AWS region", "region", awsCfg.Region)
+
 	// Create config
 	cfg := config.NewConfig()
 	cfg.Logging.Level = logLevel
 	cfg.Logging.Format = logFormat
-	cfg.Maestro.BaseURL = maestroURL
-	cfg.Maestro.GRPCBaseURL = maestroGRPCURL
-
-	// Validate Hyperfleet URL
-	parsedURL, err := url.ParseRequestURI(hyperfleetURL)
-	if err != nil {
-		logger.Error("invalid hyperfleet URL", "url", hyperfleetURL, "error", err)
-		return fmt.Errorf("invalid hyperfleet URL: %w", err)
+	if fleetDBClusterName == "" {
+		return fmt.Errorf("--fleet-db-cluster-name is required")
 	}
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		logger.Error("hyperfleet URL must have http or https scheme", "url", hyperfleetURL, "scheme", parsedURL.Scheme)
-		return fmt.Errorf("hyperfleet URL must have http or https scheme, got: %s", parsedURL.Scheme)
-	}
-	cfg.Hyperfleet.BaseURL = hyperfleetURL
+	cfg.FleetDB.ClusterName = fleetDBClusterName
+	cfg.FleetDB.AWSRegion = awsCfg.Region
 
+	cfg.Regional.OIDCIssuerBaseURL = oidcIssuerBaseURL
 	cfg.AllowedAccounts = parseAllowedAccounts(allowedAccounts)
 	cfg.Server.APIPort = apiPort
 	cfg.Server.HealthPort = healthPort
 	cfg.Server.MetricsPort = metricsPort
 
-	// Set DynamoDB region from flag if provided
+	// Set DynamoDB region: --dynamodb-region if set, otherwise fall back to auto-detected region
 	if dynamodbRegion != "" {
 		cfg.Authz.AWSRegion = dynamodbRegion
 		logger.Info("using DynamoDB region from flag", "region", dynamodbRegion)
+	} else {
+		cfg.Authz.AWSRegion = awsCfg.Region
 	}
 
 	// Set DynamoDB table name prefix
@@ -163,8 +170,23 @@ func runServe(cmd *cobra.Command, args []string) error {
 		)
 	}
 
+	// Create fleet-db client (reuses awsCfg from region detection above)
+	fleetDBClient, err := fleetdb.NewClient(context.Background(), awsCfg, cfg.FleetDB.ClusterName, logger)
+	if err != nil {
+		return fmt.Errorf("failed to create fleet-db client: %w", err)
+	}
+
+	// Create in-cluster client for the RC (local cluster) — used by MC handler
+	// to manage the hyperfleet-mc-config ConfigMap.
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	rcClient, err := ctrlclient.New(ctrl.GetConfigOrDie(), ctrlclient.Options{Scheme: scheme})
+	if err != nil {
+		return fmt.Errorf("failed to create RC in-cluster client: %w", err)
+	}
+
 	// Create server
-	srv, err := server.New(cfg, logger)
+	srv, err := server.New(cfg, fleetDBClient, rcClient, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}
@@ -178,9 +200,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 		"api_port", cfg.Server.APIPort,
 		"health_port", cfg.Server.HealthPort,
 		"metrics_port", cfg.Server.MetricsPort,
-		"maestro_url", cfg.Maestro.BaseURL,
-		"maestro_grpc_url", cfg.Maestro.GRPCBaseURL,
-		"hyperfleet_url", cfg.Hyperfleet.BaseURL,
+		"fleet_db_cluster", cfg.FleetDB.ClusterName,
+		"aws_region", cfg.FleetDB.AWSRegion,
 		"allowed_accounts_count", len(cfg.AllowedAccounts),
 	)
 

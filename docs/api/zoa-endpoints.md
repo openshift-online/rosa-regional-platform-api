@@ -8,7 +8,7 @@
 
 ## Overview
 
-Zero Operator Access (ZOA) provides a controlled API for executing **Trusted Actions** (TAs) against management clusters and AWS resources. Operators submit actions through the API; each execution is tracked in DynamoDB, dispatched via Maestro, and produces artifacts (output and logs) in S3.
+Zero Operator Access (ZOA) provides a controlled API for executing **Trusted Actions** (TAs) against management clusters and AWS resources. Operators submit actions through the API; each execution is tracked in DynamoDB, dispatched via HyperFleetManifest CRs on the fleet-db cluster, and produces artifacts (output and logs) in S3.
 
 **Typical workflow:**
 
@@ -102,7 +102,7 @@ Top-level request fields (`target_cluster`, `jira`, `force`, `dry_run`) must not
 
 #### 202 Accepted
 
-Execution created and dispatched to Maestro.
+Execution created and dispatched via HyperFleetManifest.
 
 ```json
 {
@@ -194,12 +194,12 @@ Execution created and dispatched to Maestro.
 ```json
 {
   "kind": "Error",
-  "code": "maestro-error",
+  "code": "dispatch-error",
   "reason": "Failed to dispatch trusted action"
 }
 ```
 
-Indicates Maestro gRPC call failed. The execution record exists in DynamoDB with `status: failed`.
+Indicates HyperFleetManifest creation on fleet-db failed. The execution record exists in DynamoDB with `status: failed`.
 
 #### 429 Too Many Requests
 
@@ -657,9 +657,9 @@ All errors follow a consistent structure:
 | 429 | `write-cooldown` | Write TA cooldown active on target (use `force: true` to bypass) |
 | 429 | `max-concurrent` | Target cluster at max concurrent executions (use `force: true` to bypass) |
 | 500 | `store-error` | DynamoDB operation failed |
-| 500 | `render-error` | ManifestWork generation failed |
+| 500 | `render-error` | HyperFleetManifest generation failed |
 | 500 | `dry-run-error` | `dry_run_action` references unknown TA |
-| 502 | `maestro-error` | Maestro gRPC call failed |
+| 502 | `dispatch-error` | HyperFleetManifest creation on fleet-db failed |
 | 404 | `audit-disabled` | Audit logging not configured (GET /audit only) |
 
 ---
@@ -681,8 +681,8 @@ pending → uploaded    (uploader Job succeeded)
         → failed     (uploader Job failed or timed out)
 ```
 
-- `pending`: DynamoDB record created, ManifestWork dispatched to Maestro
-- `running`: ManifestWork applied on MC, runner Job pod started
+- `pending`: DynamoDB record created, HyperFleetManifest CR created on fleet-db
+- `running`: Resources applied on MC via DynamoDB desires, runner Job pod started
 - `succeeded`: Runner Job completed with exit code 0
 - `failed`: Runner Job completed with non-zero exit code
 - `timed_out`: Execution exceeded timeout, cleaned up by reconciler
@@ -701,7 +701,7 @@ pending → uploaded    (uploader Job succeeded)
 | `completed_at` | On overall completion | When the reconciler detected both Jobs done |
 | `runner_seconds` | On overall completion | Runner Job wall-clock time (from K8s `.status.startTime` to `.status.completionTime`) |
 | `upload_seconds` | On overall completion | Time from runner completion to uploader completion (wait + configmap + decode + S3 upload) |
-| `duration_seconds` | On overall completion | Total wall-clock: `completed_at - created_at` (includes Maestro dispatch overhead) |
+| `duration_seconds` | On overall completion | Total wall-clock: `completed_at - created_at` (includes dispatch overhead) |
 
 **Derived metric** (not stored): `dispatch_overhead = duration_seconds - runner_seconds - upload_seconds`
 
@@ -776,7 +776,7 @@ The `force: true` flag bypasses both safety controls:
 | `executedAction` | String | — | Substituted action name (dry-run only) |
 | `dryRun` | Boolean | — | Whether this was a dry-run execution |
 | `force` | Boolean | — | Whether safety checks were bypassed |
-| `manifestWorkName` | String | — | Maestro RB name |
+| `manifestWorkName` | String | — | HyperFleetManifest CR name |
 | `createdAt` | String (RFC3339) | — | Submission timestamp |
 | `updatedAt` | String (RFC3339) | — | Last status transition timestamp |
 | `completedAt` | String (RFC3339) | — | Overall completion timestamp |

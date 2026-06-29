@@ -16,11 +16,14 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
+	hyperfleetv1alpha1 "github.com/typeid/hyperfleet-operator/api/v1alpha1"
+
+	"github.com/openshift/rosa-regional-platform-api/pkg/clients/fleetdb"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
 	"github.com/openshift/rosa-regional-platform-api/pkg/zoa"
-	workv1 "open-cluster-management.io/api/work/v1"
 )
 
 type mockExecutionStore struct {
@@ -78,49 +81,10 @@ func (m *mockExecutionStore) ListPending(ctx context.Context) ([]*zoa.Execution,
 	return nil, nil
 }
 
-type zoaMockMaestroClient struct {
-	createManifestWorkFunc func(ctx context.Context, clusterName string, mw *workv1.ManifestWork) (*workv1.ManifestWork, error)
-}
-
-func (m *zoaMockMaestroClient) CreateConsumer(ctx context.Context, req *maestro.ConsumerCreateRequest) (*maestro.Consumer, error) {
-	return nil, nil
-}
-
-func (m *zoaMockMaestroClient) ListConsumers(ctx context.Context, page, size int) (*maestro.ConsumerList, error) {
-	return nil, nil
-}
-
-func (m *zoaMockMaestroClient) GetConsumer(ctx context.Context, id string) (*maestro.Consumer, error) {
-	return nil, nil
-}
-
-func (m *zoaMockMaestroClient) ListResourceBundles(ctx context.Context, page, size int, search, orderBy, fields string) (*maestro.ResourceBundleList, error) {
-	return nil, nil
-}
-
-func (m *zoaMockMaestroClient) GetResourceBundle(ctx context.Context, id string) (*maestro.ResourceBundle, error) {
-	return nil, nil
-}
-
-func (m *zoaMockMaestroClient) GetManifestWork(ctx context.Context, clusterName string, name string) (*workv1.ManifestWork, error) {
-	return nil, nil
-}
-
-func (m *zoaMockMaestroClient) DeleteResourceBundle(ctx context.Context, id string) error {
-	return nil
-}
-
-func (m *zoaMockMaestroClient) DeleteManifestWork(ctx context.Context, clusterName string, name string) error {
-	return nil
-}
-
-func (m *zoaMockMaestroClient) CreateManifestWork(ctx context.Context, clusterName string, mw *workv1.ManifestWork) (*workv1.ManifestWork, error) {
-	if m.createManifestWorkFunc != nil {
-		return m.createManifestWorkFunc(ctx, clusterName, mw)
-	}
-	result := mw.DeepCopy()
-	result.Name = "zoa-test-work"
-	return result, nil
+func newFakeFleetDB() *fleetdb.Client {
+	scheme := runtime.NewScheme()
+	_ = hyperfleetv1alpha1.AddToScheme(scheme)
+	return fleetdb.NewClientFrom(fake.NewClientBuilder().WithScheme(scheme).Build(), testZoaLogger())
 }
 
 type mockS3Client struct{}
@@ -179,9 +143,9 @@ script: |
 	return registry
 }
 
-func newTestZoaHandler(t *testing.T, store zoa.ExecutionStore, maestroClient *zoaMockMaestroClient) *ZoaHandler {
+func newTestZoaHandler(t *testing.T, store zoa.ExecutionStore, fdb *fleetdb.Client) *ZoaHandler {
 	t.Helper()
-	return NewZoaHandler(store, testTemplateRegistry(t), maestroClient, &mockS3Client{}, ZoaConfig{
+	return NewZoaHandler(store, testTemplateRegistry(t), fdb, &mockS3Client{}, ZoaConfig{
 		BucketName: "test-bucket",
 		JobConfig:  testJobConfig(),
 	}, testZoaLogger())
@@ -189,7 +153,7 @@ func newTestZoaHandler(t *testing.T, store zoa.ExecutionStore, maestroClient *zo
 
 func TestZoaHandler_Create_Success(t *testing.T) {
 	store := &mockExecutionStore{}
-	mc := &zoaMockMaestroClient{}
+	mc := newFakeFleetDB()
 	handler := newTestZoaHandler(t, store, mc)
 
 	body := `{"target_cluster": "mc01", "jira": "ROSAENG-1234"}`
@@ -218,7 +182,7 @@ func TestZoaHandler_Create_Success(t *testing.T) {
 
 func TestZoaHandler_Create_MissingJira(t *testing.T) {
 	store := &mockExecutionStore{}
-	mc := &zoaMockMaestroClient{}
+	mc := newFakeFleetDB()
 	handler := newTestZoaHandler(t, store, mc)
 
 	body := `{"target_cluster": "mc01"}`
@@ -236,7 +200,7 @@ func TestZoaHandler_Create_MissingJira(t *testing.T) {
 
 func TestZoaHandler_Create_UnknownAction(t *testing.T) {
 	store := &mockExecutionStore{}
-	mc := &zoaMockMaestroClient{}
+	mc := newFakeFleetDB()
 	handler := newTestZoaHandler(t, store, mc)
 
 	body := `{"target_cluster": "mc01"}`
@@ -252,7 +216,7 @@ func TestZoaHandler_Create_UnknownAction(t *testing.T) {
 
 func TestZoaHandler_Create_MissingTargetCluster(t *testing.T) {
 	store := &mockExecutionStore{}
-	mc := &zoaMockMaestroClient{}
+	mc := newFakeFleetDB()
 	handler := newTestZoaHandler(t, store, mc)
 
 	body := `{}`
@@ -279,7 +243,7 @@ func TestZoaHandler_Get_Found(t *testing.T) {
 			}, nil
 		},
 	}
-	handler := newTestZoaHandler(t, store, &zoaMockMaestroClient{})
+	handler := newTestZoaHandler(t, store, newFakeFleetDB())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted-actions/runs/exec-123?include=output", nil)
 	req = mux.SetURLVars(req, map[string]string{"id": "exec-123"})
@@ -302,7 +266,7 @@ func TestZoaHandler_Get_NotFound(t *testing.T) {
 			return nil, nil
 		},
 	}
-	handler := newTestZoaHandler(t, store, &zoaMockMaestroClient{})
+	handler := newTestZoaHandler(t, store, newFakeFleetDB())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted-actions/runs/nonexistent", nil)
 	req = mux.SetURLVars(req, map[string]string{"id": "nonexistent"})
@@ -322,7 +286,7 @@ func TestZoaHandler_List(t *testing.T) {
 			}, nil
 		},
 	}
-	handler := newTestZoaHandler(t, store, &zoaMockMaestroClient{})
+	handler := newTestZoaHandler(t, store, newFakeFleetDB())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted-actions/runs", nil)
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ContextKeyAccountID, "111222333444"))
@@ -340,7 +304,7 @@ func TestZoaHandler_List(t *testing.T) {
 }
 
 func TestZoaHandler_Describe(t *testing.T) {
-	handler := newTestZoaHandler(t, &mockExecutionStore{}, &zoaMockMaestroClient{})
+	handler := newTestZoaHandler(t, &mockExecutionStore{}, newFakeFleetDB())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted-actions/get_nodes", nil)
 	req = mux.SetURLVars(req, map[string]string{"action": "get_nodes"})
@@ -360,7 +324,7 @@ func TestZoaHandler_Describe(t *testing.T) {
 }
 
 func TestZoaHandler_Catalog(t *testing.T) {
-	handler := newTestZoaHandler(t, &mockExecutionStore{}, &zoaMockMaestroClient{})
+	handler := newTestZoaHandler(t, &mockExecutionStore{}, newFakeFleetDB())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted-actions", nil)
 
@@ -377,7 +341,7 @@ func TestZoaHandler_Catalog(t *testing.T) {
 
 func TestZoaHandler_Create_UnknownParams(t *testing.T) {
 	store := &mockExecutionStore{}
-	mc := &zoaMockMaestroClient{}
+	mc := newFakeFleetDB()
 	handler := newTestZoaHandler(t, store, mc)
 
 	body := `{"target_cluster": "mc01", "jira": "ROSAENG-1234", "params": {"namespace": "kube-system"}}`
@@ -408,7 +372,7 @@ func TestZoaHandler_Create_WriteCooldown(t *testing.T) {
 			return nil, nil
 		},
 	}
-	mc := &zoaMockMaestroClient{}
+	mc := newFakeFleetDB()
 
 	dir := t.TempDir()
 	writeTemplateContent := `name: restart_pod
@@ -458,7 +422,7 @@ func TestZoaHandler_Create_WriteCooldown_ForceBypass(t *testing.T) {
 			return nil, nil
 		},
 	}
-	mc := &zoaMockMaestroClient{}
+	mc := newFakeFleetDB()
 
 	dir := t.TempDir()
 	content := `name: restart_pod
@@ -511,7 +475,7 @@ func TestZoaHandler_Create_MaxConcurrent(t *testing.T) {
 			return nil, nil
 		},
 	}
-	mc := &zoaMockMaestroClient{}
+	mc := newFakeFleetDB()
 
 	cfg := testJobConfig()
 	cfg.MaxConcurrentPerTarget = 10
@@ -546,7 +510,7 @@ func TestZoaHandler_Create_MaxConcurrent_ForceBypass(t *testing.T) {
 			return nil, nil
 		},
 	}
-	mc := &zoaMockMaestroClient{}
+	mc := newFakeFleetDB()
 
 	cfg := testJobConfig()
 	cfg.MaxConcurrentPerTarget = 10
@@ -580,7 +544,7 @@ func TestZoaHandler_Get_IncludeOutput(t *testing.T) {
 			}, nil
 		},
 	}
-	handler := newTestZoaHandler(t, store, &zoaMockMaestroClient{})
+	handler := newTestZoaHandler(t, store, newFakeFleetDB())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted-actions/runs/exec-123?include=output", nil)
 	req = mux.SetURLVars(req, map[string]string{"id": "exec-123"})
@@ -607,7 +571,7 @@ func TestZoaHandler_Get_NoInclude_NoOutput(t *testing.T) {
 			}, nil
 		},
 	}
-	handler := newTestZoaHandler(t, store, &zoaMockMaestroClient{})
+	handler := newTestZoaHandler(t, store, newFakeFleetDB())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted-actions/runs/exec-123", nil)
 	req = mux.SetURLVars(req, map[string]string{"id": "exec-123"})
@@ -637,7 +601,7 @@ func TestZoaHandler_Get_IncludeLogs(t *testing.T) {
 	}
 
 	s3Mock := &mockS3Client{}
-	handler := NewZoaHandler(store, testTemplateRegistry(t), &zoaMockMaestroClient{}, s3Mock, ZoaConfig{
+	handler := NewZoaHandler(store, testTemplateRegistry(t), newFakeFleetDB(), s3Mock, ZoaConfig{
 		BucketName: "test-bucket",
 		JobConfig:  testJobConfig(),
 	}, testZoaLogger())
@@ -668,7 +632,7 @@ func TestZoaHandler_Get_IncludeOutputAndLogs(t *testing.T) {
 			}, nil
 		},
 	}
-	handler := newTestZoaHandler(t, store, &zoaMockMaestroClient{})
+	handler := newTestZoaHandler(t, store, newFakeFleetDB())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/trusted-actions/runs/exec-123?include=output,logs", nil)
 	req = mux.SetURLVars(req, map[string]string{"id": "exec-123"})
@@ -713,7 +677,7 @@ func TestZoaHandler_AuditList(t *testing.T) {
 		},
 	}
 
-	handler := NewZoaHandler(&mockExecutionStore{}, testTemplateRegistry(t), &zoaMockMaestroClient{}, &mockS3Client{}, ZoaConfig{
+	handler := NewZoaHandler(&mockExecutionStore{}, testTemplateRegistry(t), newFakeFleetDB(), &mockS3Client{}, ZoaConfig{
 		BucketName: "test-bucket",
 		JobConfig:  testJobConfig(),
 		AuditStore: auditStore,
@@ -735,7 +699,7 @@ func TestZoaHandler_AuditList(t *testing.T) {
 }
 
 func TestZoaHandler_AuditList_Disabled(t *testing.T) {
-	handler := NewZoaHandler(&mockExecutionStore{}, testTemplateRegistry(t), &zoaMockMaestroClient{}, &mockS3Client{}, ZoaConfig{
+	handler := NewZoaHandler(&mockExecutionStore{}, testTemplateRegistry(t), newFakeFleetDB(), &mockS3Client{}, ZoaConfig{
 		BucketName: "test-bucket",
 		JobConfig:  testJobConfig(),
 		AuditStore: nil,
@@ -760,7 +724,7 @@ func TestZoaHandler_AuditList_WithMethodFilter(t *testing.T) {
 		},
 	}
 
-	handler := NewZoaHandler(&mockExecutionStore{}, testTemplateRegistry(t), &zoaMockMaestroClient{}, &mockS3Client{}, ZoaConfig{
+	handler := NewZoaHandler(&mockExecutionStore{}, testTemplateRegistry(t), newFakeFleetDB(), &mockS3Client{}, ZoaConfig{
 		BucketName: "test-bucket",
 		JobConfig:  testJobConfig(),
 		AuditStore: auditStore,
@@ -777,7 +741,7 @@ func TestZoaHandler_AuditList_WithMethodFilter(t *testing.T) {
 }
 
 func TestZoaHandler_Create_InvalidJiraFormat(t *testing.T) {
-	handler := newTestZoaHandler(t, &mockExecutionStore{}, &zoaMockMaestroClient{})
+	handler := newTestZoaHandler(t, &mockExecutionStore{}, newFakeFleetDB())
 
 	body := `{"target_cluster": "mc01", "jira": "not-a-jira"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/trusted-actions/get_nodes/run", bytes.NewBufferString(body))
@@ -796,7 +760,7 @@ func TestZoaHandler_Create_InvalidJiraFormat(t *testing.T) {
 
 func TestZoaHandler_Create_DryRun(t *testing.T) {
 	store := &mockExecutionStore{}
-	mc := &zoaMockMaestroClient{}
+	mc := newFakeFleetDB()
 	handler := newTestZoaHandler(t, store, mc)
 
 	body := `{"target_cluster": "mc01", "jira": "ROSAENG-1234", "dry_run": true}`
@@ -828,7 +792,7 @@ func TestZoaHandler_Create_RecordsAudit(t *testing.T) {
 	}
 
 	store := &mockExecutionStore{}
-	mc := &zoaMockMaestroClient{}
+	mc := newFakeFleetDB()
 
 	handler := NewZoaHandler(store, testTemplateRegistry(t), mc, &mockS3Client{}, ZoaConfig{
 		BucketName: "test-bucket",

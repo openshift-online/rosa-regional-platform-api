@@ -49,7 +49,7 @@
       "/management_clusters": {
         "post": {
           "summary": "Create a new management cluster",
-          "description": "Creates a new management cluster by registering a consumer in Maestro.\nRequires privileged access (admin AWS account).\n",
+          "description": "Creates a new management cluster by registering via ConfigMap on fleet-db cluster.\nRequires privileged access (admin AWS account).\n",
           "operationId": "createManagementCluster",
           "tags": [
             "ManagementClusters"
@@ -109,7 +109,7 @@
         },
         "get": {
           "summary": "List all management clusters",
-          "description": "Returns a list of all management clusters (consumers in Maestro).\nRequires privileged access (admin AWS account).\n",
+          "description": "Returns a list of all management clusters.\nRequires privileged access (admin AWS account).\n",
           "operationId": "listManagementClusters",
           "tags": [
             "ManagementClusters"
@@ -420,7 +420,7 @@
               }
             },
             "502": {
-              "description": "Bad Gateway - Maestro error",
+              "description": "Bad Gateway - dispatch error",
               "content": {
                 "application/json": {
                   "schema": {
@@ -2406,7 +2406,7 @@
         },
         "ManagementCluster": {
           "type": "object",
-          "description": "A management cluster (passthrough from Maestro consumer)",
+          "description": "A management cluster registered on fleet-db cluster",
           "required": [
             "id",
             "kind",
@@ -2617,7 +2617,7 @@
             },
             "data": {
               "type": "object",
-              "description": "Payload data to be passed to Maestro gRPC for creating the manifestwork.\nThis should contain the ManifestWork specification including manifests.\n",
+              "description": "Payload data for creating the resource manifest.\nThis should contain the resource specification including manifests.\n",
               "additionalProperties": true
             }
           }

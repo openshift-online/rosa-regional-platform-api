@@ -8,12 +8,21 @@ import (
 
 type Config struct {
 	Server          ServerConfig
-	Maestro         MaestroConfig
-	Hyperfleet      HyperfleetConfig
+	FleetDB         FleetDBConfig
+	Regional        RegionalConfig
 	Logging         LoggingConfig
 	Authz           *authz.Config
 	Zoa             ZoaConfig
 	AllowedAccounts []string
+}
+
+type FleetDBConfig struct {
+	ClusterName string
+	AWSRegion   string
+}
+
+type RegionalConfig struct {
+	OIDCIssuerBaseURL string
 }
 
 type ZoaConfig struct {
@@ -39,17 +48,6 @@ type ServerConfig struct {
 	ShutdownTimeout    time.Duration
 }
 
-type MaestroConfig struct {
-	BaseURL     string
-	GRPCBaseURL string
-	Timeout     time.Duration
-}
-
-type HyperfleetConfig struct {
-	BaseURL string
-	Timeout time.Duration
-}
-
 type LoggingConfig struct {
 	Level  string
 	Format string
@@ -67,15 +65,6 @@ func NewConfig() *Config {
 			MetricsBindAddress: "0.0.0.0",
 			MetricsPort:        9090,
 			ShutdownTimeout:    30 * time.Second,
-		},
-		Maestro: MaestroConfig{
-			BaseURL:     "http://maestro:8000",
-			GRPCBaseURL: "maestro-grpc.maestro-server:8090",
-			Timeout:     30 * time.Second,
-		},
-		Hyperfleet: HyperfleetConfig{
-			BaseURL: "http://hyperfleet-api.hyperfleet-system:8000",
-			Timeout: 30 * time.Second,
 		},
 		Logging: LoggingConfig{
 			Level:  "info",

@@ -41,15 +41,6 @@ func TestNewConfig(t *testing.T) {
 		t.Errorf("expected ShutdownTimeout=30s, got %v", cfg.Server.ShutdownTimeout)
 	}
 
-	// Test Maestro config defaults
-	if cfg.Maestro.BaseURL != "http://maestro:8000" {
-		t.Errorf("expected Maestro.BaseURL=http://maestro:8000, got %s", cfg.Maestro.BaseURL)
-	}
-
-	if cfg.Maestro.Timeout != 30*time.Second {
-		t.Errorf("expected Maestro.Timeout=30s, got %v", cfg.Maestro.Timeout)
-	}
-
 	// Test Logging config defaults
 	if cfg.Logging.Level != "info" {
 		t.Errorf("expected Logging.Level=info, got %s", cfg.Logging.Level)
@@ -105,21 +96,6 @@ func TestServerConfig(t *testing.T) {
 	}
 }
 
-func TestMaestroConfig(t *testing.T) {
-	cfg := MaestroConfig{
-		BaseURL: "http://localhost:8001",
-		Timeout: 45 * time.Second,
-	}
-
-	if cfg.BaseURL != "http://localhost:8001" {
-		t.Errorf("expected BaseURL=http://localhost:8001, got %s", cfg.BaseURL)
-	}
-
-	if cfg.Timeout != 45*time.Second {
-		t.Errorf("expected Timeout=45s, got %v", cfg.Timeout)
-	}
-}
-
 func TestLoggingConfig(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -172,10 +148,6 @@ func TestConfig_CustomValues(t *testing.T) {
 			MetricsPort:        3002,
 			ShutdownTimeout:    15 * time.Second,
 		},
-		Maestro: MaestroConfig{
-			BaseURL: "https://maestro.example.com",
-			Timeout: 60 * time.Second,
-		},
 		Logging: LoggingConfig{
 			Level:  "debug",
 			Format: "text",
@@ -190,15 +162,6 @@ func TestConfig_CustomValues(t *testing.T) {
 
 	if cfg.Server.APIPort != 3000 {
 		t.Errorf("expected APIPort=3000, got %d", cfg.Server.APIPort)
-	}
-
-	// Verify Maestro config
-	if cfg.Maestro.BaseURL != "https://maestro.example.com" {
-		t.Errorf("expected Maestro.BaseURL=https://maestro.example.com, got %s", cfg.Maestro.BaseURL)
-	}
-
-	if cfg.Maestro.Timeout != 60*time.Second {
-		t.Errorf("expected Maestro.Timeout=60s, got %v", cfg.Maestro.Timeout)
 	}
 
 	// Verify Logging config

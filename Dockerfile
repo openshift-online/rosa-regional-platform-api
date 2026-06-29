@@ -1,9 +1,9 @@
 # Build stage
-FROM golang:1.25-alpine AS builder
+ARG TARGETPLATFORM
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
-# Build arguments for OS and architecture support
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /app
 

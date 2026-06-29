@@ -181,7 +181,6 @@ func TestServeCmd(t *testing.T) {
 	expectedFlags := []string{
 		"log-level",
 		"log-format",
-		"maestro-url",
 		"allowed-accounts",
 		"api-port",
 		"health-port",

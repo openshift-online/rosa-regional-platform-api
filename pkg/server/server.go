@@ -11,11 +11,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/rosa-regional-platform-api/pkg/authz"
 	"github.com/openshift/rosa-regional-platform-api/pkg/authz/client"
-	"github.com/openshift/rosa-regional-platform-api/pkg/clients/hyperfleet"
-	"github.com/openshift/rosa-regional-platform-api/pkg/clients/maestro"
+	"github.com/openshift/rosa-regional-platform-api/pkg/clients/fleetdb"
 	"github.com/openshift/rosa-regional-platform-api/pkg/config"
 	apphandlers "github.com/openshift/rosa-regional-platform-api/pkg/handlers"
 	"github.com/openshift/rosa-regional-platform-api/pkg/middleware"
@@ -33,24 +33,18 @@ type Server struct {
 	zoaReconciler  *zoa.Reconciler
 }
 
-// New creates a new Server instance
-func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
+// New creates a new Server instance. The fleetDBClient is used by cluster,
+// nodepool, and ZOA handlers. The rcClient points at the local RC cluster
+// and is used by the management cluster handler for ConfigMap CRUD.
+func New(cfg *config.Config, fleetDBClient *fleetdb.Client, rcClient ctrlclient.Client, logger *slog.Logger) (*Server, error) {
 	ctx := context.Background()
-
-	// Create Maestro client
-	maestroClient := maestro.NewClient(cfg.Maestro, logger)
-
-	// Create Hyperfleet client
-	hyperfleetClient := hyperfleet.NewClient(cfg.Hyperfleet, logger)
 
 	// Create handlers
 	healthHandler := apphandlers.NewHealthHandler()
 	infoHandler := apphandlers.NewInfoHandler()
-	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(maestroClient, logger)
-	resourceBundleHandler := apphandlers.NewResourceBundleHandler(maestroClient, logger)
-	workHandler := apphandlers.NewWorkHandler(maestroClient, logger)
-	clusterHandler := apphandlers.NewClusterHandler(hyperfleetClient, maestroClient, logger)
-	nodePoolHandler := apphandlers.NewNodePoolHandler(maestroClient, logger)
+	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(rcClient, logger)
+	clusterHandler := apphandlers.NewClusterHandler(fleetDBClient, cfg.Regional.OIDCIssuerBaseURL, logger)
+	nodePoolHandler := apphandlers.NewNodePoolHandler(fleetDBClient, logger)
 
 	// Create legacy authorization middleware (for non-authz routes)
 	authMiddleware := middleware.NewAuthorization(cfg.AllowedAccounts, logger)
@@ -158,27 +152,6 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	mgmtRouter.HandleFunc("", mgmtClusterHandler.List).Methods(http.MethodGet)
 	mgmtRouter.HandleFunc("/{id}", mgmtClusterHandler.Get).Methods(http.MethodGet)
 
-	// Resource bundle routes (require allowed account)
-	rbRouter := apiRouter.PathPrefix("/api/v0/resource_bundles").Subrouter()
-	if authzMiddleware != nil {
-		rbRouter.Use(privilegedMiddleware.CheckPrivileged)
-		rbRouter.Use(authzMiddleware.Authorize)
-	} else {
-		rbRouter.Use(authMiddleware.RequireAllowedAccount)
-	}
-	rbRouter.HandleFunc("", resourceBundleHandler.List).Methods(http.MethodGet)
-	rbRouter.HandleFunc("/{id}", resourceBundleHandler.Delete).Methods(http.MethodDelete)
-
-	// Work routes (require allowed account)
-	workRouter := apiRouter.PathPrefix("/api/v0/work").Subrouter()
-	if authzMiddleware != nil {
-		workRouter.Use(privilegedMiddleware.CheckPrivileged)
-		workRouter.Use(authzMiddleware.Authorize)
-	} else {
-		workRouter.Use(authMiddleware.RequireAllowedAccount)
-	}
-	workRouter.HandleFunc("", workHandler.Create).Methods(http.MethodPost)
-
 	// Cluster routes (user-facing, require authz)
 	clusterRouter := apiRouter.PathPrefix("/api/v0/clusters").Subrouter()
 	if authzMiddleware != nil {
@@ -241,7 +214,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		}
 		s3Client := s3.NewFromConfig(awsCfg)
 
-		zoaHandler := apphandlers.NewZoaHandler(zoaStore, zoaRegistry, maestroClient, s3Client, apphandlers.ZoaConfig{
+		zoaHandler := apphandlers.NewZoaHandler(zoaStore, zoaRegistry, fleetDBClient, s3Client, apphandlers.ZoaConfig{
 			BucketName: cfg.Zoa.BucketName,
 			JobConfig:  jobConfig,
 			AuditStore: auditStore,
@@ -260,7 +233,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		zoaRouter.HandleFunc("/{action}", zoaHandler.Describe).Methods(http.MethodGet)
 		zoaRouter.HandleFunc("", zoaHandler.Catalog).Methods(http.MethodGet)
 
-		zoaReconciler = zoa.NewReconciler(zoaStore, zoaRegistry, maestroClient, jobConfig, cfg.Zoa.PollInterval, logger)
+		zoaReconciler = zoa.NewReconciler(zoaStore, zoaRegistry, fleetDBClient, jobConfig, cfg.Zoa.PollInterval, logger)
 		logger.Info("ZOA trusted actions enabled", "table", cfg.Zoa.TableName, "bucket", cfg.Zoa.BucketName)
 	}
 
@@ -270,12 +243,6 @@ func New(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	apiRouter.HandleFunc("/api/v0/info", infoHandler.Info).Methods(http.MethodGet)
 
 	// ROSAENG-1236: CORS disabled for machine-to-machine API
-	// Previous wildcard CORS was a security vulnerability
-	// apiHandler := handlers.CORS(
-	// 	handlers.AllowedOrigins([]string{"*"}),
-	// 	handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodPut}),
-	// 	handlers.AllowedHeaders([]string{"Content-Type", "Authorization"}),
-	// )(apiRouter)
 	apiHandler := apiRouter
 
 	// Create health router

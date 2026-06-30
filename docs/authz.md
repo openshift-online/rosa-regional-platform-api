@@ -12,7 +12,7 @@ The authorization service provides fine-grained access control for ROSA operatio
 - **Cedar** as the policy language
 - **DynamoDB** for storing account and principal linkage
 
-Identity is global: AWS IAM credentials identify the principal and AWS account, and each AWS account is linked to exactly one Red Hat organization. Policies and attachments are global: they are defined once and apply across all regions. Policy evaluation is regional: each region maintains its own AVP policy store, synced from the global source of truth. Policies can use `context.region` to restrict which regions they take effect in.
+Identity is global: AWS IAM credentials identify the principal and AWS account, and each AWS account is linked to exactly one Red Hat organization. ROSA policies are global: they are defined once and apply across all regions. Attachments can be **global** (apply in all regions) or **regional** (apply in a single region). Policy evaluation is regional: each region maintains its own AVP policy store. Policies can use `context.region` to restrict which regions they take effect in.
 
 ## Authorization Flows
 
@@ -65,7 +65,7 @@ sequenceDiagram
 
 ### Regular Request Authorization
 
-All non-administrative API requests follow this flow. Linked admin principals are granted full access; all other principals are evaluated against Cedar policies.
+All non-administrative API requests follow this flow. Linked admin principals are granted policy and attachment management access; all other actions require Cedar policies.
 
 ```mermaid
 sequenceDiagram
@@ -78,10 +78,6 @@ sequenceDiagram
     API->>DB: Is the AWS account linked?
     alt Account not linked
         API-->>User: 403 — Account not linked
-    end
-    API->>DB: Is the IAM principal linked to an admin RH user?
-    alt Linked to Org Admin or ROSAAdmin
-        API-->>User: ALLOW — Full administrative access
     end
     API->>AVP: Evaluate Cedar policies for this principal
     alt Policy allows
@@ -98,19 +94,21 @@ sequenceDiagram
 - **Organization Administrator** privileges — global scope, applies to all regions.
 - An applicable **RBAC role** such as `ROSAAdmin` — global scope.
 
-Admin access grants full permissions within the linked AWS account, including policy and attachment management.
+Admin access grants policy and attachment management permissions within the linked AWS account. For all other actions (e.g., cluster operations), admin principals require Cedar policies like any other principal.
 
 **Regular IAM principals** — all other callers. Access is determined by Cedar policies evaluated via AVP, attached directly to the principal's ARN.
 
 > **Note:** Policy management is not restricted to administrative users. A regular IAM principal can be granted a Cedar policy that authorizes policy and attachment management (e.g., via a `ManagePolicies` action). This allows delegated policy administration without requiring principal linking or an RBAC role.
 
-Policy management operates at global scope — both for RH administrators and for IAM principals with delegated policy management permissions. Because policies and attachments are global, restricting an administrator to a single region would be inconsistent: a regionally-scoped admin who creates a policy would lose management authority over it if that policy is later updated to apply across multiple regions. For this reason, HyperFleet does not support regionally-scoped policy administrators.
+Policy management operates at global scope — both for RH administrators and for IAM principals with delegated policy management permissions. Because ROSA policies are global, restricting an administrator to a single region would be inconsistent: a regionally-scoped admin who creates a policy would lose management authority over it if that policy is later updated to apply across multiple regions. For this reason, HyperFleet does not support regionally-scoped policy administrators.
 
 ## Principal Linking
 
 IAM principals can be linked to a Red Hat user via `rosactl link account` (which also links the AWS account to the RH organization) or `rosactl link principal` (which links only the calling IAM principal). Multiple IAM principals can be linked to the same Red Hat user.
 
-Principal linking grants administrative access when the linked Red Hat user holds Org Admin privileges or an RBAC role such as `ROSAAdmin`. This is the mechanism by which RH administrators gain full permissions — including policy and attachment management — without requiring a Cedar policy. Principal linking is not required for IAM principals whose access is determined solely by Cedar policies, including Cedar-based delegated policy management.
+Account linking is subject to export control verification. When a Red Hat user is banned, their linked AWS principals are also banned, and they can no longer use the ROSA HyperFleet API to lifecycle clusters, nor access cluster APIs via aws-iam-authenticator. The clusters themselves continue to operate normally.
+
+Principal linking grants administrative access when the linked Red Hat user holds Org Admin privileges or an RBAC role such as `ROSAAdmin`. This is the mechanism by which RH administrators gain policy and attachment management permissions without requiring a Cedar policy. Principal linking is not required for IAM principals whose access is determined solely by Cedar policies, including Cedar-based delegated policy management.
 
 ## Tenancy and Scoping
 
@@ -118,10 +116,10 @@ Each AWS account maps to exactly one Red Hat organization (many-to-one: one RH o
 
 | Scope | What |
 | --- | --- |
-| **Global** | AWS IAM identity, AWS account → RH org mapping, IAM principal → RH user mapping, RH Org Admin status, RBAC role assignments, Cedar policies, policy attachments |
-| **Regional (per AWS account, per region)** | Policy evaluation (AVP policy stores), ROSA resources (clusters, node pools, access entries) |
+| **Global** | AWS IAM identity, AWS account → RH org mapping, IAM principal → RH user mapping, RH Org Admin status, RBAC role assignments, ROSA policies, global attachments |
+| **Regional (per AWS account, per region)** | Regional attachments, policy evaluation (AVP policy stores), ROSA resources (clusters, node pools, access entries) |
 
-Policies and attachments are defined globally — a policy created from any region is available everywhere. Each region maintains its own AVP policy store, synced from the global source of truth via DynamoDB Global Tables. To restrict a policy to specific regions, use `context.region` conditions in Cedar (see [Policy Examples](#policy-examples)).
+ROSA policies are defined globally — a ROSA policy created from any region is available everywhere. Attachments can be global (replicated to all regions) or regional (stored only in the target region). To restrict a policy to specific regions, use `context.region` conditions in Cedar (see [Policy Examples](#policy-examples)), or use regional attachments to limit where a ROSA policy is applied.
 
 Resources are regional — a cluster in `us-east-1` is not visible in `eu-west-1`. A principal operating in one AWS account cannot see or affect resources in a different AWS account.
 
@@ -139,7 +137,7 @@ When multiple policies are attached to a principal, all are evaluated together. 
 
 By default, newly linked AWS accounts grant **no permissions** to any IAM principal. Permissions must be explicitly granted through Cedar policies.
 
-Organization Administrators can attach managed policies to all IAM principals in the AWS account. For example, one available managed policy grants each principal permission to view all clusters in the AWS account and manage their own — reproducing the default behavior of the V1 API. Other managed policies will cover common patterns such as read-only access or full cluster lifecycle management.
+Organization Administrators can attach ROSA managed policies to any IAM principals in the AWS account. For example, one available ROSA managed policy grants each principal permission to view all clusters in the AWS account and manage their own — reproducing the default behavior of the V1 API. Other ROSA managed policies will cover common patterns such as read-only access or full cluster lifecycle management.
 
 ## Data Storage
 
@@ -147,11 +145,12 @@ Organization Administrators can attach managed policies to all IAM principals in
 | --- | --- | --- |
 | AWS account → RH org mapping | DynamoDB Global Tables | Global |
 | IAM principal → RH user mapping | DynamoDB Global Tables | Global |
-| Policy templates | DynamoDB Global Tables | Global |
-| Attachments | DynamoDB Global Tables | Global |
+| ROSA policy templates | DynamoDB Global Tables | Global |
+| Global attachments | DynamoDB Global Tables | Global |
+| Regional attachments | DynamoDB (regional, non-global) | Regional |
 | Policy evaluation | AVP IsAuthorized API | Regional (per AWS account, per region) |
 
-DynamoDB Global Tables are the source of truth for policies and attachments, replicated across all regions within seconds. AVP is used only for evaluation — it is a regional cache, not the source of truth.
+DynamoDB Global Tables are the source of truth for ROSA policies and global attachments. Regional attachments are stored in a standard (non-global) DynamoDB table in each region. AVP is used only for evaluation — it is not the source of truth.
 
 ## API Endpoints
 
@@ -178,11 +177,13 @@ DynamoDB Global Tables are the source of truth for policies and attachments, rep
 
 | Method | Path | Description |
 | --- | --- | --- |
-| POST | `/api/v0/authz/attachments` | Attach policy to a principal |
-| GET | `/api/v0/authz/attachments` | List attachments |
+| POST | `/api/v0/authz/attachments` | Attach policy to a principal (global or regional) |
+| GET | `/api/v0/authz/attachments` | List attachments (global + current region's regional) |
 | DELETE | `/api/v0/authz/attachments/{id}` | Detach policy |
 
-Attachments bind a policy to an IAM principal ARN (user or role).
+Attachments bind a ROSA policy to an IAM principal ARN (user or role). Attachments are **global** by default. Pass `--regional` to create a regional attachment that applies only in the current region.
+
+`rosactl get attachments` returns all global attachments plus regional attachments for the current region. `rosactl get attachments --all-regions` fans out to each region's API to include regional attachments from all regions.
 
 ### Authorization Check
 
@@ -192,17 +193,19 @@ Attachments bind a policy to an IAM principal ARN (user or role).
 
 > **Note:** Policy and attachment management endpoints are accessible to Organization Administrators (via RH token) and to any IAM principal that has been granted a Cedar policy authorizing policy management. The `/api/v0/authz/check` endpoint allows a principal to check their own permissions. Checking another principal's permissions requires administrative access or a Cedar policy granting the `CheckAuthorization` action.
 
-## Policy Types
+## ROSA Policy Types
 
-### Managed Policies
+ROSA policies are distinct from AWS IAM policies — they are ROSA-specific policy definitions stored and managed through the HyperFleet API.
 
-Predefined policies provided by the platform covering common use cases such as full cluster lifecycle management or read-only access. Managed policies are returned alongside custom policies via `GET /api/v0/authz/policies` and are distinguished by a `"type": "managed"` field. They cannot be modified or deleted (`PUT` and `DELETE` are rejected).
+### ROSA Managed Policies
 
-### Custom Policies
+Predefined ROSA policies provided by the platform covering common use cases such as full cluster lifecycle management or read-only access. ROSA managed policies are returned alongside custom policies via `GET /api/v0/authz/policies` and are distinguished by a `"type": "managed"` field. They cannot be modified or deleted (`PUT` and `DELETE` are rejected).
 
-Policies written directly in [Cedar](https://docs.cedarpolicy.com/), returned with `"type": "custom"`. The `?principal` placeholder is the only template variable — when a policy is attached to a principal, the system resolves `?principal` to the concrete principal entity (an ARN within the same AWS account). Policies cannot reference principals in other AWS accounts.
+### ROSA Custom Policies
 
-Both types are attached to principals using the same `POST /api/v0/authz/attachments` endpoint.
+ROSA policies written directly in [Cedar](https://docs.cedarpolicy.com/), returned with `"type": "custom"`. The `?principal` placeholder is the only template variable — when a policy is attached to a principal, the system resolves `?principal` to the concrete principal entity (an ARN within the same AWS account). Policies cannot reference principals in other AWS accounts.
+
+Both ROSA policy types are attached to principals using the same `POST /api/v0/authz/attachments` endpoint.
 
 ### Best Practice
 
@@ -233,8 +236,8 @@ All actions use the `ROSA::Action` entity type in Cedar policies.
 - **Access Entry**
   - `CreateAccessEntry`, `DeleteAccessEntry`, `DescribeAccessEntry`
   - `ListAccessEntries`, `UpdateAccessEntry`, `ListAccessPolicies`
-- **Tagging**
-  - `TagResource`, `UntagResource`, `ListTagsForResource`
+- **Label**
+  - `LabelResource`, `UnlabelResource`, `ListLabelsForResource`
 - **Policy Management**
   - `CreatePolicy`, `DeletePolicy`, `DescribePolicy`, `ListPolicies`, `UpdatePolicy`
   - `CreateAttachment`, `DeleteAttachment`, `ListAttachments`
@@ -247,7 +250,7 @@ AWS IAM supports wildcard matching on action strings (e.g., `rosa:Describe*`, `e
 
 ```cedar
 permit(?principal, action, resource)
-when { resource.tags["Environment"] == "development" };
+when { resource.labels["Environment"] == "development" };
 ```
 
 **Explicit action lists** — enumerates specific actions. Required when action groups don't cover the exact set needed.
@@ -265,10 +268,10 @@ permit(?principal,
 // Read-only access
 permit(?principal, action in ROSA::Action::"ReadOnly", resource);
 
-// Full cluster management with read and tagging
+// Full cluster management with read and labeling
 permit(
   ?principal,
-  action in [ROSA::Action::"ClusterAdmin", ROSA::Action::"ReadOnly", ROSA::Action::"TagAdmin"],
+  action in [ROSA::Action::"ClusterAdmin", ROSA::Action::"ReadOnly", ROSA::Action::"LabelAdmin"],
   resource
 );
 
@@ -282,7 +285,7 @@ The ROSA schema defines the following action groups (all members of `AllActions`
 - **`ClusterAdmin`** — create, delete, and update clusters
 - **`NodePoolAdmin`** — create, delete, update, and scale node pools
 - **`AccessEntryAdmin`** — create, delete, and update access entries
-- **`TagAdmin`** — tag and untag resources
+- **`LabelAdmin`** — label and unlabel resources
 - **`PolicyAdmin`** — create, delete, and update policies and attachments
 
 ### Policy Examples
@@ -296,7 +299,7 @@ permit(
     ROSA::Action::"DescribeCluster", ROSA::Action::"ListClusters",
     ROSA::Action::"DescribeNodePool", ROSA::Action::"ListNodePools",
     ROSA::Action::"DescribeAccessEntry", ROSA::Action::"ListAccessEntries",
-    ROSA::Action::"ListTagsForResource", ROSA::Action::"ListAccessPolicies"
+    ROSA::Action::"ListLabelsForResource", ROSA::Action::"ListAccessPolicies"
   ],
   resource
 );
@@ -308,7 +311,7 @@ Or equivalently, using the `ReadOnly` action group:
 permit(?principal, action in ROSA::Action::"ReadOnly", resource);
 ```
 
-**Deny delete on production clusters** — blocks cluster deletion for resources tagged as production, regardless of other policies.
+**Deny delete on production clusters** — blocks cluster deletion for resources labeled as production, regardless of other policies.
 
 ```cedar
 forbid(
@@ -316,7 +319,7 @@ forbid(
   action == ROSA::Action::"DeleteCluster",
   resource
 )
-when { resource.tags["Environment"] == "production" };
+when { resource.labels["Environment"] == "production" };
 ```
 
 **Cluster lifecycle only** — permits full cluster management but no nodepool or access entry operations.
@@ -329,14 +332,14 @@ permit(
     ROSA::Action::"DescribeCluster", ROSA::Action::"ListClusters",
     ROSA::Action::"UpdateCluster", ROSA::Action::"UpdateClusterConfig",
     ROSA::Action::"UpdateClusterVersion",
-    ROSA::Action::"TagResource", ROSA::Action::"UntagResource",
-    ROSA::Action::"ListTagsForResource"
+    ROSA::Action::"LabelResource", ROSA::Action::"UnlabelResource",
+    ROSA::Action::"ListLabelsForResource"
   ],
   resource
 );
 ```
 
-**Tag-based team scoping** — restricts a principal to resources owned by their team.
+**Label-based team scoping** — restricts a principal to resources owned by their team.
 
 ```cedar
 permit(
@@ -344,10 +347,10 @@ permit(
   action,
   resource
 )
-when { resource.tags["Team"] == "platform-engineering" };
+when { resource.labels["Team"] == "platform-engineering" };
 ```
 
-**Time-based access** — restricts operations to business hours on weekdays using `context.requestTime`.
+**Time-based access** — restricts operations to business hours on weekdays using `context.requestTime`. The `timezone` field is mandatory in time-based conditions — `requestTime` fields (`hour`, `dayOfWeek`) are expressed in the specified timezone.
 
 ```cedar
 permit(
@@ -355,6 +358,7 @@ permit(
   action,
   resource
 )
+when { context.requestTime.timezone == "America/New_York" }
 when { context.requestTime.dayOfWeek >= 1 && context.requestTime.dayOfWeek <= 5 }
 when { context.requestTime.hour >= 9 && context.requestTime.hour < 17 };
 ```
@@ -392,7 +396,7 @@ permit(
 The ROSA Cedar schema defines the following entity types:
 
 - **`ROSA::Principal`** — Users and roles identified by ARN
-- **`ROSA::Resource`** — Base resource type with `tags: Map<String, String>`
+- **`ROSA::Resource`** — Base resource type with `labels: Map<String, String>`
 - **`ROSA::Cluster`** — Inherits from Resource
 - **`ROSA::NodePool`** — Inherits from Resource, belongs to a Cluster
 - **`ROSA::AccessEntry`** — Inherits from Resource, belongs to a Cluster
@@ -428,8 +432,8 @@ Context attributes are passed alongside each AVP authorization request and can b
 | `accountId` | String | AWS account ID of the caller |
 | `sourceIp` | String | Source IP address of the request |
 | `userAgent` | String | User-Agent header from the request |
-| `requestTime` | Record | Request timestamp (e.g., `hour`, `dayOfWeek` fields for time-based policies) |
-| `requestTags` | Map\<String, String\> | Tags provided in the request body (e.g., when creating a cluster) |
+| `requestTime` | Record | Request timestamp with `hour`, `dayOfWeek`, and `timezone` fields for time-based policies. The `timezone` field (IANA tz name, e.g., `America/New_York`) is mandatory in time-based conditions |
+| `requestLabels` | Map\<String, String\> | Labels provided in the request body (e.g., when creating a cluster) |
 
 > **Note:** IAM-internal condition keys such as `aws:MultiFactorAuthPresent` and session tags (`aws:PrincipalTag/*`) are not available — API Gateway does not forward them to the backend.
 
@@ -469,7 +473,7 @@ permit(
   action,
   resource
 )
-when { resource.tags["Environment"] == "development" };
+when { resource.labels["Environment"] == "development" };
 ```
 
 ### Policy Management for additional Red Hat admins
@@ -492,7 +496,10 @@ rosactl policy create \
   --policy-file dev-cluster-access.cedar
 
 # 4. Attach the policy to an IAM role (recommended) or user
+# Omit --regional for a global attachment (applies in all regions)
+# Use --regional to create a regional attachment (applies only in the current region)
 rosactl policy attach \
+  [ --regional ] \
   --policy-id <POLICY_ID> \
   --principal-arn arn:aws:iam::777788889999:role/DeveloperRole
 ```

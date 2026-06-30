@@ -94,7 +94,7 @@ sequenceDiagram
 - **Organization Administrator** privileges — global scope, applies to all regions.
 - An applicable **RBAC role** such as `ROSAAdmin` — global scope.
 
-Admin access grants policy and attachment management permissions within the linked AWS account. For all other actions (e.g., cluster operations), admin principals require Cedar policies like any other principal.
+Admin access grants policy and attachment management permissions within the linked AWS account. For all other actions (e.g., cluster operations), admin principals require Cedar policies like any other principal. As admin users, they are enabled to create and attach Cedar policies to themselves or other principals.
 
 **Regular IAM principals** — all other callers. Access is determined by Cedar policies evaluated via AVP, attached directly to the principal's ARN.
 
@@ -183,6 +183,8 @@ DynamoDB Global Tables are the source of truth for ROSA policies and global atta
 
 Attachments bind a ROSA policy to an IAM principal ARN (user or role). Attachments are **global** by default. Pass `--regional` to create a regional attachment that applies only in the current region.
 
+> **Note:** If a regional attachment is being created with a condition on `context.region` that does not match the current region, the attachment will be created but it will not be effective. The user creating the attachment will receive a warning message.
+
 `rosactl get attachments` returns all global attachments plus regional attachments for the current region. `rosactl get attachments --all-regions` fans out to each region's API to include regional attachments from all regions.
 
 ### Authorization Check
@@ -237,7 +239,7 @@ All actions use the `ROSA::Action` entity type in Cedar policies.
   - `CreateAccessEntry`, `DeleteAccessEntry`, `DescribeAccessEntry`
   - `ListAccessEntries`, `UpdateAccessEntry`, `ListAccessPolicies`
 - **Label**
-  - `LabelResource`, `UnlabelResource`, `ListLabelsForResource`
+  - `LabelResource`, `DeleteLabelFromResource`, `ListLabelsForResource`
 - **Policy Management**
   - `CreatePolicy`, `DeletePolicy`, `DescribePolicy`, `ListPolicies`, `UpdatePolicy`
   - `CreateAttachment`, `DeleteAttachment`, `ListAttachments`

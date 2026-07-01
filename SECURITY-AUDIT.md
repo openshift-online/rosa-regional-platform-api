@@ -1,182 +1,189 @@
 # Security Audit — rosa-regional-platform-api
 
-**Audit Date:** 2026-05-15  
-**Auditor:** security-audit-agent  
-**Severity Labels:** CRITICAL / HIGH / MEDIUM / LOW
+**Audit Date:** 2026-06-15
+**Auditor:** security-audit-agent (automated)
+**Scope:** Full static analysis of Go source files, Kubernetes manifests, Envoy configuration, CI scripts, Dockerfiles
+**Previous PRs:** #80 (closed), #85 (merged), #97 (superseded by this report)
+
+> This PR supersedes PR #97. It incorporates all findings from #97 and #85, and adds new findings. No user comments in previous PRs dismissed any finding as a non-issue.
+>
+> **Note:** PR #85 was merged for tracking/visibility purposes, not to indicate its findings were resolved.
 
 ---
 
-## Finding 1 — CRITICAL: Authentication Based Entirely on Forgeable HTTP Headers
+## CRITICAL Findings
+
+### CRIT-1 — Authentication via Forgeable HTTP Headers **(carry-over from #85/#97, unresolved)**
+
+**File:** `pkg/middleware/identity.go` lines 32–59
+
+**Risk:** The entire authentication model trusts `X-Amz-Account-Id`, `X-Amz-Caller-Arn`, and related HTTP headers with no cryptographic verification that these headers were set by the Envoy sidecar or API Gateway. Any caller that bypasses Envoy and reaches the API pod directly can forge any identity, including privileged accounts.
+
+**Attack vectors:**
+1. **Direct pod IP access:** From within the EKS cluster, any pod can call `http://<pod-ip>:8000` and set `X-Amz-Account-Id: <target>` and `X-Amz-Caller-Arn: arn:aws:iam::<target>:role/OrganizationAccountAccessRole` to impersonate any account.
+2. **Service port exposure:** The `deployment/manifests/api.yaml` Service exposes port 8000 as a named port, making the raw API directly accessible from any pod in the cluster without going through Envoy (which sets identity headers).
+3. **Missing NetworkPolicy:** If Kubernetes NetworkPolicy is absent or uses default-allow, any cluster pod can forge headers.
+
+**What to mitigate:**
+- Validate requests using an HMAC or shared secret that only the Envoy/API Gateway can inject, which the Go service verifies before trusting `X-Amz-*` headers.
+- Remove port 8000 from the Kubernetes Service spec — Envoy on port 8080 should be the only ingress path.
+- Enforce a NetworkPolicy denying all ingress to pod port 8000 except from localhost (the Envoy sidecar).
+
+---
+
+### CRIT-2 — Kubernetes Service Exposes Raw API Port 8000, Bypassing Envoy Sidecar **(NEW)**
+
+**File:** `deployment/manifests/api.yaml` lines ~177–190
+
+```yaml
+spec:
+  ports:
+    - name: http
+      port: 8080    # Envoy — correct
+      targetPort: 8080
+    - name: api
+      port: 8000    # Raw app port — bypasses Envoy
+      targetPort: api
+    - name: health
+      port: 8081
+      targetPort: health
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+```
+
+**Risk:** The Kubernetes Service exposes port 8000 cluster-wide. This means any pod in the cluster can call `http://rosa-regional-platform:8000` and reach the application *without going through the Envoy sidecar*. The Envoy sidecar is the component responsible for propagating IAM identity headers from the API Gateway. Bypassing Envoy means the request arrives with no `X-Amz-*` headers, and depending on how the identity middleware handles missing headers, the request may proceed with an empty or anonymous identity.
+
+**Attack vector:** A compromised pod calls `http://rosa-regional-platform:8000/api/v0/clusters` with no identity headers. If the identity middleware treats a missing `X-Amz-Account-Id` as an empty string rather than rejecting the request, the subsequent authorization chain operates on an empty account ID — behavior that may allow or deny unpredictably based on DynamoDB contents.
+
+**What to mitigate:** Remove the `api` (8000), `health` (8081), and `metrics` (9090) ports from the Kubernetes Service. Only expose port 8080 (Envoy). Add a NetworkPolicy that restricts ingress to port 8080 to the ALB target group source and monitoring namespace only.
+
+---
+
+## HIGH Findings
+
+### HIGH-1 — Authorization Silently Disabled When Config Is Missing **(carry-over from #85/#97, unresolved)**
+
+**File:** `pkg/server/server.go` lines ~87–102
+
+**Risk:** When `cfg.Authz` is `nil` or `cfg.Authz.Enabled` is `false`, the server falls back to `RequireAllowedAccount` middleware only — which checks only account allowlist membership with no per-resource authorization and no admin requirements. Any misconfiguration (missing environment variable, failed DynamoDB connection returning nil config) silently degrades security to allowlist-only mode where any allowlisted account has full access to all operations.
+
+**What to mitigate:** Fail closed: if authz is expected but config is nil or invalid, log a fatal error and exit. Add a runtime health endpoint that exposes the current authorization mode so monitoring can alert on degraded state.
+
+---
+
+### HIGH-2 — No Request Body Size Limits Enable Memory Exhaustion DoS **(carry-over from #97, unresolved)**
+
+**Files:** `pkg/handlers/cluster.go:85`, `pkg/handlers/nodepool.go:81`, and 40+ handler locations
+
+**Risk:** All HTTP request bodies are decoded with `json.NewDecoder(r.Body).Decode(&req)` without wrapping in `http.MaxBytesReader`. A client sending a large `Content-Length` forces the Go JSON decoder to allocate an arbitrarily large buffer, causing pod OOM.
+
+**Attack vector:** `POST /api/v0/clusters` with `Content-Length: 1073741824` causes pod OOM restart. Any authorized account can trigger this — no authentication bypass required. Repeated requests prevent recovery.
+
+**What to mitigate:** Add middleware that wraps every request body: `r.Body = http.MaxBytesReader(w, r.Body, 10*1024*1024)`.
+
+---
+
+### HIGH-3 — Hardcoded Privileged Test Account in e2e Script **(carry-over from #97, unresolved)**
+
+**File:** `scripts/e2e-init-dynamodb.sh` lines ~90–105
+
+```bash
+aws dynamodb put-item --endpoint-url "$ENDPOINT" --table-name "rosa-authz-accounts" \
+  --item '{"accountId": {"S": "000000000000"}, "privileged": {"BOOL": true}, ...}'
+```
+
+**Risk:** If `$ENDPOINT` is empty or misconfigured, the script writes a privileged entry for account `000000000000` to production DynamoDB. This account ID is publicly visible in source code — any internal actor who knows it could exploit it against a misconfigured environment.
+
+**What to mitigate:** Abort if `$ENDPOINT` does not contain `localhost`/`127.0.0.1`. Use a randomly generated account ID for tests.
+
+---
+
+### HIGH-4 — Authorization Middleware Fails Open on DynamoDB Errors **(carry-over from #97, unresolved)**
+
+**Files:** `pkg/middleware/account_check.go` lines ~44–49, `pkg/middleware/privileged.go` lines ~40–50
+
+**Risk:** When DynamoDB is unavailable, both middleware functions log an error and call `next.ServeHTTP`, allowing requests to proceed with unverified authorization state. This is fail-open behavior.
+
+**What to mitigate:** Return `503 Service Unavailable` when the authorization backend is unreachable. Do not allow requests to proceed with unverified privilege or account status.
+
+---
+
+### HIGH-5 — Unpinned Container Images in Development Deployment Manifest **(NEW)**
+
+**File:** `deployment/manifests/api.yaml` lines ~116, ~149
+
+```yaml
+image: quay.io/cdoan0/rosa-regional-platform-api:latest   # personal account, mutable tag
+image: envoyproxy/envoy:v1.31-latest                       # moving branch tag
+```
+
+**Risk:**
+1. `quay.io/cdoan0/rosa-regional-platform-api:latest` — a personal quay.io account with a mutable `:latest` tag. If this manifest is applied to any environment, a compromised push to this personal repository updates the deployed API. With `imagePullPolicy: Always`, every pod restart pulls the latest image.
+2. `envoyproxy/envoy:v1.31-latest` — the Envoy sidecar that handles identity extraction is pinned to a moving branch tag. A security-relevant regression in a new v1.31.x patch would be silently deployed.
+
+**What to mitigate:** Move the API image to `quay.io/rrp-dev-ci/` or the `openshift-online` organization. Pin both images to SHA256 digests. Update `imagePullPolicy` to `IfNotPresent` for digest-pinned images.
+
+---
+
+### HIGH-6 — Prometheus Metrics Endpoint Exposed Cluster-Wide Without Authentication **(carry-over from #85, partially mitigated)**
+
+**File:** `deployment/manifests/api.yaml` (port 9090 on Service), `pkg/server/server.go`
+
+**Risk:** The metrics endpoint is bound to `0.0.0.0:9090` and exposed via the Kubernetes Service on port 9090 with no authentication. Any pod in the cluster can scrape it and gain operational intelligence: request rates, error patterns, endpoint call volumes, and any custom metrics that may include account or cluster identifiers.
+
+**What to mitigate:** Restrict the metrics bind address to `127.0.0.1` or add Prometheus bearer token authentication. Remove port 9090 from the Kubernetes Service. Use a NetworkPolicy to restrict metrics scraping to the Prometheus namespace only.
+
+---
+
+## MEDIUM Findings
+
+### MED-1 — Wildcard CORS Policy **(carry-over from #85, unresolved)**
+
+**File:** `pkg/server/server.go` lines ~174–179
+
+```go
+handlers.AllowedOrigins([]string{"*"})
+```
+
+**Risk:** All origins are allowed. The `Authorization` header is in `AllowedHeaders`. If any browser-initiated auth is added in the future, this immediately enables CSRF from any origin.
+
+**What to mitigate:** Restrict `AllowedOrigins` to specific frontend domains, or remove CORS headers entirely if the API is purely machine-to-machine.
+
+---
+
+### MED-2 — Identity Headers Not Validated for Format **(carry-over from #85, unresolved)**
 
 **File:** `pkg/middleware/identity.go`
 
-```go
-const (
-    HeaderAccountID = "X-Amz-Account-Id"
-    HeaderCallerARN = "X-Amz-Caller-Arn"
-    HeaderUserID    = "X-Amz-User-Id"
-    HeaderSourceIP  = "X-Amz-Source-Ip"
-    HeaderRequestID = "X-Amz-Request-Id"
-)
+**Risk:** `X-Amz-Account-Id` accepts arbitrary strings without format validation. AWS account IDs are always 12-digit numbers. Accepting malformed values enables log injection, downstream key injection in DynamoDB queries, and error message injection.
 
-func Identity(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        if accountID := r.Header.Get(HeaderAccountID); accountID != "" {
-            ctx = context.WithValue(ctx, ContextKeyAccountID, accountID)
-        }
-        // ...
-    })
-}
-```
-
-**Risk:**  
-The entire authentication model trusts HTTP headers (`X-Amz-Account-Id`, `X-Amz-Caller-Arn`) without any cryptographic verification that these headers were set by API Gateway. These headers are the **only** source of identity for the authorization pipeline: the `Authorization`, `AdminCheck`, `AccountCheck`, and `Authz` middleware all derive the identity from values in these headers.
-
-If the API server is reachable by any path that bypasses API Gateway (e.g., direct pod IP, internal service name, misconfigured Kubernetes NetworkPolicy, VPC peering, or load balancer), any caller can forge any identity, including privileged accounts.
-
-**Attack Vectors:**
-1. **Direct pod access:** From within the EKS cluster (another pod, compromised node), call the API directly at `http://rosa-regional-platform-api:8000` with `X-Amz-Account-Id: 000000000000` (a hardcoded privileged account in test data) and `X-Amz-Caller-Arn: arn:aws:iam::000000000000:root` to gain full privileged access.
-2. **Network policy gap:** If Kubernetes NetworkPolicy is not configured (or uses default-allow), any pod in the cluster can forge headers and call the API.
-3. **API Gateway bypass:** If the ALB target group binding (`targetgroupbinding.yaml`) is misconfigured to also expose the pod directly, the API Gateway IAM auth layer is bypassed.
-4. **Internal AWS service access:** VPC peering, Transit Gateway, or AWS PrivateLink configurations that allow other accounts/services to reach the pod's VPC could be used to forge headers.
-
-**What to Mitigate:**
-- Implement a **request signing validation** layer. API Gateway signs forwarded requests with a known secret. Validate that all requests carry this signature before trusting the `X-Amz-*` headers.
-- Alternatively, configure **Kubernetes NetworkPolicy** to restrict ingress to the API pod to only the API Gateway VPC endpoint's source IP range.
-- Add a shared secret or HMAC signature in a custom header that API Gateway injects (via a request transformer), which the Go service validates before processing any `X-Amz-*` header.
-- Document and enforce that the API is **never** accessible without going through API Gateway (and validate this via automated network connectivity tests).
+**What to mitigate:** Validate `X-Amz-Account-Id` matches `/^\d{12}$/` and `X-Amz-Caller-Arn` matches the expected ARN format. Return `400 Bad Request` for malformed values.
 
 ---
 
-## Finding 2 — HIGH: Wildcard CORS Allows Cross-Origin Requests from Any Domain
+### MED-3 — Build Stage Dockerfile Uses Unpinned `golang:1.25-alpine` **(NEW)**
 
-**File:** `pkg/server/server.go:174-179`
+**File:** `Dockerfile` line 2
 
-```go
-apiHandler := handlers.CORS(
-    handlers.AllowedOrigins([]string{"*"}),
-    handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodPut}),
-    handlers.AllowedHeaders([]string{"Content-Type", "Authorization"}),
-)(apiRouter)
+```dockerfile
+FROM golang:1.25-alpine AS builder
 ```
 
-**Risk:**  
-`AllowedOrigins([]string{"*"})` permits cross-origin requests from any domain. Because authentication relies on AWS SigV4-signed requests (injected by API Gateway), this CORS policy cannot be directly exploited for CSRF in typical browser flows. However, it creates several risks:
+**Risk:** `golang:1.25-alpine` is a mutable tag. A compromise of this base image affects the compiled binary output. The build stage compiles the API server — any backdoor introduced here is deployed to production.
 
-**Attack Vectors:**
-1. **Information leakage:** Error responses, API versions (`/api/v0/info`), and health endpoints are accessible from any origin in a browser context without preflight restrictions, potentially leaking environment information.
-2. **If custom auth headers are added:** If the API is ever extended with cookie-based auth or `Authorization` header-based auth (which is already listed in `AllowedHeaders`), the wildcard CORS policy immediately enables CSRF attacks from any origin.
-3. **Reflected XSS pivot:** If any endpoint returns user-controlled content without escaping, the CORS policy enables cross-origin exploitation.
-4. **Future regression:** As the API evolves, developers may not realize that wildcard CORS has been set, leading to accidental vulnerabilities.
-
-**What to Mitigate:**  
-Restrict `AllowedOrigins` to the specific frontend domains that need access (e.g., the ROSA console domain). If the API is purely machine-to-machine (not accessed from browsers), remove CORS headers entirely.
+**What to mitigate:** Pin to a SHA256 digest: `FROM golang:1.25-alpine@sha256:<hash>`.
 
 ---
 
-## Finding 3 — HIGH: Authorization Can Be Silently Disabled by Configuration
+### MED-4 — Runtime Dockerfile Uses Unpinned `distroless/static-debian12:nonroot` **(NEW)**
 
-**File:** `pkg/server/server.go:87-102`
+**File:** `Dockerfile` lines ~20–22
 
-```go
-if cfg.Authz != nil && cfg.Authz.Enabled {
-    // Full Cedar/AVP authz setup
-} 
-// else: only RequireAllowedAccount is applied (account allowlist only)
+```dockerfile
+FROM gcr.io/distroless/static-debian12:nonroot
 ```
 
-**Risk:**  
-When `cfg.Authz` is `nil` or `cfg.Authz.Enabled` is `false`, the server falls back to the legacy `RequireAllowedAccount` middleware, which only checks if the `X-Amz-Account-Id` is in a static allowlist. This means:
-- All accounts in the allowlist have full access to all operations, regardless of which IAM principal they use.
-- There is no per-resource authorization, no admin requirement, and no Cedar policy evaluation.
-- Any misconfiguration in the deployment (missing `AUTHZ_ENABLED=true` env var, missing DynamoDB config) silently degrades security.
+**Risk:** The `nonroot` tag is mutable. While distroless images are hardened, a regressed or compromised `nonroot` tag could introduce vulnerabilities into the API runtime environment.
 
-**Attack Vector:**  
-A deployment error (e.g., wrong ConfigMap, missing environment variable, failed DynamoDB connection that returns nil config) causes the server to start in the degraded `allowlist-only` mode. Any allowed account can perform all operations (create, delete, modify clusters, nodepools, etc.) without admin privileges.
-
-**What to Mitigate:**
-- **Fail-closed:** If authz configuration is expected but missing or invalid, the server should refuse to start rather than fall back to weaker controls.
-- Add a startup assertion: if `cfg.Authz` is nil and the environment requires authz, log a fatal error and exit.
-- Add a runtime health check that exposes the current auth mode, so monitoring can alert on degraded auth state.
-
----
-
-## Finding 4 — HIGH: Privileged Account Check Error Silently Swallowed, Request Continues
-
-**File:** `pkg/middleware/privileged.go:40-50`
-
-```go
-func (p *Privileged) CheckPrivileged(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        // ...
-        isPrivileged, err := p.authorizer.IsPrivileged(ctx, accountID)
-        if err != nil {
-            p.logger.Error("failed to check privileged status", "error", err, "account_id", accountID)
-            // Continue without privileged status on error
-            next.ServeHTTP(w, r)  // <-- request continues with no privileged flag set
-            return
-        }
-        // ...
-    })
-}
-```
-
-**Risk:**  
-When `IsPrivileged` fails (e.g., DynamoDB unavailable, network error), the middleware logs an error and calls `next.ServeHTTP`, allowing the request to continue. The `ContextKeyPrivileged` value is never set in the context, so `GetPrivileged(ctx)` returns `false` (the zero value for bool).
-
-While the default `false` is correct for non-privileged accounts, this represents a **fail-open** pattern. The authorization checks downstream (`RequirePrivileged`, `Authorize`) may behave differently depending on whether the privileged flag was explicitly set to false vs. never set.
-
-More critically: if `IsPrivileged` is called again downstream (as done in `RequirePrivileged`'s double-check), and DynamoDB is flapping, the behavior could be inconsistent across requests.
-
-**Attack Vector:**  
-An attacker who can cause transient DynamoDB errors (e.g., through a DDoS on the DynamoDB endpoint, or exploiting a misconfigured VPC endpoint throttle) could potentially cause repeated retries or race conditions in privilege evaluation.
-
-**What to Mitigate:**  
-Consider returning a 503 Service Unavailable response when the privilege check fails, rather than silently continuing. At minimum, document this as an explicit design decision with a risk acceptance sign-off.
-
----
-
-## Finding 5 — MEDIUM: Prometheus Metrics Endpoint Exposed Without Authentication
-
-**File:** `pkg/server/server.go:241-246`
-
-```go
-metricsRouter := mux.NewRouter()
-metricsRouter.Handle("/metrics", promhttp.Handler()).Methods(http.MethodGet)
-// ...
-metricsServer: &http.Server{
-    Addr: fmt.Sprintf("%s:%d", cfg.Server.MetricsBindAddress, cfg.Server.MetricsPort),
-```
-
-With `MetricsBindAddress: "0.0.0.0"` and `MetricsPort: 9090`.
-
-**Risk:**  
-The Prometheus metrics endpoint is bound to `0.0.0.0:9090` with no authentication. Prometheus metrics can expose:
-- Request rates and patterns that reveal which API endpoints are being called (information useful for attackers)
-- Error rates and types (useful for understanding what attacks are partially succeeding)
-- Internal runtime metrics (goroutine counts, GC pauses, memory usage)
-- Custom metrics that may include account IDs, cluster IDs, or other business-sensitive data if added in the future
-
-**Attack Vector:**  
-Any pod in the cluster can scrape `http://rosa-regional-platform-api:9090/metrics` and gain operational visibility into the API service. From within a compromised pod, this data can help an attacker understand traffic patterns and time attacks.
-
-**What to Mitigate:**
-- Bind the metrics server to `127.0.0.1` (localhost) only, and use Prometheus' in-cluster scraping (which uses the pod's localhost address, not a network service).
-- Or restrict metrics access via Kubernetes NetworkPolicy to only the Prometheus scraper pod(s).
-- Or add bearer token authentication to the metrics endpoint.
-
----
-
-## Finding 6 — MEDIUM: Identity Headers Not Validated for Format or Bounds
-
-**File:** `pkg/middleware/identity.go`
-
-**Risk:**  
-The `X-Amz-Account-Id`, `X-Amz-Caller-Arn`, and related headers are accepted without any format validation. AWS account IDs are always 12-digit numbers; ARNs follow a specific format (`arn:partition:service:region:account:resource`). Accepting arbitrary values:
-
-1. **Log injection:** If these values are logged (and `authorization.go:36` logs `account_id`), a crafted value with newline characters could inject fake log entries, obfuscating an attack.
-2. **Downstream injection:** If the ARN or account ID is used in downstream API calls (DynamoDB key, AVP policy evaluation), malformed values could cause unexpected behavior.
-3. **Error message injection:** If account ID appears in error messages returned to users, it could be used for reflected injection attacks.
-
-**What to Mitigate:**  
-Validate that `X-Amz-Account-Id` is exactly a 12-digit string, and `X-Amz-Caller-Arn` matches the expected ARN format. Reject requests with malformed values with a 400 Bad Request response.
+**What to mitigate:** Pin to a SHA256 digest: `FROM gcr.io/distroless/static-debian12@sha256:<hash>`.

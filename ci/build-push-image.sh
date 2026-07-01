@@ -20,13 +20,13 @@ SHORT_SHA="${GIT_SHA:0:7}"
 
 echo "Building image: ${IMAGE_REPO}:${SHORT_SHA}"
 
-# Detect container runtime
-if command -v docker &>/dev/null; then
-  RUNTIME=docker
-elif command -v podman &>/dev/null; then
+# Detect container runtime (prefer podman)
+if command -v podman &>/dev/null; then
   RUNTIME=podman
+elif command -v docker &>/dev/null; then
+  RUNTIME=docker
 else
-  echo "ERROR: neither docker nor podman found" >&2
+  echo "ERROR: neither podman nor docker found" >&2
   exit 1
 fi
 
